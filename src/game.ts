@@ -1,0 +1,657 @@
+// Game controller: modes, the tool state machine, money, undo, the clock.
+import { Audio } from './audio';
+import {
+  BUILDINGS, CITY_TOOLS, DIFFICULTIES, Difficulty, EDITOR_TOOLS, Kind, MAP_SIZES, ToolDef, cityClass,
+} from './defs';
+import { Minimap } from './render/minimap';
+import { Renderer } from './render/renderer';
+import { hashString, makeRng, pick, randomSeedName } from './rng';
+import { SaveFile, loadSlot, saveSlot, worldFrom } from './save';
+import { Sim } from './sim';
+import { DEFAULT_TERRAIN, TerrainParams, TerrainStyle, addSpring, applyBrush, generateTerrain } from './terrain';
+import {
+  Plan, applyBuildings, applyBulldoze, applyLine, applyTrees, linePath, planBulldoze, planLine, planParks, planPlace,
+  planTrees, planZones, rectTiles,
+} from './tools';
+import type { UI } from './ui/ui';
+import { World, WorldSnapshot, newCityState } from './world';
+
+export type Mode = 'title' | 'editor' | 'city';
+
+/** Simulated weeks per real second at each speed. */
+export const SPEEDS = [0, 0.7, 1.8, 5, 14];
+export const SPEED_NAMES = ['Paused', 'Slow', 'Normal', 'Fast', 'Ultra'];
+
+export interface Settings {
+  sound: boolean;
+  autosave: boolean;
+  traffic: boolean;
+  grid: boolean;
+  contours: boolean;
+}
+
+const NAME_A = ['Maple', 'Cedar', 'River', 'Lake', 'Stone', 'Pine', 'Oak', 'Harbor', 'Fair', 'Bright', 'Silver', 'Green', 'Elm', 'Clear', 'Red', 'Willow', 'Ash', 'Hazel', 'North', 'Bay', 'Copper', 'Sand', 'Glen', 'Mill'];
+const NAME_B = ['ton', 'ville', 'field', 'wood', 'port', 'ford', 'brook', 'haven', 'dale', 'ridge', 'view', 'burg', 'crest', 'bury', 'water', 'mont', 'stead'];
+
+export function randomCityName(): string {
+  const r = makeRng((Date.now() ^ (Math.random() * 1e9)) >>> 0);
+  return pick(r, NAME_A) + pick(r, NAME_B);
+}
+
+function fmtMoney(n: number): string {
+  return '$' + Math.round(n).toLocaleString();
+}
+
+export class Game {
+  mode: Mode = 'title';
+  world!: World;
+  sim: Sim | null = null;
+  renderer: Renderer;
+  minimap: Minimap;
+  audio = new Audio();
+  ui!: UI;
+  speed = 2;
+  terrain: TerrainParams;
+  toolId = 'query';
+  brush = { radius: 4, strength: 0.6 };
+  settings: Settings = { sound: true, autosave: true, traffic: true, grid: false, contours: false };
+  slotId: string | null = null;
+
+  private acc = 0;
+  private undoStack: WorldSnapshot[] = [];
+  private redoStack: WorldSnapshot[] = [];
+  private anchor: { x: number; y: number } | null = null;
+  private brushOn = false;
+  private brushAt = { x: 0, y: 0 };
+  private brushTarget: number | undefined;
+  private brushSpent = 0;
+  private autoTimer = 0;
+  private titleDrift = { vx: 1.3, vy: 0.5 };
+
+  constructor(canvas: HTMLCanvasElement, minimapCanvas: HTMLCanvasElement) {
+    this.renderer = new Renderer(canvas);
+    this.minimap = new Minimap(minimapCanvas, this.renderer);
+    const size = MAP_SIZES[1];
+    this.terrain = { ...DEFAULT_TERRAIN, seed: randomSeedName(), w: size.w, h: size.h };
+    this.loadSettings();
+  }
+
+  // ---- settings --------------------------------------------------------------
+
+  private loadSettings(): void {
+    try {
+      const raw = localStorage.getItem('terraville.settings');
+      if (raw) this.settings = { ...this.settings, ...JSON.parse(raw) };
+    } catch {
+      /* private mode */
+    }
+    this.applySettings();
+  }
+
+  saveSettings(): void {
+    try {
+      localStorage.setItem('terraville.settings', JSON.stringify(this.settings));
+    } catch {
+      /* ignore */
+    }
+    this.applySettings();
+  }
+
+  private applySettings(): void {
+    this.audio.enabled = this.settings.sound;
+    this.renderer.showTraffic = this.settings.traffic;
+    if (this.renderer.grid !== this.settings.grid) {
+      this.renderer.grid = this.settings.grid;
+      if (this.world) this.renderer.invalidateAll();
+    }
+    const wantContours = this.mode === 'editor' ? true : this.settings.contours;
+    if (this.renderer.contours !== wantContours) this.renderer.contours = wantContours;
+  }
+
+  // ---- modes -----------------------------------------------------------------
+
+  showTitle(): void {
+    this.mode = 'title';
+    this.sim = null;
+    const styles: TerrainStyle[] = ['coast', 'island', 'lakes', 'valley', 'archipelago'];
+    const seed = randomSeedName();
+    const style = styles[hashString(seed) % styles.length];
+    const size = MAP_SIZES[1];
+    this.terrain = { ...DEFAULT_TERRAIN, style, seed, w: size.w, h: size.h };
+    this.world = generateTerrain(this.terrain);
+    this.renderer.setWorld(this.world, null);
+    this.renderer.resize();
+    this.renderer.cam.zoom = Math.max(this.renderer.minZoom() * 1.8, 11);
+    this.renderer.centerOn(this.world.w * 0.35, this.world.h * 0.45);
+    this.renderer.preview = null;
+    this.minimap.markDirty();
+    this.applySettings();
+    this.ui.enterTitle();
+  }
+
+  startEditor(params?: Partial<TerrainParams>): void {
+    this.mode = 'editor';
+    this.sim = null;
+    this.terrain = { ...this.terrain, ...params };
+    this.world = generateTerrain(this.terrain);
+    this.renderer.setWorld(this.world, null);
+    this.fitMap();
+    this.undoStack = [];
+    this.redoStack = [];
+    this.slotId = null;
+    this.applySettings();
+    this.setTool('raise');
+    this.minimap.markDirty();
+    this.ui.enterEditor();
+  }
+
+  /** Continue editing the land already on screen (from the title or a quick start). */
+  editCurrentLand(): void {
+    this.mode = 'editor';
+    this.sim = null;
+    this.world.city = newCityState();
+    this.renderer.setWorld(this.world, null);
+    this.fitMap();
+    this.undoStack = [];
+    this.redoStack = [];
+    this.applySettings();
+    this.setTool('raise');
+    this.minimap.markDirty();
+    this.ui.enterEditor();
+  }
+
+  regenerate(params: Partial<TerrainParams>): void {
+    const next = { ...this.terrain, ...params };
+    const sizeChanged = next.w !== this.terrain.w || next.h !== this.terrain.h;
+    this.terrain = next;
+    const fresh = generateTerrain(next);
+    if (!sizeChanged && this.world && this.world.w === fresh.w && this.world.h === fresh.h) {
+      this.pushUndo();
+      this.world.height.set(fresh.height);
+      this.world.water.set(fresh.water);
+      this.world.trees.set(fresh.trees);
+      this.world.city.seed = next.seed;
+      this.world.dirtyAll(true);
+    } else {
+      this.world = fresh;
+      this.renderer.setWorld(fresh, null);
+      this.fitMap();
+      this.undoStack = [];
+      this.redoStack = [];
+    }
+    this.minimap.markDirty();
+  }
+
+  /** A new random landscape and straight to the founding dialog. */
+  quickStart(): void {
+    const styles: TerrainStyle[] = ['coast', 'island', 'lakes', 'valley', 'coast'];
+    const seed = randomSeedName();
+    const size = MAP_SIZES[1];
+    this.terrain = { ...DEFAULT_TERRAIN, style: styles[hashString(seed) % styles.length], seed, w: size.w, h: size.h };
+    this.world = generateTerrain(this.terrain);
+    this.mode = 'editor';
+    this.renderer.setWorld(this.world, null);
+    this.fitMap();
+    this.applySettings();
+    this.minimap.markDirty();
+    this.ui.enterEditor();
+    this.ui.openFound(true);
+  }
+
+  foundCity(name: string, difficulty: Difficulty['id'], disasters: boolean): void {
+    const w = this.world;
+    const diff = DIFFICULTIES.find((d) => d.id === difficulty) ?? DIFFICULTIES[0];
+    w.city = newCityState();
+    w.city.name = name.trim() || randomCityName();
+    w.city.difficulty = diff.id;
+    w.city.funds = diff.funds;
+    w.city.disasters = disasters;
+    w.city.founded = true;
+    w.city.seed = this.terrain.seed;
+    this.startSim();
+    this.mode = 'city';
+    this.speed = 2;
+    this.undoStack = [];
+    this.redoStack = [];
+    this.slotId = null;
+    this.applySettings();
+    this.setTool('query');
+    this.ui.enterCity();
+    this.sim!.say('welcome', `Welcome to ${w.city.name}. Build a power plant, zone residential, commercial and industrial land, and connect it all with roads and power lines.`, 'good', undefined, 0);
+    this.renderer.cam.zoom = Math.max(this.renderer.cam.zoom, 14);
+    this.renderer.clampCamera();
+    this.audio.play('fanfare');
+  }
+
+  private startSim(): void {
+    this.sim = new Sim(this.world);
+    this.renderer.setWorld(this.world, this.sim);
+    this.minimap.markDirty();
+    this.sim.on((e) => {
+      switch (e.type) {
+        case 'message':
+          this.ui.onMessage(e.message);
+          if (e.message.kind === 'alert') this.audio.play('alert');
+          if (e.message.kind === 'good' && e.message.text.includes('is now a')) this.audio.play('fanfare');
+          break;
+        case 'destroyed':
+          this.renderer.vehicles.addDust(e.x, e.y);
+          break;
+        case 'month':
+          this.minimap.markDirty();
+          this.renderer.refreshOverlay();
+          this.ui.onMonth();
+          break;
+        case 'year':
+          this.audio.play('coin');
+          // Undo only reaches back within the current year.
+          this.undoStack = [];
+          this.redoStack = [];
+          this.ui.syncUndo();
+          if (this.settings.autosave) void this.autosave();
+          break;
+      }
+    });
+  }
+
+  loadFile(file: SaveFile, slotId: string | null = null): void {
+    this.world = worldFrom(file);
+    if (file.terrain) this.terrain = { ...this.terrain, ...(file.terrain as Partial<TerrainParams>), w: this.world.w, h: this.world.h };
+    else this.terrain = { ...this.terrain, w: this.world.w, h: this.world.h };
+    this.undoStack = [];
+    this.redoStack = [];
+    this.slotId = slotId;
+    if (file.mode === 'city' && this.world.city.founded) {
+      this.mode = 'city';
+      this.startSim();
+      this.speed = 2;
+      this.setTool('query');
+      this.applySettings();
+      this.ui.enterCity();
+    } else {
+      this.mode = 'editor';
+      this.sim = null;
+      this.renderer.setWorld(this.world, null);
+      this.applySettings();
+      this.setTool('raise');
+      this.ui.enterEditor();
+    }
+    this.renderer.resize();
+    if (file.cam) {
+      this.renderer.cam.zoom = file.cam.zoom;
+      this.renderer.centerOn(file.cam.x, file.cam.y);
+    } else this.fitMap();
+    this.minimap.markDirty();
+  }
+
+  makeSaveFile(): SaveFile {
+    return {
+      v: 1,
+      world: this.world.serialize(),
+      cam: { ...this.renderer.cam },
+      mode: this.mode === 'city' ? 'city' : 'editor',
+      terrain: this.terrain,
+    };
+  }
+
+  async autosave(): Promise<void> {
+    if (this.mode !== 'city') return;
+    await saveSlot('auto', this.makeSaveFile(), this.sim?.stats.residents ?? 0);
+  }
+
+  async saveTo(id: string): Promise<boolean> {
+    const ok = await saveSlot(id, this.makeSaveFile(), this.sim?.stats.residents ?? 0);
+    if (ok) this.slotId = id;
+    return ok;
+  }
+
+  async continueAuto(): Promise<boolean> {
+    const f = await loadSlot('auto');
+    if (!f) return false;
+    this.loadFile(f, 'auto');
+    return true;
+  }
+
+  fitMap(): void {
+    const r = this.renderer;
+    r.resize();
+    r.cam.zoom = Math.max(r.minZoom(), Math.min(r.cssW / (this.world.w * 0.62), r.cssH / (this.world.h * 0.62)));
+    r.centerOn(this.world.w / 2, this.world.h / 2);
+  }
+
+  // ---- clock ------------------------------------------------------------------
+
+  setSpeed(s: number): void {
+    this.speed = Math.max(0, Math.min(SPEEDS.length - 1, s));
+    this.ui.syncSpeed();
+  }
+
+  togglePause(): void {
+    if (this.speed === 0) this.setSpeed(this.lastSpeed || 2);
+    else {
+      this.lastSpeed = this.speed;
+      this.setSpeed(0);
+    }
+  }
+  private lastSpeed = 2;
+
+  frame(dt: number): void {
+    const r = this.renderer;
+    const running = this.mode === 'city' && !!this.sim && this.speed > 0 && !this.ui.modalOpen;
+    if (running && this.sim) {
+      this.acc += dt * SPEEDS[this.speed];
+      let steps = 0;
+      while (this.acc >= 1 && steps < 6) {
+        this.sim.step();
+        this.acc -= 1;
+        steps++;
+      }
+      if (this.acc > 1) this.acc = 0;
+      r.stepFrac = this.acc;
+    }
+    r.running = running;
+    if (this.mode === 'title') {
+      const c = r.cam;
+      c.x += this.titleDrift.vx * dt;
+      c.y += this.titleDrift.vy * dt;
+      const halfW = r.cssW / 2 / c.zoom;
+      const halfH = r.cssH / 2 / c.zoom;
+      if (c.x > this.world.w - halfW || c.x < halfW) this.titleDrift.vx *= -1;
+      if (c.y > this.world.h - halfH || c.y < halfH) this.titleDrift.vy *= -1;
+      r.clampCamera(0);
+    }
+    if (this.brushOn) this.brushTick(dt);
+    if (this.mode === 'city' && this.settings.autosave) {
+      this.autoTimer += dt;
+      if (this.autoTimer > 90) {
+        this.autoTimer = 0;
+        void this.autosave();
+      }
+    }
+    r.frame(dt);
+    this.minimap.draw(dt);
+  }
+
+  // ---- tools --------------------------------------------------------------------
+
+  tools(): ToolDef[] {
+    return this.mode === 'editor' ? EDITOR_TOOLS : CITY_TOOLS;
+  }
+
+  tool(): ToolDef {
+    return this.tools().find((t) => t.id === this.toolId) ?? this.tools()[0];
+  }
+
+  setTool(id: string): void {
+    this.toolId = id;
+    this.anchor = null;
+    this.brushOn = false;
+    this.renderer.preview = null;
+    this.ui?.syncTool();
+  }
+
+  cancelTool(): void {
+    this.anchor = null;
+    this.brushOn = false;
+    this.renderer.preview = null;
+    this.ui.cursorTip(0, 0, null);
+  }
+
+  get dragging(): boolean {
+    return this.anchor !== null || this.brushOn;
+  }
+
+  /** Pointer moved over the map (tile coords, float) at screen position sx, sy. */
+  pointerMove(fx: number, fy: number, sx: number, sy: number): void {
+    const tx = Math.floor(fx);
+    const ty = Math.floor(fy);
+    const r = this.renderer;
+    const inside = this.world.inBounds(tx, ty);
+    r.hover = inside ? { x: tx, y: ty } : null;
+    if (this.mode === 'title') return;
+    const t = this.tool();
+    if (t.kind === 'brush') {
+      this.brushAt = { x: fx, y: fy };
+      r.preview = { tiles: [], bad: [], rects: [], brush: { x: fx, y: fy, r: this.brush.radius } };
+      if (this.mode === 'editor' && inside) {
+        this.ui.cursorTip(sx, sy, `<span class="num">${Math.round(this.world.height[ty * this.world.w + tx])} m</span>`);
+      } else if (t.id === 'level') {
+        this.ui.cursorTip(sx, sy, this.brushOn ? `Levelling <span class="num">${fmtMoney(this.brushSpent)}</span>` : 'Hold to level', false);
+      }
+      return;
+    }
+    if (!inside && !this.anchor) {
+      r.preview = null;
+      this.ui.cursorTip(0, 0, null);
+      return;
+    }
+    if (t.kind === 'click') {
+      r.preview = null;
+      if (this.mode === 'editor' && inside) this.ui.cursorTip(sx, sy, `<span class="num">${Math.round(this.world.height[ty * this.world.w + tx])} m</span>`);
+      else this.ui.cursorTip(0, 0, null);
+      return;
+    }
+    const plan = this.plan(tx, ty);
+    if (!plan) return;
+    this.showPlan(plan, sx, sy);
+  }
+
+  private plan(tx: number, ty: number): Plan | null {
+    const t = this.tool();
+    const a = this.anchor ?? { x: tx, y: ty };
+    const cx = Math.max(0, Math.min(this.world.w - 1, tx));
+    const cy = Math.max(0, Math.min(this.world.h - 1, ty));
+    switch (t.kind) {
+      case 'line':
+        return planLine(this.world, t.net!, linePath(a.x, a.y, cx, cy));
+      case 'zone':
+        return planZones(this.world, t.building!, a.x, a.y, cx, cy);
+      case 'place':
+        return planPlace(this.world, t.building!, cx, cy);
+      case 'rect': {
+        const rect = rectTiles(a.x, a.y, cx, cy);
+        if (t.id === 'bulldoze') return planBulldoze(this.world, rect);
+        if (t.id === 'park') return planParks(this.world, rect);
+        if (t.id === 'trees') return planTrees(this.world, rect, t.cost ?? 3);
+      }
+    }
+    return null;
+  }
+
+  private showPlan(plan: Plan, sx: number, sy: number): void {
+    const t = this.tool();
+    const r = this.renderer;
+    const size = t.building ? BUILDINGS[t.building].size : 1;
+    const multi = t.kind === 'zone' || t.kind === 'place' || (t.kind === 'rect' && t.building);
+    if (multi) {
+      r.preview = {
+        tiles: [],
+        bad: [],
+        rects: [...plan.tiles.map(([x, y]) => ({ x, y, s: size, ok: true })), ...plan.bad.map(([x, y]) => ({ x, y, s: size, ok: false }))],
+        tint: t.building === 'res' ? '47,207,143' : t.building === 'com' ? '90,166,255' : t.building === 'ind' ? '242,178,27' : undefined,
+      };
+    } else {
+      r.preview = { tiles: plan.tiles, bad: plan.bad, rects: [], tint: t.id === 'bulldoze' ? '242,193,78' : undefined };
+    }
+    const funds = this.world.city.funds;
+    let html: string;
+    let bad = false;
+    if (!plan.count) {
+      html = plan.reason ?? 'Nothing to build here';
+      bad = true;
+    } else {
+      const what = t.kind === 'line' ? `${plan.count} tile${plan.count > 1 ? 's' : ''}` :
+        t.kind === 'zone' ? `${plan.count} zone${plan.count > 1 ? 's' : ''}` :
+        t.id === 'bulldoze' ? `${plan.count} to clear` :
+        t.kind === 'rect' ? `${plan.count} tile${plan.count > 1 ? 's' : ''}` : t.name;
+      html = `${t.kind === 'place' ? '' : t.name + ' · '}${what} · <span class="num">${fmtMoney(plan.cost)}</span>`;
+      if (plan.cost > funds) {
+        html += ' · not enough money';
+        bad = true;
+      } else if (plan.bad.length && plan.reason) {
+        html += ` · ${plan.bad.length} blocked`;
+      }
+    }
+    this.ui.cursorTip(sx, sy, html, bad);
+  }
+
+  pointerDown(fx: number, fy: number, sx: number, sy: number): void {
+    if (this.mode === 'title') return;
+    this.audio.unlock();
+    const tx = Math.floor(fx);
+    const ty = Math.floor(fy);
+    const t = this.tool();
+    const inside = this.world.inBounds(tx, ty);
+    switch (t.kind) {
+      case 'click':
+        if (!inside) return;
+        if (t.id === 'query') this.ui.inspect(tx, ty);
+        else if (t.id === 'spring') {
+          this.pushUndo();
+          const n = addSpring(this.world, tx, ty);
+          if (n) {
+            this.audio.play('terrain');
+            this.minimap.markDirty();
+          } else this.ui.toast('The water had nowhere to go.', 'warn');
+        } else if (t.id === 'pan') this.ui.cursorTip(sx, sy, `<span class="num">${Math.round(this.world.height[ty * this.world.w + tx])} m</span>`);
+        return;
+      case 'place': {
+        const plan = this.plan(tx, ty);
+        if (plan) this.commit(plan);
+        this.pointerMove(fx, fy, sx, sy);
+        return;
+      }
+      case 'brush':
+        if (!inside) return;
+        this.pushUndo();
+        this.brushOn = true;
+        this.brushAt = { x: fx, y: fy };
+        this.brushSpent = 0;
+        this.brushTarget = this.world.height[ty * this.world.w + tx];
+        if (t.id === 'level' && this.world.water[ty * this.world.w + tx]) this.brushTarget = Math.max(0.5, this.brushTarget);
+        return;
+      default:
+        if (!inside) return;
+        this.anchor = { x: tx, y: ty };
+        this.pointerMove(fx, fy, sx, sy);
+    }
+  }
+
+  pointerUp(fx: number, fy: number, sx: number, sy: number): void {
+    if (this.brushOn) {
+      this.brushOn = false;
+      this.minimap.markDirty();
+      if (this.brushSpent > 0) this.ui.toast(`Levelled for ${fmtMoney(this.brushSpent)}`);
+      return;
+    }
+    if (!this.anchor) return;
+    const plan = this.plan(Math.floor(fx), Math.floor(fy));
+    this.anchor = null;
+    if (plan) this.commit(plan);
+    this.pointerMove(fx, fy, sx, sy);
+  }
+
+  private commit(plan: Plan): void {
+    const t = this.tool();
+    if (!plan.count) {
+      if (plan.reason) this.ui.toast(plan.reason, 'warn');
+      this.audio.play('error');
+      return;
+    }
+    const city = this.world.city;
+    if (this.mode === 'city' && plan.cost > city.funds) {
+      this.ui.toast(`Not enough money. That costs ${fmtMoney(plan.cost)} and the city has ${fmtMoney(city.funds)}.`, 'warn');
+      this.audio.play('error');
+      return;
+    }
+    this.pushUndo();
+    if (t.kind === 'line') applyLine(this.world, t.net!, plan);
+    else if (t.id === 'bulldoze') applyBulldoze(this.world, plan);
+    else if (t.id === 'trees') applyTrees(this.world, plan);
+    else if (t.building) applyBuildings(this.world, t.building as Kind, plan);
+    if (this.mode === 'city') city.funds -= plan.cost;
+    if (this.sim) this.sim.powerDirty = true;
+    this.minimap.markDirty();
+    this.audio.play(t.id === 'bulldoze' ? 'bulldoze' : t.kind === 'zone' ? 'zone' : 'build');
+    this.ui.onFunds();
+  }
+
+  private brushTick(dt: number): void {
+    const t = this.tool();
+    if (t.kind !== 'brush') {
+      this.brushOn = false;
+      return;
+    }
+    const city = this.mode === 'city';
+    if (city && this.world.city.funds <= 0) {
+      this.brushOn = false;
+      this.ui.toast('Out of money for levelling.', 'warn');
+      return;
+    }
+    const res = applyBrush(this.world, t.id, this.brushAt.x, this.brushAt.y, {
+      radius: this.brush.radius,
+      strength: city ? 0.8 : this.brush.strength,
+      dt,
+      target: t.id === 'flatten' || t.id === 'level' ? this.brushTarget : undefined,
+      protectBuilt: city,
+    });
+    if (city) {
+      const cost = res.moved * 2;
+      this.world.city.funds -= cost;
+      this.brushSpent += cost;
+    }
+    if (res.moved > 0.01 || t.id === 'water' || t.id === 'land' || t.id === 'forest' || t.id === 'clear') {
+      this.audio.play('terrain');
+      this.minimap.markDirty();
+    }
+  }
+
+  // ---- undo ---------------------------------------------------------------------
+
+  pushUndo(): void {
+    if (!this.world) return;
+    this.undoStack.push(this.world.snapshot());
+    if (this.undoStack.length > (this.mode === 'editor' ? 40 : 25)) this.undoStack.shift();
+    this.redoStack = [];
+    this.ui?.syncUndo();
+  }
+
+  undo(): void {
+    const s = this.undoStack.pop();
+    if (!s) return;
+    this.redoStack.push(this.world.snapshot());
+    this.restore(s);
+  }
+
+  redo(): void {
+    const s = this.redoStack.pop();
+    if (!s) return;
+    this.undoStack.push(this.world.snapshot());
+    this.restore(s);
+  }
+
+  private restore(s: WorldSnapshot): void {
+    this.world.restore(s);
+    if (this.sim) {
+      this.sim.powerDirty = true;
+      this.sim.refreshTerrainAppeal();
+    }
+    this.minimap.markDirty();
+    this.ui.syncUndo();
+    this.ui.onFunds();
+  }
+
+  canUndo(): boolean {
+    return this.undoStack.length > 0;
+  }
+
+  canRedo(): boolean {
+    return this.redoStack.length > 0;
+  }
+
+  cityTitle(): { name: string; sub: string } {
+    if (this.mode === 'editor') return { name: 'Terrain editor', sub: this.terrain.seed };
+    const pop = this.sim?.stats.residents ?? 0;
+    return { name: this.world.city.name, sub: `Pop ${pop.toLocaleString()} · ${cityClass(pop)}` };
+  }
+}
