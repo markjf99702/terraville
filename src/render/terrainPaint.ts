@@ -162,6 +162,21 @@ function hash2(x: number, y: number): number {
   return ((hh ^ (hh >>> 16)) >>> 0) / 4294967296;
 }
 
+/** Smooth value noise in [0, 1): bilinear between hashed lattice points. */
+function vnoise(x: number, y: number, seed: number): number {
+  const ix = Math.floor(x);
+  const iy = Math.floor(y);
+  const fx = x - ix;
+  const fy = y - iy;
+  const sx = fx * fx * (3 - 2 * fx);
+  const sy = fy * fy * (3 - 2 * fy);
+  const a = hash2(ix + seed, iy);
+  const b = hash2(ix + 1 + seed, iy);
+  const c = hash2(ix + seed, iy + 1);
+  const d = hash2(ix + 1 + seed, iy + 1);
+  return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
+}
+
 /**
  * Paint a CS x CS block of tiles starting at (tx0, ty0) at L pixels per tile.
  * Returns ImageData ready for putImageData.
@@ -249,8 +264,16 @@ export function paintTerrain(
             r *= 1 - t; g *= 1 - t; b *= 1 - t;
           }
         }
-        const k = 0.955 + n * 0.09;
-        r *= k; g *= k; b *= k;
+        const k = 0.965 + n * 0.07;
+        // Meadow patches: drier and lusher ground at two scales.
+        const uu = tx0 + (px + 0.5) / L;
+        const vv = ty0 + (py + 0.5) / L;
+        const big = vnoise(uu * 0.45, vv * 0.45, 911) - 0.5;
+        const small = L >= 16 ? vnoise(uu * 2.2, vv * 2.2, 313) - 0.5 : 0;
+        const dry = big * 0.9 + small * 0.5;
+        r *= k * (1 + dry * 0.16);
+        g *= k * (1 + dry * 0.05 + small * 0.04);
+        b *= k * (1 - dry * 0.12);
         if (contours) {
           const hv = hg[i00] * w00 + hg[i10] * w10 + hg[i01] * w01 + hg[i11] * w11;
           const band = Math.floor(hv / interval);

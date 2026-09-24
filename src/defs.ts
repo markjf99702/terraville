@@ -68,7 +68,7 @@ export const ZONE_LV_GATE: Record<'res' | 'com' | 'ind', number[]> = {
 export const NET_COST = { road: 10, rail: 20, power: 5 };
 export const BRIDGE_COST = { road: 60, rail: 120, power: 25 };
 /** Monthly upkeep per tile. */
-export const NET_UPKEEP = { road: 0.2, rail: 0.4, bridge: 1.2 };
+export const NET_UPKEEP = { road: 0.15, rail: 0.3, bridge: 1 };
 /** Max height difference to a neighbour, in metres, that each network tolerates. */
 export const NET_MAX_SLOPE = { road: 14, rail: 9, power: 999 };
 export const BULLDOZE_COST = 1;

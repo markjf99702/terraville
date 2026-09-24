@@ -6,7 +6,9 @@
   "scripts": {
     "build": "node build.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node --test test/"
+    "test": "node run-test.mjs test/unit.ts",
+    "bot": "node run-test.mjs test/bot.ts",
+    "balance": "node run-test.mjs test/balance.ts"
   },
   "devDependencies": {
     "@types/node": "^22.20.4",

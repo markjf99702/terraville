@@ -645,13 +645,22 @@ kbd { font: 600 11.5px var(--mono); padding: 1px 6px; border: 1px solid var(--li
 /* ---- phones and small windows ------------------------------------------- */
 @media (max-width: 820px) {
   #topbar { gap: 6px; left: 8px; right: 8px; top: calc(var(--top) + 8px); }
-  .sign { max-width: 46vw; padding: 4px 10px 3px; }
+  .sign { max-width: 52vw; flex: 0 1 auto; padding: 4px 10px 3px; }
   .sign b { font-size: 14.5px; }
-  .stat { padding: 3px 8px; }
-  .stat .value { font-size: 13px; }
-  .stat.hide-sm, .menu .label { display: none; }
-  .menu { margin-left: 0; flex: 1; justify-content: flex-end; }
-  .menu button { padding: 0 8px; }
+  .stat-strip { order: 3; flex: 1 1 100%; justify-content: space-between; padding: 0 2px; }
+  .stat { padding: 3px 7px; }
+  .stat .label { font-size: 9px; }
+  .stat .value { font-size: 12.5px; }
+  .stat .delta { font-size: 10px; }
+  .rci { padding: 3px 7px; grid-template-columns: repeat(3, 9px); column-gap: 4px; }
+  .rci .bar { height: 30px; }
+  .speed { padding: 3px 2px; gap: 0; }
+  .speed button { width: 29px; height: 32px; }
+  .speed svg { width: 16px; height: 16px; }
+  .menu .label, .menu .hide-sm { display: none; }
+  .menu { margin-left: auto; flex: 0 0 auto; padding: 3px; }
+  .menu button { padding: 0 7px; height: 32px; }
+  #guide { left: 8px !important; right: 8px !important; width: auto !important; top: calc(var(--top) + 112px) !important; font-size: 12.5px; }
   #toolbox {
     top: auto;
     left: 8px;
@@ -671,9 +680,11 @@ kbd { font: 600 11.5px var(--mono); padding: 1px 6px; border: 1px solid var(--li
   #ticker { left: 8px; right: 8px; bottom: calc(var(--bottom) + 80px); min-height: 38px; }
   #ticker .when { display: none; }
   #minimapCard { display: none; }
-  #minimapCard.show { display: flex; right: 8px; bottom: calc(var(--bottom) + 128px); width: 200px; }
+  #minimapCard.show { display: flex; right: 8px; bottom: calc(var(--bottom) + 128px); width: 180px; }
+  #minimapCard.show #minimap { height: 120px; }
   #inspect { right: 8px; left: 8px; width: auto; bottom: calc(var(--bottom) + 128px); }
-  #editorPanel { right: 8px; left: auto; top: auto; bottom: calc(var(--bottom) + 128px); width: min(290px, calc(100vw - 16px)); max-height: 46vh; }
+  #editorPanel { right: 8px; left: 8px; top: auto; bottom: calc(var(--bottom) + 80px); width: auto; max-height: 38vh; }
+  #editorPanel.collapsed { max-height: 46px; overflow: hidden; }
   #log { left: 8px; bottom: calc(var(--bottom) + 124px); width: calc(100vw - 16px); }
   .cols, .chartgrid { grid-template-columns: 1fr; }
   .choice, .disaster-grid { grid-template-columns: 1fr 1fr; }

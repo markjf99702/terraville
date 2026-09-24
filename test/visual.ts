@@ -50,6 +50,14 @@ if (extra) {
     for (let t = 0; t < 60; t++) { const x = ex + (t % 12) * 2, y = ey + Math.floor(t / 12); if (world.canPlace(kind, x, y).ok) { world.place(kind, x, y); ex = x + 7; break; } }
   }
 }
+const dis = q.get('disaster');
+if (dis) {
+  world.city.disasters = true;
+  for (const k of dis.split(',')) sim.disasters.trigger(k as any);
+  for (let i = 0; i < Number(q.get('steps') ?? 3); i++) sim.step();
+  const r0 = sim.disasters.roamers[0];
+  if (r0 && q.get('follow') === '1') { (window as any).__follow = r0; }
+}
 const canvas = document.createElement('canvas');
 canvas.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh';
 document.body.style.margin = '0';
@@ -60,8 +68,10 @@ r.resize();
 r.cam.zoom = Number(q.get('zoom') ?? 16);
 r.cam.x = Number(q.get('x') ?? cx);
 r.cam.y = Number(q.get('y') ?? cy);
+if ((window as any).__follow) { r.cam.x = (window as any).__follow.x; r.cam.y = (window as any).__follow.y; }
 r.contours = q.get('contours') === '1';
 r.running = true;
+if (q.get('night')) r.simTime = r.dayLength * Number(q.get('night'));
 r.setOverlay((q.get('overlay') as Overlay) ?? 'none');
 let last = performance.now();
 let frames = 0;

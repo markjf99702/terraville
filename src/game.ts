@@ -28,6 +28,7 @@ export interface Settings {
   traffic: boolean;
   grid: boolean;
   contours: boolean;
+  night: boolean;
 }
 
 const NAME_A = ['Maple', 'Cedar', 'River', 'Lake', 'Stone', 'Pine', 'Oak', 'Harbor', 'Fair', 'Bright', 'Silver', 'Green', 'Elm', 'Clear', 'Red', 'Willow', 'Ash', 'Hazel', 'North', 'Bay', 'Copper', 'Sand', 'Glen', 'Mill'];
@@ -54,7 +55,7 @@ export class Game {
   terrain: TerrainParams;
   toolId = 'query';
   brush = { radius: 4, strength: 0.6 };
-  settings: Settings = { sound: true, autosave: true, traffic: true, grid: false, contours: false };
+  settings: Settings = { sound: true, autosave: true, traffic: true, grid: false, contours: false, night: true };
   slotId: string | null = null;
 
   private acc = 0;
@@ -100,6 +101,7 @@ export class Game {
   private applySettings(): void {
     this.audio.enabled = this.settings.sound;
     this.renderer.showTraffic = this.settings.traffic;
+    this.renderer.nightCycle = this.settings.night;
     if (this.renderer.grid !== this.settings.grid) {
       this.renderer.grid = this.settings.grid;
       if (this.world) this.renderer.invalidateAll();

@@ -283,7 +283,7 @@ function fillLakes(world: World, filled: Float32Array, amount: number): void {
  * such that following `down` always reaches the sea or the map edge, and
  * `filled` is the height water would pool to.
  */
-export function priorityFlood(world: World): { filled: Float32Array; down: Int32Array } {
+export function priorityFlood(world: World, jitter = 0.35): { filled: Float32Array; down: Int32Array } {
   const { w, h, n } = world;
   const filled = new Float32Array(n);
   const down = new Int32Array(n).fill(-1);
@@ -314,7 +314,9 @@ export function priorityFlood(world: World): { filled: Float32Array; down: Int32
       done[j] = 1;
       filled[j] = Math.max(hgt[j], filled[i] + 0.001);
       down[j] = i;
-      heap.push(j, filled[j]);
+      // A little noise in the queue order lets rivers wander across flats
+      // instead of running in ruler-straight lines.
+      heap.push(j, filled[j] + hash3(nx, ny, 77) * jitter);
     }
   }
   return { filled, down };
@@ -479,10 +481,10 @@ export function applyBrush(world: World, tool: string, cx: number, cy: number, o
       const before = hgt[i];
       switch (tool) {
         case 'raise':
-          hgt[i] += rate * 18 * f;
+          hgt[i] += rate * 42 * f;
           break;
         case 'lower':
-          hgt[i] -= rate * 18 * f;
+          hgt[i] -= rate * 42 * f;
           break;
         case 'smooth': {
           let s = 0;

@@ -740,7 +740,7 @@ export class Sim {
     const s = this.stats;
     const diff = DIFFICULTIES.find((d) => d.id === this.world.city.difficulty) ?? DIFFICULTIES[0];
     const lvF = 0.55 + (s.avgLandValue / 255) * 0.9;
-    return ((s.residents + (s.comJobs + s.indJobs) * 0.7) * (tax / 100) * lvF * diff.income) / 3.2;
+    return ((s.residents + (s.comJobs + s.indJobs) * 0.7) * (tax / 100) * lvF * diff.income) / 2.5;
   }
 
   takeLoan(amount: number): boolean {

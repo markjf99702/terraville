@@ -60,6 +60,10 @@ export class Renderer {
   contours = false;
   grid = false;
   showTraffic = true;
+  /** Day and night cycle while the city runs. */
+  nightCycle = true;
+  /** Real seconds per simulated day-night cycle. */
+  dayLength = 150;
   preview: Preview | null = null;
   hover: { x: number; y: number } | null = null;
   /** Whether the simulation clock is running (freezes traffic when paused). */
@@ -81,7 +85,12 @@ export class Renderer {
   private overlayDirty = true;
   private overlayAge = 0;
   private emitters = new Map<number, { key: string; list: Emitter[] }>();
+  /** Tiles currently burning or flooded, rescanned a few times a second. */
+  private hazards: number[] = [];
+  private hazardTimer = 0;
   private unsubscribe: (() => void) | null = null;
+
+  private glow: HTMLCanvasElement;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -89,6 +98,23 @@ export class Renderer {
     if (!ctx) throw new Error('Canvas 2D is not available');
     this.ctx = ctx;
     this.overlayCanvas = document.createElement('canvas');
+    this.glow = document.createElement('canvas');
+    this.glow.width = this.glow.height = 32;
+    const g = this.glow.getContext('2d')!;
+    const grad = g.createRadialGradient(16, 16, 0, 16, 16, 16);
+    grad.addColorStop(0, 'rgba(255,236,190,1)');
+    grad.addColorStop(0.25, 'rgba(255,210,140,0.55)');
+    grad.addColorStop(1, 'rgba(255,190,110,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 32, 32);
+  }
+
+  /** 0 at midday, up to about 0.55 in the middle of the night. */
+  darkness(): number {
+    if (!this.nightCycle || !this.world?.city.founded) return 0;
+    const sun = Math.cos((this.simTime / this.dayLength) * Math.PI * 2);
+    const t = Math.max(0, Math.min(1, (-sun - 0.3) / 0.55));
+    return t * t * (3 - 2 * t) * 0.55;
   }
 
   setWorld(world: World, sim: Sim | null): void {
@@ -373,9 +399,18 @@ export class Renderer {
     else {
       if (this.showTraffic && this.cam.zoom >= 10) this.drawCars(ctx, vx0, vy0, vx1, vy1);
       this.vehicles.draw(ctx, this.cam.zoom);
+      const dark = this.darkness();
+      if (dark > 0.01) this.drawNight(ctx, dark, vx0, vy0, vx1, vy1);
     }
-    this.drawHazards(ctx, vx0, vy0, vx1, vy1);
-    this.drawEmitters(ctx, vx0, vy0, vx1, vy1);
+    this.hazardTimer -= dt;
+    if (this.hazardTimer <= 0) {
+      this.hazardTimer = 0.2;
+      this.hazards.length = 0;
+      const { fire, flood, n } = this.world;
+      for (let i = 0; i < n; i++) if (fire[i] || flood[i]) this.hazards.push(i);
+    }
+    if (this.hazards.length) this.drawHazards(ctx, vx0, vy0, vx1, vy1);
+    if (this.cam.zoom >= 7) this.drawEmitters(ctx, vx0, vy0, vx1, vy1);
     if (this.sim && this.world.city.founded) this.drawPowerWarnings(ctx, vx0, vy0, vx1, vy1);
     this.drawRoamers(ctx);
     this.drawPreview(ctx);
@@ -441,6 +476,38 @@ export class Renderer {
         }
       }
     }
+  }
+
+  private drawNight(ctx: CanvasRenderingContext2D, dark: number, x0: number, y0: number, x1: number, y1: number): void {
+    const world = this.world;
+    ctx.fillStyle = `rgba(10,16,46,${dark})`;
+    ctx.fillRect(0, 0, world.w, world.h);
+    ctx.globalCompositeOperation = 'lighter';
+    const a = Math.min(1, dark * 1.7);
+    // Street lamps on every other road tile.
+    ctx.globalAlpha = a * 0.55;
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const i = y * world.w + x;
+        if (!(world.net[i] & ROAD) || (x + y) % 2) continue;
+        ctx.drawImage(this.glow, x + 0.05, y + 0.05, 0.9, 0.9);
+      }
+    }
+    // Lit windows.
+    ctx.globalAlpha = a * 0.8;
+    for (const b of world.buildings.values()) {
+      if (b.x > x1 || b.y > y1 || b.x + b.size < x0 || b.y + b.size < y0) continue;
+      if (world.city.founded && !b.powered && b.kind !== 'park') continue;
+      const lights = b.kind === 'park' ? 1 : isZone(b.kind) ? b.level * 2 : b.size * 2;
+      for (let k = 0; k < lights; k++) {
+        const lx = b.x + 0.25 + hash3(b.id, k, 1) * (b.size - 0.5);
+        const ly = b.y + 0.25 + hash3(b.id, k, 2) * (b.size - 0.5);
+        const r = b.kind === 'park' ? 0.5 : 0.22 + hash3(b.id, k, 3) * 0.2;
+        ctx.drawImage(this.glow, lx - r, ly - r, r * 2, r * 2);
+      }
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
   }
 
   private emittersFor(id: number): Emitter[] {
@@ -511,9 +578,11 @@ export class Renderer {
   private drawHazards(ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number): void {
     const world = this.world;
     const t = this.time;
-    for (let y = y0; y <= y1; y++) {
-      for (let x = x0; x <= x1; x++) {
-        const i = y * world.w + x;
+    for (const i of this.hazards) {
+      const x = i % world.w;
+      const y = (i / world.w) | 0;
+      if (x < x0 || x > x1 || y < y0 || y > y1) continue;
+      {
         if (world.flood[i]) {
           ctx.fillStyle = 'rgba(64,122,170,0.78)';
           ctx.fillRect(x, y, 1, 1);

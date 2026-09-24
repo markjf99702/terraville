@@ -195,7 +195,7 @@ export class UI {
       <div class="panel menu">
         <button data-act="budget" title="Budget">${ICONS.budget}<span class="label">Budget</span></button>
         <button data-act="charts" title="History">${ICONS.charts}<span class="label">History</span></button>
-        <button data-act="report" title="City report">${ICONS.report}<span class="label">Report</span></button>
+        <button data-act="report" class="hide-sm" title="City report">${ICONS.report}<span class="label">Report</span></button>
         <button data-act="layers" title="Map layers" aria-haspopup="true">${ICONS.layers}<span class="label">Layers</span></button>
         <button data-act="disasters" title="Disasters" aria-haspopup="true">${ICONS.disaster}<span class="label">Disasters</span></button>
         <button data-act="menu" title="Menu" aria-haspopup="true" aria-label="Menu">${ICONS.menu}</button>
@@ -438,8 +438,9 @@ export class UI {
     const slider = (id: string, label: string, min: number, max: number, step: number, val: number) => `
       <label class="field"><span>${label} <span class="num" id="${id}Val">${val}</span></span>
       <input type="range" id="${id}" min="${min}" max="${max}" step="${step}" value="${val}"></label>`;
+    p.classList.toggle('collapsed', window.innerWidth <= 820);
     p.innerHTML = `
-      <h2>Generate land</h2>
+      <h2 id="edHead" style="cursor:pointer">Generate land</h2>
       <div class="field"><span>Landscape</span>
         <div class="seg" id="edStyle">${styles.map((s) => `<button data-style="${s}" aria-pressed="${s === t.style}">${STYLE_NAMES[s]}</button>`).join('')}</div>
       </div>
@@ -457,6 +458,9 @@ export class UI {
         <button class="iconbtn" id="edDice" aria-label="Random seed" title="Random seed">${ICONS.dice}</button></div>
       </div>
       <p class="note">Sliders regenerate the whole map. Sculpt afterwards with the brushes; Undo steps back through both.</p>`;
+    $(p, '#edHead').onclick = () => {
+      if (window.innerWidth <= 820) p.classList.toggle('collapsed');
+    };
     const regen = (params: Record<string, unknown>) => {
       window.clearTimeout(this.regenTimer);
       this.regenTimer = window.setTimeout(() => {
@@ -547,6 +551,7 @@ export class UI {
     sel.value = o;
     sel.disabled = this.game.mode !== 'city';
     const def = OVERLAYS.find((x) => x.id === o)!;
+    $(this.root, '#minimapCard').classList.toggle('show', o !== 'none');
     const leg = $(this.root, '#legend');
     if (o === 'none') {
       leg.hidden = true;
@@ -1228,6 +1233,7 @@ export class UI {
         <h3>Settings</h3>
         ${sw('sound', 'Sound effects', 'Clicks, construction and sirens.')}
         ${sw('traffic', 'Traffic and vehicles', 'Cars on busy roads.')}
+        ${sw('night', 'Day and night', 'Streetlights and lit windows after dark. Time stops when paused.')}
         ${sw('grid', 'Tile grid', 'Faint lines between tiles when zoomed in.')}
         ${sw('contours', 'Contour lines in the city', 'Always on in the terrain editor.')}
         ${sw('autosave', 'Autosave', 'Every 90 seconds and at the end of each year.')}
