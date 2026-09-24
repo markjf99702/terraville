@@ -462,7 +462,33 @@ export class Game {
   }
 
   tool(): ToolDef {
-    return this.tools().find((t) => t.id === this.toolId) ?? this.tools()[0];
+    const id = this.toolOnce ?? this.toolId;
+    return this.tools().find((t) => t.id === id) ?? this.tools()[0];
+  }
+
+  /** A tool used for a single drag without changing the selection (Shift-drag bulldozes). */
+  private toolOnce: string | null = null;
+
+  useToolOnce(id: string): void {
+    this.toolOnce = id;
+    this.anchor = null;
+  }
+
+  /** Right-click: bulldoze the thing under the cursor, whatever tool is selected. */
+  quickBulldoze(fx: number, fy: number, sx: number, sy: number): void {
+    if (this.mode !== 'city') return;
+    const tx = Math.floor(fx);
+    const ty = Math.floor(fy);
+    if (!this.world.inBounds(tx, ty)) return;
+    const plan = planBulldoze(this.world, [[tx, ty]]);
+    if (!plan.count) {
+      this.ui.toast('Nothing to bulldoze there.');
+      return;
+    }
+    this.toolOnce = 'bulldoze';
+    this.commit(plan);
+    this.toolOnce = null;
+    this.pointerMove(fx, fy, sx, sy);
   }
 
   /** The steepness layer was switched on by picking Level land, so switch it off after. */
@@ -487,6 +513,7 @@ export class Game {
   }
 
   cancelTool(): void {
+    this.toolOnce = null;
     this.anchor = null;
     this.pendingPlace = false;
     if (this.brushOn && this.mode === 'city') this.setUndoCost(this.brushSpent);
@@ -632,6 +659,15 @@ export class Game {
   }
 
   pointerUp(fx: number, fy: number, sx: number, sy: number): void {
+    this.releasePointer(fx, fy, sx, sy);
+    if (this.toolOnce) {
+      this.toolOnce = null;
+      this.anchor = null;
+      this.pointerMove(fx, fy, sx, sy);
+    }
+  }
+
+  private releasePointer(fx: number, fy: number, sx: number, sy: number): void {
     if (this.brushOn) {
       this.brushOn = false;
       this.minimap.markDirty();

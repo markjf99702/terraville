@@ -1359,6 +1359,8 @@ export class UI {
           <kbd>1 2 3</kbd><span>Residential, commercial, industrial</span>
           <kbd>R T P</kbd><span>Road, rail, power line</span>
           <kbd>B</kbd><span>Bulldoze</span>
+          <kbd>Right-click</kbd><span>Bulldoze what is under the cursor</span>
+          <kbd>Shift drag</kbd><span>Bulldoze an area, any tool</span>
           <kbd>Q</kbd><span>Inspect</span>
           <kbd>Arrows</kbd><span>Move the map</span>
           <kbd>+ −</kbd><span>Zoom</span>

@@ -11,7 +11,8 @@ interface Ptr {
 
 export class Input {
   private pointers = new Map<number, Ptr>();
-  private mode: 'none' | 'tool' | 'pan' | 'pinch' | 'maybe' = 'none';
+  /** 'rclick': right button down, either a quick bulldoze or, once it moves, a pan. */
+  private mode: 'none' | 'tool' | 'pan' | 'pinch' | 'maybe' | 'rclick' = 'none';
   private start = { x: 0, y: 0, camX: 0, camY: 0 };
   private pinch = { d: 1, zoom: 1, cx: 0, cy: 0, tx: 0, ty: 0 };
   private space = false;
@@ -82,10 +83,22 @@ export class Input {
     if (this.pointers.size > 2) return;
     const cam = g.renderer.cam;
     this.start = { x: p.x, y: p.y, camX: cam.x, camY: cam.y };
+    if (e.button === 2 && !this.space) {
+      this.mode = 'rclick';
+      return;
+    }
     if (e.button === 1 || e.button === 2 || this.space) {
       if (this.space) this.spacePanned = true;
       this.mode = 'pan';
       this.canvas.classList.add('grabbing');
+      return;
+    }
+    if (e.shiftKey && e.button === 0 && g.mode === 'city') {
+      // Shift-drag clears an area with whatever tool is selected.
+      g.useToolOnce('bulldoze');
+      this.mode = 'tool';
+      const t = g.renderer.screenToTile(p.x, p.y);
+      g.pointerDown(t.x, t.y, p.x, p.y);
       return;
     }
     if (this.panByTool()) {
@@ -119,7 +132,7 @@ export class Input {
       r.clampCamera();
       return;
     }
-    if (this.mode === 'maybe' && Math.hypot(p.x - this.start.x, p.y - this.start.y) > 5) {
+    if ((this.mode === 'maybe' || this.mode === 'rclick') && Math.hypot(p.x - this.start.x, p.y - this.start.y) > 5) {
       this.mode = 'pan';
       this.canvas.classList.add('grabbing');
     }
@@ -148,6 +161,10 @@ export class Input {
     if (this.mode === 'maybe') {
       const t = g.renderer.screenToTile(p.x, p.y);
       g.pointerDown(t.x, t.y, p.x, p.y);
+    } else if (this.mode === 'rclick') {
+      // A right-click without dragging bulldozes whatever is under it.
+      const t = g.renderer.screenToTile(p.x, p.y);
+      g.quickBulldoze(t.x, t.y, p.x, p.y);
     } else if (this.mode === 'tool') {
       const t = g.renderer.screenToTile(p.x, p.y);
       g.pointerUp(t.x, t.y, p.x, p.y);
