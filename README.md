@@ -82,3 +82,5 @@ Source lives in `src/`:
 | `ui/` | Top bar, toolbox, dialogs and charts |
 
 Everything is drawn in code. There are no image assets.
+
+`index.html` is the built game and is committed, so GitHub Pages can serve the repository root as is (`.nojekyll` skips the Jekyll step). Rebuild it with `npm run build` after changing anything in `src/`.
