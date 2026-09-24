@@ -808,6 +808,20 @@ export class UI {
     tip.style.top = `${Math.max(8, y)}px`;
   }
 
+  /** A lasting notice for an unexpected error, with the message to report. */
+  showError(e: unknown): void {
+    if (this.root.querySelector('#errorBar')) return;
+    const msg = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+    const bar = el(`<div id="errorBar" class="panel" role="alert" style="position:absolute;left:50%;top:calc(var(--top) + 130px);transform:translateX(-50%);z-index:95;max-width:min(560px,calc(100vw - 32px));padding:12px 14px;display:flex;gap:12px;align-items:flex-start;border-color:var(--critical)">
+      <span class="caution" style="background:var(--critical);margin-top:3px"></span>
+      <div style="flex:1;min-width:0"><b>Something broke while drawing the map.</b>
+      <div class="note">If it keeps happening, tell whoever sent you this game what it says here:</div>
+      <code style="display:block;margin-top:6px;font:12px var(--mono);color:var(--critical-ink);word-break:break-word;user-select:text;-webkit-user-select:text">${esc(msg)}</code></div>
+      <button class="iconbtn" aria-label="Dismiss">${ICONS.close}</button></div>`);
+    $(bar, 'button').onclick = () => bar.remove();
+    this.root.appendChild(bar);
+  }
+
   toast(text: string, _kind: 'info' | 'warn' = 'info'): void {
     const t = $(this.root, '#toast');
     t.textContent = text;

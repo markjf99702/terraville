@@ -12,7 +12,14 @@ import { Vehicles } from './vehicles';
 
 const CS = 16;
 const LODS = [8, 16, 32, 64];
-const PIXEL_BUDGET = 40_000_000;
+// Safari and every iOS browser cap total canvas memory for a page, and once
+// the cap is hit getContext() starts returning null. Stay well inside it there.
+const WEBKIT = typeof navigator !== 'undefined' && (
+  /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) ||
+  /^((?!chrome|chromium|android|crios|fxios|edg).)*safari/i.test(navigator.userAgent));
+const PIXEL_BUDGET = WEBKIT ? 12_000_000 : 32_000_000;
+const MAX_LOD = WEBKIT ? 32 : 64;
 
 interface Chunk {
   canvas: HTMLCanvasElement;
@@ -124,8 +131,7 @@ export class Renderer {
     this.field = new TerrainField(world);
     if (!this.vehicles) this.vehicles = new Vehicles(world);
     else this.vehicles.setWorld(world);
-    this.chunks.clear();
-    this.pixels = 0;
+    this.releaseChunks();
     this.emitters.clear();
     this.cw = Math.ceil(world.w / CS);
     this.ch = Math.ceil(world.h / CS);
@@ -237,7 +243,19 @@ export class Renderer {
 
   // ---- chunks ---------------------------------------------------------------
 
-  private renderChunk(cx: number, cy: number, L: number): Chunk {
+  /** Free every cached chunk now rather than waiting for garbage collection. */
+  private releaseChunks(keep?: (c: Chunk) => boolean): void {
+    for (const [k, c] of this.chunks) {
+      if (keep?.(c)) continue;
+      this.chunks.delete(k);
+      this.pixels -= c.canvas.width * c.canvas.height;
+      c.canvas.width = 0;
+      c.canvas.height = 0;
+    }
+    if (!keep) this.pixels = 0;
+  }
+
+  private renderChunk(cx: number, cy: number, L: number): Chunk | null {
     const k = this.key(cx, cy, L);
     let c = this.chunks.get(k);
     const size = CS * L;
@@ -249,7 +267,19 @@ export class Renderer {
       this.chunks.set(k, c);
       this.pixels += size * size;
     }
-    const ctx = c.canvas.getContext('2d')!;
+    let ctx = c.canvas.getContext('2d');
+    if (!ctx) {
+      // Out of canvas memory: drop everything not on screen and try once more.
+      this.releaseChunks((o) => o === c || (o.L === 8 && o.used >= this.time - 1) || o.used >= this.time - 0.05);
+      ctx = c.canvas.getContext('2d');
+      if (!ctx) {
+        this.chunks.delete(k);
+        this.pixels -= size * size;
+        c.canvas.width = 0;
+        c.canvas.height = 0;
+        return null;
+      }
+    }
     const tx0 = cx * CS;
     const ty0 = cy * CS;
     ctx.putImageData(paintTerrain(ctx, this.field, this.world, tx0, ty0, CS, L, this.contours), 0, 0);
@@ -348,7 +378,7 @@ export class Renderer {
     ctx.fillRect(0, 0, W, H);
 
     // Chunks.
-    const wantL = LODS.find((l) => l >= zd * 0.92) ?? 64;
+    const wantL = Math.min(MAX_LOD, LODS.find((l) => l >= zd * 0.92) ?? 64);
     const cx0 = Math.max(0, Math.floor(-ox / (CS * zd)));
     const cy0 = Math.max(0, Math.floor(-oy / (CS * zd)));
     const cx1 = Math.min(this.cw - 1, Math.floor((W - ox) / (CS * zd)));
@@ -367,7 +397,7 @@ export class Renderer {
       let c = this.chunks.get(this.key(cx, cy, wantL));
       const stale = !c || c.dirty || c.contours !== this.contours;
       if (stale && (performance.now() - start < budget || !c && wantL === 8)) {
-        c = this.renderChunk(cx, cy, wantL);
+        c = this.renderChunk(cx, cy, wantL) ?? undefined;
       }
       if (!c) {
         for (const L of [...LODS].reverse()) {

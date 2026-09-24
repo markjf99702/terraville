@@ -153,9 +153,10 @@ export class Game {
     this.clearUndo();
     this.slotId = null;
     this.applySettings();
-    this.setTool('raise');
+    this.setTool('pan');
     this.minimap.markDirty();
     this.ui.enterEditor();
+    this.ui.toast('Drag to move the map, scroll or pinch to zoom. Pick a brush on the left to shape the land.');
   }
 
   /** Continue editing the land already on screen (from the title or a quick start). */
@@ -164,13 +165,16 @@ export class Game {
     this.setSim(null);
     this.renderer.setOverlay('none');
     this.world.city = newCityState();
-    this.renderer.setWorld(this.world, null);
+    // Same map as on screen: keep the renderer's cache instead of rebuilding it.
+    if (this.renderer.world !== this.world) this.renderer.setWorld(this.world, null);
+    else this.renderer.sim = null;
     this.fitMap();
     this.clearUndo();
     this.applySettings();
-    this.setTool('raise');
+    this.setTool('pan');
     this.minimap.markDirty();
     this.ui.enterEditor();
+    this.ui.toast('Drag to move the map, scroll or pinch to zoom. Pick a brush on the left to shape the land.');
   }
 
   regenerate(params: Partial<TerrainParams>): void {
@@ -352,7 +356,7 @@ export class Game {
       this.renderer.setOverlay('none');
       this.renderer.setWorld(this.world, null);
       this.applySettings();
-      this.setTool('raise');
+      this.setTool('pan');
       this.ui.enterEditor();
     }
     this.renderer.resize();

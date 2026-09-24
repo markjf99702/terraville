@@ -49,23 +49,34 @@ function start(hot: HotData): void {
   window.__terraville = game;
 
   let last = performance.now();
+  let lastFrame = last;
   let failures = 0;
-  const loop = (now: number) => {
+  const step = (now: number) => {
     const dt = Math.min(0.1, Math.max(0, (now - last) / 1000));
     last = now;
+    lastFrame = performance.now();
     try {
       input.update(dt);
       game.frame(dt);
       ui.tick(dt);
     } catch (e) {
-      // Keep the loop alive; say so once rather than freezing silently.
+      // Keep the loop alive, and say what broke instead of freezing silently.
       console.error(e);
-      if (failures++ === 0) ui.toast('Something went wrong. Save a city code from the menu to be safe.', 'warn');
+      if (failures++ === 0) ui.showError(e);
       if (game.speed > 0 && failures > 30) game.setSpeed(0);
     }
+  };
+  const loop = (now: number) => {
+    step(now);
     requestAnimationFrame(loop);
   };
   requestAnimationFrame(loop);
+  // Some embedded frames get animation frames throttled or paused while
+  // still on screen. If that happens, keep drawing on a timer instead.
+  window.setInterval(() => {
+    if (document.visibilityState === 'hidden') return;
+    if (performance.now() - lastFrame > 250) step(performance.now());
+  }, 33);
 }
 
 const hot = window.claude?.hot;
