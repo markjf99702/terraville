@@ -1,12 +1,13 @@
 // Game controller: modes, the tool state machine, money, undo, the clock.
 import { Audio } from './audio';
 import {
-  BUILDINGS, CITY_TOOLS, DIFFICULTIES, Difficulty, EDITOR_TOOLS, Kind, MAP_SIZES, ToolDef, cityClass,
+  BUILDINGS, CITY_CLASSES, CITY_TOOLS, DIFFICULTIES, Difficulty, EDITOR_TOOLS, Kind, MAP_SIZES, ToolDef, cityClass,
 } from './defs';
 import { Minimap } from './render/minimap';
 import { Renderer } from './render/renderer';
 import { hashString, makeRng, pick, randomSeedName } from './rng';
 import { SaveFile, loadSlot, saveSlot, worldFrom } from './save';
+import { SCENARIOS, buildScenario } from './scenarios';
 import { Sim } from './sim';
 import { DEFAULT_TERRAIN, TerrainParams, TerrainStyle, addSpring, applyBrush, generateTerrain } from './terrain';
 import {
@@ -243,6 +244,7 @@ export class Game {
           this.minimap.markDirty();
           this.renderer.refreshOverlay();
           this.ui.onMonth();
+          this.checkScenario();
           break;
         case 'year':
           this.audio.play('coin');
@@ -254,6 +256,65 @@ export class Game {
           break;
       }
     });
+  }
+
+  /** Start one of the challenges. */
+  startScenario(id: string): void {
+    const s = SCENARIOS.find((x) => x.id === id);
+    if (!s) return;
+    const size = MAP_SIZES[1];
+    this.world = buildScenario(s, size.w, size.h);
+    this.terrain = { ...DEFAULT_TERRAIN, ...s.terrain, seed: this.world.city.seed, w: size.w, h: size.h };
+    this.startSim();
+    const sim = this.sim!;
+    for (let k = 0; k < 3; k++) {
+      sim.computeTraffic();
+      sim.computeMaps();
+    }
+    sim.tally();
+    sim.evaluate();
+    // A ready-made city starts at its own size class, without the fanfare.
+    this.world.city.classReached = CITY_CLASSES.reduce((acc, c, i) => (sim.stats.residents >= c.min ? i : acc), 0);
+    this.mode = 'city';
+    this.speed = 2;
+    this.undoStack = [];
+    this.redoStack = [];
+    this.slotId = null;
+    this.applySettings();
+    this.setTool('query');
+    this.ui.enterCity();
+    // Look at the middle of whatever is built.
+    let cx = 0, cy = 0, n = 0;
+    for (const b of this.world.buildings.values()) {
+      cx += b.x + b.size / 2;
+      cy += b.y + b.size / 2;
+      n++;
+    }
+    this.renderer.resize();
+    this.renderer.cam.zoom = n ? 13 : Math.max(this.renderer.minZoom(), 9);
+    this.renderer.centerOn(n ? cx / n : this.world.w / 2, n ? cy / n : this.world.h / 2);
+    s.start?.(sim);
+    this.minimap.markDirty();
+    this.checkScenario();
+    this.ui.scenarioIntro(s);
+  }
+
+  private checkScenario(): void {
+    const sc = this.world.city.scenario;
+    if (!sc || !this.sim) return;
+    const s = SCENARIOS.find((x) => x.id === sc.id);
+    if (!s) return;
+    const month = this.world.city.month;
+    if (!sc.done) s.monthly?.(this.sim);
+    const st = s.check(this.sim);
+    this.ui.updateGoal(s, st, sc.end - month, sc.done);
+    if (sc.done) return;
+    if ((s.kind === 'reach' && st.met) || month >= sc.end) {
+      sc.done = st.met ? 'won' : 'lost';
+      this.audio.play(st.met ? 'fanfare' : 'error');
+      this.ui.updateGoal(s, st, sc.end - month, sc.done);
+      this.ui.scenarioResult(s, st, sc.done === 'won');
+    }
   }
 
   loadFile(file: SaveFile, slotId: string | null = null): void {

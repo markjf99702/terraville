@@ -447,7 +447,7 @@ input[type="range"] { width: 100%; accent-color: var(--sign-hi); margin: 0; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* ---- modals -------------------------------------------------------------- */
-#modalRoot { position: absolute; inset: 0; z-index: 50; display: grid; place-items: center; padding: 16px; background: rgba(6, 10, 8, 0.55); }
+#modalRoot { position: absolute; inset: 0; z-index: 80; display: grid; place-items: center; padding: 16px; background: rgba(6, 10, 8, 0.55); }
 .modal {
   width: min(680px, 100%);
   max-height: calc(100% - var(--top) - var(--bottom) - 16px);
@@ -595,7 +595,7 @@ kbd { font: 600 11.5px var(--mono); padding: 1px 6px; border: 1px solid var(--li
   left: 50%;
   top: calc(var(--top) + 84px);
   transform: translateX(-50%);
-  z-index: 60;
+  z-index: 90;
   padding: 10px 16px;
   font-weight: 700;
   pointer-events: none;
@@ -660,7 +660,7 @@ kbd { font: 600 11.5px var(--mono); padding: 1px 6px; border: 1px solid var(--li
   .menu .label, .menu .hide-sm { display: none; }
   .menu { margin-left: auto; flex: 0 0 auto; padding: 3px; }
   .menu button { padding: 0 7px; height: 32px; }
-  #guide { left: 8px !important; right: 8px !important; width: auto !important; top: calc(var(--top) + 112px) !important; font-size: 12.5px; }
+  #guide, #goal { left: 8px !important; right: 8px !important; width: auto !important; top: calc(var(--top) + 112px) !important; font-size: 12.5px; }
   #toolbox {
     top: auto;
     left: 8px;

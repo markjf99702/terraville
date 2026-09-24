@@ -78,6 +78,7 @@ export type SimEvent =
   | { type: 'disaster'; kind: string; x: number; y: number };
 
 const MAX_TRIP = 80;
+const MAX_HUBS = 24;
 
 function emptyBudget(): Budget {
   return { taxIncome: 0, transport: 0, police: 0, fire: 0, services: 0, power: 0, interest: 0 };
@@ -98,6 +99,7 @@ export class Sim {
   private distJob: Float32Array;
   private distRes: Float32Array;
   private heap: MinHeap;
+  private hubFields: Float32Array[] = [];
   private lastPop = 0;
 
   constructor(world: World) {
@@ -356,6 +358,33 @@ export class Sim {
     }
   }
 
+  /** Follow a distance field downhill from tile i, adding vol to every road tile passed. */
+  private trace(field: Float32Array, i: number, vol: number, flow: Float32Array): void {
+    const { w, h } = this.world;
+    const net = this.world.net;
+    let steps = 0;
+    while (i >= 0 && field[i] > 0 && steps++ < MAX_TRIP * 2) {
+      if (net[i] & ROAD) flow[i] += vol;
+      const x = i % w;
+      const y = (i / w) | 0;
+      let nxt = -1;
+      let nd = field[i];
+      if (x > 0 && field[i - 1] < nd) { nd = field[i - 1]; nxt = i - 1; }
+      if (x < w - 1 && field[i + 1] < nd) { nd = field[i + 1]; nxt = i + 1; }
+      if (y > 0 && field[i - w] < nd) { nd = field[i - w]; nxt = i - w; }
+      if (y < h - 1 && field[i + w] < nd) { nd = field[i + w]; nxt = i + w; }
+      i = nxt;
+    }
+    if (i >= 0 && net[i] & ROAD) flow[i] += vol;
+  }
+
+  /**
+   * Commuting. Every zone must reach its nearest destination within
+   * MAX_TRIP to develop. Residents then spread their trips over the city's
+   * job centres, weighted by jobs and distance, so traffic piles up on the
+   * roads into downtown and the industrial districts rather than staying
+   * next door.
+   */
   computeTraffic(): void {
     const world = this.world;
     const jobSrc: number[] = [];
@@ -363,6 +392,7 @@ export class Sim {
     const ring: number[] = [];
     let anyJobs = false;
     let anyRes = false;
+    const jobZones: Building[] = [];
     for (const b of world.buildings.values()) {
       if (!isZone(b.kind)) continue;
       this.perimeter(b, ring);
@@ -372,14 +402,34 @@ export class Sim {
       } else {
         anyJobs = true;
         for (const i of ring) jobSrc.push(i);
+        if (b.pop > 0) jobZones.push(b);
       }
     }
     this.dijkstra(jobSrc, this.distJob);
     this.dijkstra(resSrc, this.distRes);
 
+    // Job centres: the biggest employers, with nearby ones folded in.
+    jobZones.sort((a, b) => b.pop - a.pop);
+    const hubs: { b: Building; jobs: number }[] = [];
+    for (const b of jobZones) {
+      let near: { b: Building; jobs: number } | null = null;
+      let nd = Infinity;
+      for (const hb of hubs) {
+        const d = Math.abs(hb.b.x - b.x) + Math.abs(hb.b.y - b.y);
+        if (d < nd) { nd = d; near = hb; }
+      }
+      if (near && (nd < 9 || hubs.length >= MAX_HUBS)) near.jobs += b.pop;
+      else hubs.push({ b, jobs: b.pop });
+    }
+    for (let k = 0; k < hubs.length; k++) {
+      if (!this.hubFields[k] || this.hubFields[k].length !== world.n) this.hubFields[k] = new Float32Array(world.n);
+      this.perimeter(hubs[k].b, ring);
+      this.dijkstra(ring.slice(), this.hubFields[k]);
+    }
+
     const flow = new Float32Array(world.n);
-    const { w, h } = world;
     const net = world.net;
+    const cand: { k: number; w: number; start: number }[] = [];
     for (const b of world.buildings.values()) {
       if (!isZone(b.kind)) continue;
       this.perimeter(b, ring);
@@ -392,8 +442,6 @@ export class Sim {
       }
       const field = b.kind === 'res' ? this.distJob : this.distRes;
       const anyDest = b.kind === 'res' ? anyJobs : anyRes;
-      // Leave from the side of the lot that is closest to a destination,
-      // skipping the lot's own frontage when it doubles as a destination.
       let best = -1;
       let bestD = Infinity;
       for (const i of ring) {
@@ -408,22 +456,30 @@ export class Sim {
       }
       b.trip = bestD <= MAX_TRIP;
       if (!b.trip || b.pop <= 0) continue;
-      const vol = b.pop / (b.kind === 'res' ? 9 : 7);
-      let i = best;
-      let steps = 0;
-      while (i >= 0 && field[i] > 0 && steps++ < MAX_TRIP * 2) {
-        if (net[i] & ROAD) flow[i] += vol;
-        const x = i % w;
-        const y = (i / w) | 0;
-        let nxt = -1;
-        let nd = field[i];
-        if (x > 0 && field[i - 1] < nd) { nd = field[i - 1]; nxt = i - 1; }
-        if (x < w - 1 && field[i + 1] < nd) { nd = field[i + 1]; nxt = i + 1; }
-        if (y > 0 && field[i - w] < nd) { nd = field[i - w]; nxt = i - w; }
-        if (y < h - 1 && field[i + w] < nd) { nd = field[i + w]; nxt = i + w; }
-        i = nxt;
+      if (b.kind !== 'res') {
+        // Deliveries and customers: short hops to the nearest homes.
+        this.trace(field, best, b.pop / 30, flow);
+        continue;
       }
-      if (i >= 0 && net[i] & ROAD) flow[i] += vol;
+      const vol = b.pop / 7;
+      cand.length = 0;
+      for (let k = 0; k < hubs.length; k++) {
+        const f = this.hubFields[k];
+        let s = -1;
+        let d = Infinity;
+        for (const i of ring) if (f[i] < d) { d = f[i]; s = i; }
+        if (d > MAX_TRIP * 1.4) continue;
+        cand.push({ k, w: hubs[k].jobs / ((d + 6) * (d + 6)), start: s });
+      }
+      if (!cand.length) {
+        this.trace(field, best, vol, flow);
+        continue;
+      }
+      cand.sort((a, c) => c.w - a.w);
+      const n = Math.min(3, cand.length);
+      let tw = 0;
+      for (let k = 0; k < n; k++) tw += cand[k].w;
+      for (let k = 0; k < n; k++) this.trace(this.hubFields[cand[k].k], cand[k].start, (vol * cand[k].w) / tw, flow);
     }
     const traffic = world.traffic;
     for (let i = 0; i < world.n; i++) {
@@ -431,7 +487,7 @@ export class Sim {
         traffic[i] = 0;
         continue;
       }
-      const target = Math.min(255, flow[i] * 0.9);
+      const target = Math.min(255, flow[i] * 1.25);
       traffic[i] = Math.round(traffic[i] * 0.4 + target * 0.6);
     }
   }
@@ -567,9 +623,10 @@ export class Sim {
     this.stats.avgLandValue = lvCount ? lvSum / lvCount : 0;
     this.stats.avgPollution = popTiles ? polSum / popTiles : 0;
     this.stats.avgCrime = popTiles ? crimeSum / popTiles : 0;
+    // Congestion on the roads people actually use.
     let trSum = 0, trCount = 0;
     for (let i = 0; i < n; i++) {
-      if (world.net[i] & ROAD) {
+      if (world.net[i] & ROAD && world.traffic[i] > 6) {
         trSum += world.traffic[i];
         trCount++;
       }

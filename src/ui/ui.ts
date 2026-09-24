@@ -9,6 +9,7 @@ import { randomSeedName } from '../rng';
 import { SaveFile, decode, deleteSlot, encode, listSlots, loadSlot, storageAvailable } from '../save';
 import type { Message } from '../sim';
 import { STYLE_NAMES, TerrainStyle, hasSea } from '../terrain';
+import { GoalState, SCENARIOS, Scenario } from '../scenarios';
 import { World } from '../world';
 import { lineChart } from './charts';
 import { ICONS } from './icons';
@@ -38,6 +39,7 @@ export function buildShell(root: HTMLElement): { map: HTMLCanvasElement; minimap
     <nav id="toolbox" class="panel" aria-label="Tools"></nav>
     <aside id="editorPanel" class="panel" hidden></aside>
     <aside id="guide" class="panel" hidden></aside>
+    <aside id="goal" class="panel" hidden></aside>
     <div id="minimapCard" class="panel">
       <canvas id="minimap" aria-label="Overview map"></canvas>
       <div class="mm-row">
@@ -106,7 +108,7 @@ export class UI {
   enterTitle(): void {
     this.closeModal();
     this.closeDropdown();
-    for (const id of ['#topbar', '#toolbox', '#editorPanel', '#minimapCard', '#ticker', '#log', '#inspect', '#guide']) $(this.root, id).hidden = true;
+    for (const id of ['#topbar', '#toolbox', '#editorPanel', '#minimapCard', '#ticker', '#log', '#inspect', '#guide', '#goal']) $(this.root, id).hidden = true;
     const t = $(this.root, '#title');
     t.hidden = false;
     const auto = listSlots().find((s) => s.id === 'auto');
@@ -120,6 +122,7 @@ export class UI {
         <div class="title-actions">
           <button class="btn primary" data-act="quick"><span>Start a new city</span><small>Random land</small></button>
           <button class="btn" data-act="editor"><span>Shape the land first</span><small>Terrain editor</small></button>
+          <button class="btn" data-act="challenges"><span>Challenges</span><small>Cities in trouble</small></button>
           ${auto ? `<button class="btn" data-act="continue"><span>Continue ${esc(auto.name)}</span><small class="num">${dateLabel(auto.date)} · pop ${auto.pop.toLocaleString()}</small></button>` : ''}
           <button class="btn" data-act="open"><span>Open a saved city</span><small>Saves and city codes</small></button>
         </div>
@@ -133,6 +136,7 @@ export class UI {
       const act = b.dataset.act;
       if (act === 'quick') this.game.quickStart();
       else if (act === 'editor') this.game.startEditor({ seed: randomSeedName() });
+      else if (act === 'challenges') this.openChallenges();
       else if (act === 'continue') {
         if (!(await this.game.continueAuto())) this.toast('That save could not be opened.', 'warn');
       } else if (act === 'open') this.openFiles();
@@ -149,6 +153,7 @@ export class UI {
     $(this.root, '#ticker').hidden = true;
     $(this.root, '#log').hidden = true;
     $(this.root, '#guide').hidden = true;
+    $(this.root, '#goal').hidden = true;
     this.hideInspect();
     this.buildTopbarEditor();
     this.buildToolbox();
@@ -166,6 +171,7 @@ export class UI {
     this.renderTicker();
     this.syncOverlay();
     this.updateStats();
+    $(this.root, '#goal').hidden = !this.game.world.city.scenario;
     this.updateGuide(true);
   }
 
@@ -729,7 +735,7 @@ export class UI {
   private updateGuide(force: boolean): void {
     const g = this.game;
     const box = $(this.root, '#guide');
-    if (g.mode !== 'city' || this.guideDismissed) {
+    if (g.mode !== 'city' || this.guideDismissed || g.world.city.scenario) {
       box.hidden = true;
       return;
     }
@@ -927,6 +933,75 @@ export class UI {
           if (this.game.mode === 'city' && this.game.settings.autosave) await this.game.autosave();
           this.game.showTitle();
         }),
+      ],
+    });
+  }
+
+  // Challenges ---------------------------------------------------------------------------
+
+  openChallenges(): void {
+    const body = el(`<div class="slots"></div>`);
+    for (const s of SCENARIOS) {
+      const row = el(`<div class="slot" style="grid-template-columns:1fr auto">
+        <div><b style="font-size:15px">${esc(s.name)}</b> <span class="note num">${s.year} · ${s.years} years</span>
+        <p class="note" style="margin:4px 0 0">${esc(s.blurb)}</p>
+        <p style="margin:6px 0 0;font-size:13px;display:flex;gap:8px;align-items:flex-start"><span class="caution" style="width:10px;height:10px;margin-top:4px"></span>${esc(s.goal)}</p></div>
+        <div class="actions" style="grid-row:auto"></div></div>`);
+      $(row, '.actions').appendChild(this.btn('Play', 'primary small', () => {
+        this.closeModal();
+        this.game.audio.play('click');
+        this.game.startScenario(s.id);
+      }));
+      body.appendChild(row);
+    }
+    this.openModal({ title: 'Challenges', sub: 'Each one hands you a city with a problem and a deadline.', body });
+  }
+
+  scenarioIntro(s: Scenario): void {
+    const body = el(`<div style="display:flex;flex-direction:column;gap:12px">
+      <p style="margin:0;font-size:15px;line-height:1.55">${esc(s.blurb)}</p>
+      <div class="panel" style="padding:12px 14px;display:flex;gap:10px;align-items:flex-start;box-shadow:none">
+        <span class="caution" style="margin-top:3px"></span>
+        <div><b>${esc(s.goal)}</b><div class="note">You have until ${s.year + s.years}. The goal tracker sits at the top right.</div></div>
+      </div>
+    </div>`);
+    this.openModal({ title: s.name, sub: `<span class="num">${s.year}</span>`, body, foot: [this.btn('Begin', 'primary', () => this.closeModal())] });
+  }
+
+  updateGoal(s: Scenario, st: GoalState, monthsLeft: number, done: '' | 'won' | 'lost'): void {
+    const box = $(this.root, '#goal');
+    if (this.game.mode !== 'city') return;
+    box.hidden = false;
+    box.style.cssText = 'position:absolute;right:10px;top:calc(var(--top) + 74px);width:270px;padding:11px 13px;z-index:12;display:flex;flex-direction:column;gap:6px';
+    const left = Math.max(0, monthsLeft);
+    const time = done === 'won' ? 'Won' : done === 'lost' ? 'Time ran out' : `${Math.floor(left / 12)}y ${left % 12}m left`;
+    const col = done === 'lost' ? 'var(--critical)' : st.met ? 'var(--good)' : 'var(--caution)';
+    box.innerHTML = `<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline">
+        <b style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">${esc(s.name)}</b>
+        <span class="num" style="font-size:12px;color:${done === 'lost' ? 'var(--critical-ink)' : 'var(--text)'}">${time}</span></div>
+      <div style="font-size:13px">${esc(st.status)}</div>
+      <div class="barrow" style="grid-template-columns:1fr"><div class="track" role="img" aria-label="Progress ${Math.round(st.progress * 100)}%"><i style="width:${Math.max(2, st.progress * 100)}%;background:${col}"></i></div></div>`;
+  }
+
+  scenarioResult(s: Scenario, st: GoalState, won: boolean): void {
+    const body = el(`<div style="display:flex;flex-direction:column;gap:10px">
+      <p style="margin:0;font-size:15px">${won ? `${esc(s.name)} is a success. The council is already naming a street after you.` : `The deadline for ${esc(s.name)} has passed without reaching the goal.`}</p>
+      <p class="note num" style="margin:0">${esc(st.status)}</p>
+      <p class="note" style="margin:0">You can keep playing this city as long as you like.</p>
+    </div>`);
+    this.openModal({
+      title: won ? 'Challenge complete' : "Time's up",
+      body,
+      foot: [
+        this.btn('Back to the title screen', '', () => {
+          this.closeModal();
+          this.game.showTitle();
+        }),
+        ...(won ? [] : [this.btn('Try again', '', () => {
+          this.closeModal();
+          this.game.startScenario(s.id);
+        })]),
+        this.btn('Keep playing', 'primary', () => this.closeModal()),
       ],
     });
   }

@@ -47,6 +47,8 @@ export interface CityState {
   history: History;
   classReached: number;
   loan: number;
+  /** Set when the city is a challenge: which one, the deadline month, and the outcome once decided. */
+  scenario?: { id: string; end: number; done: '' | 'won' | 'lost' };
 }
 
 export function emptyHistory(): History {
