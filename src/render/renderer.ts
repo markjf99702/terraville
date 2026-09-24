@@ -29,7 +29,7 @@ interface Chunk {
   contours: boolean;
 }
 
-export type Overlay = 'none' | 'traffic' | 'pollution' | 'crime' | 'landValue' | 'density' | 'power' | 'police' | 'fire' | 'service';
+export type Overlay = 'none' | 'traffic' | 'pollution' | 'crime' | 'landValue' | 'density' | 'power' | 'police' | 'fire' | 'service' | 'slope';
 
 export const OVERLAYS: { id: Overlay; name: string; color: string; low: string; high: string }[] = [
   { id: 'none', name: 'Map', color: '', low: '', high: '' },
@@ -42,6 +42,15 @@ export const OVERLAYS: { id: Overlay; name: string; color: string; low: string; 
   { id: 'police', name: 'Police reach', color: '#2a78d6', low: 'None', high: 'Full' },
   { id: 'fire', name: 'Fire cover', color: '#eb6834', low: 'None', high: 'Full' },
   { id: 'service', name: 'Schools & health', color: '#1baf7a', low: 'None', high: 'Full' },
+  { id: 'slope', name: 'Steepness', color: '#eb6834', low: 'Flat', high: 'Cliff' },
+];
+
+/** Steepness classes for the slope layer, by the largest height step to a neighbour. */
+export const SLOPE_CLASSES = [
+  { max: 4.5, label: 'Flat', note: 'anything fits', alpha: 0 },
+  { max: 9, label: 'Gentle', note: 'building here costs a little extra to level', alpha: 90 },
+  { max: 14, label: 'Steep', note: 'roads and rail grade themselves, big lots may need Level land', alpha: 160 },
+  { max: Infinity, label: 'Very steep', note: 'flatten it with Level land before building', alpha: 225 },
 ];
 
 export interface Preview {
@@ -727,7 +736,7 @@ export class Renderer {
     // Dim the map a little so the data reads.
     ctx.fillStyle = 'rgba(14,20,18,0.55)';
     ctx.fillRect(0, 0, this.world.w, this.world.h);
-    ctx.imageSmoothingEnabled = this.overlay !== 'power' && this.overlay !== 'traffic';
+    ctx.imageSmoothingEnabled = this.overlay !== 'power' && this.overlay !== 'traffic' && this.overlay !== 'slope';
     ctx.drawImage(this.overlayCanvas, 0, 0, this.world.w, this.world.h);
     ctx.imageSmoothingEnabled = true;
   }
@@ -753,6 +762,15 @@ export class Renderer {
       this.overlay === 'service' ? world.serviceCov : null;
     for (let i = 0; i < world.n; i++) {
       const o = i * 4;
+      if (this.overlay === 'slope') {
+        if (world.water[i]) continue;
+        const s = world.slope(i % world.w, (i / world.w) | 0);
+        const cls = SLOPE_CLASSES.find((c) => s <= c.max)!;
+        if (!cls.alpha) continue;
+        const dark = cls.alpha / 255;
+        d[o] = cr * (1 - dark * 0.35); d[o + 1] = cg * (1 - dark * 0.45); d[o + 2] = cb * (1 - dark * 0.45); d[o + 3] = cls.alpha;
+        continue;
+      }
       if (this.overlay === 'power') {
         const id = world.occ[i];
         if (world.powered[i]) {

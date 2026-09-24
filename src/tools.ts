@@ -1,5 +1,5 @@
 // Turning a drag or click into changes on the map, with prices.
-import { BRIDGE_COST, BUILDINGS, BULLDOZE_COST, GRADE_COST, Kind, NET_COST, POWER, RAIL, ROAD } from './defs';
+import { BRIDGE_COST, BUILDINGS, BULLDOZE_COST, GRADE_COST, Kind, NET_COST, NET_MAX_SLOPE, POWER, RAIL, ROAD } from './defs';
 import { World } from './world';
 
 export type Pt = [number, number];
@@ -14,8 +14,10 @@ export interface Plan {
   reason?: string;
   /** Number of things that will be built. */
   count: number;
-  /** Part of the cost spent levelling sloped lots. */
+  /** Part of the cost spent levelling sloped lots or grading a line. */
   grading?: number;
+  /** Graded heights for a road or rail line: [tile index, new height]. */
+  heights?: [number, number][];
 }
 
 /** An L-shaped path: the longer leg first, like dragging a road in the original. */
@@ -48,43 +50,126 @@ function netName(bit: number): 'road' | 'rail' | 'power' {
   return bit === ROAD ? 'road' : bit === RAIL ? 'rail' : 'power';
 }
 
+/** Deepest cut or tallest fill, in metres, that automatic grading will make on one tile. */
+const MAX_CUT = 30;
+
+/**
+ * Plan a road, rail or power line along `path`. Roads and rail only care
+ * about the slope along the line itself: a track can run across a hillside.
+ * Where the line climbs too steeply it is graded into a smooth ramp, and the
+ * earthworks are added to the price.
+ */
 export function planLine(world: World, bit: number, path: Pt[]): Plan {
   const plan: Plan = { tiles: [], bad: [], cost: 0, count: 0 };
   const name = netName(bit);
-  for (let k = 0; k < path.length; k++) {
+  const n = path.length;
+  const state: ('new' | 'have' | 'bad' | 'off')[] = new Array(n).fill('off');
+  for (let k = 0; k < n; k++) {
     const [x, y] = path[k];
     if (!world.inBounds(x, y)) continue;
     const i = y * world.w + x;
     const why = world.canNet(bit, x, y);
     if (why) {
-      plan.bad.push([x, y]);
+      state[k] = 'bad';
       plan.reason = why;
       continue;
     }
-    if (world.net[i] & bit) continue;
+    if (world.net[i] & bit) {
+      state[k] = 'have';
+      continue;
+    }
     if (world.water[i] && bit !== POWER) {
       // Bridges run straight: no turning while over water.
       const prev = path[k - 1];
       const next = path[k + 1];
       if (prev && next && prev[0] !== next[0] && prev[1] !== next[1]) {
-        plan.bad.push([x, y]);
+        state[k] = 'bad';
         plan.reason = 'Bridges must be straight';
         continue;
       }
       if (world.net[i] & (bit === ROAD ? RAIL : ROAD)) {
-        plan.bad.push([x, y]);
+        state[k] = 'bad';
         plan.reason = 'Road and rail cannot share a bridge';
         continue;
       }
     }
+    state[k] = 'new';
+  }
+
+  const target = new Map<number, number>();
+  if (bit !== POWER) {
+    const limit = bit === ROAD ? NET_MAX_SLOPE.road : NET_MAX_SLOPE.rail;
+    let run: number[] = [];
+    const flush = () => {
+      if (run.length >= 2) gradeRun(world, bit, path, run, limit, state, target, plan);
+      run = [];
+    };
+    for (let k = 0; k < n; k++) {
+      const [x, y] = path[k];
+      const ok = state[k] === 'new' || state[k] === 'have';
+      if (ok && !world.water[y * world.w + x]) run.push(k);
+      else flush();
+    }
+    flush();
+  }
+
+  for (let k = 0; k < n; k++) {
+    const [x, y] = path[k];
+    if (state[k] === 'bad') plan.bad.push([x, y]);
+    if (state[k] !== 'new') continue;
     plan.tiles.push([x, y]);
     plan.count++;
-    plan.cost += world.water[i] ? BRIDGE_COST[name] : NET_COST[name];
+    plan.cost += world.water[y * world.w + x] ? BRIDGE_COST[name] : NET_COST[name];
+  }
+  let moved = 0;
+  for (const [i, h] of target) moved += Math.abs(world.height[i] - h);
+  if (moved > 0.05) {
+    plan.grading = Math.round(moved * GRADE_COST);
+    plan.cost += plan.grading;
+    plan.heights = [...target];
   }
   return plan;
 }
 
+/**
+ * Give a run of consecutive land tiles a profile whose steps stay within
+ * `limit`, touching existing track as little as possible (it is held fixed).
+ */
+function gradeRun(
+  world: World, bit: number, path: Pt[], run: number[], limit: number,
+  state: ('new' | 'have' | 'bad' | 'off')[], target: Map<number, number>, plan: Plan,
+): void {
+  const idx = run.map((k) => path[k][1] * world.w + path[k][0]);
+  const h = idx.map((i) => world.height[i]);
+  const fixed = run.map((k) => state[k] === 'have');
+  const p = h.slice();
+  const L = limit * 0.95;
+  const m = p.length;
+  for (let j = 1; j < m; j++) if (!fixed[j]) p[j] = Math.min(p[j - 1] + L, Math.max(p[j - 1] - L, p[j]));
+  for (let j = m - 2; j >= 0; j--) if (!fixed[j]) p[j] = Math.min(p[j + 1] + L, Math.max(p[j + 1] - L, p[j]));
+  const what = bit === ROAD ? 'road' : 'track';
+  for (let j = 0; j < m; j++) {
+    const stepBad = j > 0 && Math.abs(p[j] - p[j - 1]) > limit + 0.01;
+    if (Math.abs(p[j] - h[j]) > MAX_CUT || stepBad) {
+      if (state[run[j]] === 'new') state[run[j]] = 'bad';
+      plan.reason = `Too steep for ${what}, even with grading. Flatten the slope with Level land (L) first`;
+      continue;
+    }
+    if (!fixed[j] && Math.abs(p[j] - h[j]) > 0.01) target.set(idx[j], Math.max(0.4, p[j]));
+  }
+}
+
 export function applyLine(world: World, bit: number, plan: Plan): void {
+  if (plan.heights?.length) {
+    let x0 = world.w, y0 = world.h, x1 = 0, y1 = 0;
+    for (const [i, h] of plan.heights) {
+      world.height[i] = h;
+      const x = i % world.w;
+      const y = (i / world.w) | 0;
+      x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+    }
+    world.dirty(x0 - 1, y0 - 1, x1 + 1, y1 + 1, true);
+  }
   for (const [x, y] of plan.tiles) world.setNet(bit, x, y);
 }
 

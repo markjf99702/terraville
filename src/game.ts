@@ -4,7 +4,7 @@ import {
   BUILDINGS, CITY_CLASSES, CITY_TOOLS, DIFFICULTIES, Difficulty, EDITOR_TOOLS, GRADE_COST, Kind, MAP_SIZES, ToolDef, cityClass,
 } from './defs';
 import { Minimap } from './render/minimap';
-import { Renderer } from './render/renderer';
+import { Renderer, SLOPE_CLASSES } from './render/renderer';
 import { hashString, makeRng, pick, randomSeedName } from './rng';
 import { SaveFile, loadSlot, saveSlot, worldFrom } from './save';
 import { SCENARIOS, buildScenario } from './scenarios';
@@ -465,8 +465,19 @@ export class Game {
     return this.tools().find((t) => t.id === this.toolId) ?? this.tools()[0];
   }
 
+  /** The steepness layer was switched on by picking Level land, so switch it off after. */
+  private autoSlope = false;
+
   setTool(id: string): void {
     if (this.brushOn && this.mode === 'city') this.setUndoCost(this.brushSpent);
+    if (id === 'level' && this.renderer.overlay === 'none') {
+      this.renderer.setOverlay('slope');
+      this.autoSlope = true;
+    } else if (id !== 'level' && this.autoSlope) {
+      if (this.renderer.overlay === 'slope') this.renderer.setOverlay('none');
+      this.autoSlope = false;
+    }
+    this.ui?.syncOverlay();
     this.toolId = id;
     this.anchor = null;
     this.pendingPlace = false;
@@ -502,8 +513,11 @@ export class Game {
       r.preview = { tiles: [], bad: [], rects: [], brush: { x: fx, y: fy, r: this.brush.radius } };
       if (this.mode === 'editor' && inside) {
         this.ui.cursorTip(sx, sy, `<span class="num">${Math.round(this.world.height[ty * this.world.w + tx])} m</span>`);
-      } else if (t.id === 'level') {
-        this.ui.cursorTip(sx, sy, this.brushOn ? `Levelling <span class="num">${fmtMoney(this.brushSpent)}</span>` : 'Hold to level', false);
+      } else if (t.id === 'level' && inside) {
+        const s = this.world.slope(tx, ty);
+        const cls = SLOPE_CLASSES.find((c) => s <= c.max)!;
+        const spent = this.brushOn ? `Levelling <span class="num">${fmtMoney(this.brushSpent)}</span> · ` : 'Hold to level · ';
+        this.ui.cursorTip(sx, sy, `${spent}<b>${cls.label}</b> (<span class="num">${s.toFixed(1)} m</span>): ${cls.note}`, false);
       }
       return;
     }
@@ -572,7 +586,7 @@ export class Game {
         t.id === 'bulldoze' ? `${plan.count} to clear` :
         t.kind === 'rect' ? `${plan.count} tile${plan.count > 1 ? 's' : ''}` : t.name;
       html = `${t.kind === 'place' ? '' : t.name + ' · '}${what} · <span class="num">${fmtMoney(plan.cost)}</span>`;
-      if (plan.grading) html += ` · includes <span class="num">${fmtMoney(plan.grading)}</span> to level the ground`;
+      if (plan.grading) html += ` · includes <span class="num">${fmtMoney(plan.grading)}</span> ${t.kind === 'line' ? 'to grade the slope' : 'to level the ground'}`;
       if (plan.cost > funds) {
         html += ' · not enough money';
         bad = true;

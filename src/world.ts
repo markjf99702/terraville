@@ -1,7 +1,7 @@
 // The map and everything built on it. Pure data plus placement rules; the
 // simulation and renderer both read from here.
 import {
-  AUTO_GRADE, BUILDINGS, BuildingDef, Difficulty, Kind, NET_MAX_SLOPE, POWER, RAIL, ROAD, isZone, ZONE_POP,
+  AUTO_GRADE, BUILDINGS, BuildingDef, Difficulty, Kind, POWER, RAIL, ROAD, isZone, ZONE_POP,
 } from './defs';
 
 export interface Building {
@@ -306,11 +306,7 @@ export class World {
     if (this.occ[i]) return 'A building is in the way';
     if (this.rad[i]) return 'Radioactive ground';
     if (this.fire[i]) return 'On fire';
-    if (this.net[i] & bit) return null;
-    if (bit !== POWER) {
-      const lim = bit === ROAD ? NET_MAX_SLOPE.road : NET_MAX_SLOPE.rail;
-      if (!this.water[i] && this.slope(x, y) > lim) return 'Too steep';
-    }
+    // Slope is judged along the whole line, in planLine.
     return null;
   }
 

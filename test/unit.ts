@@ -65,6 +65,29 @@ await test('bridges cost more and must be straight', () => {
   assert.ok(bent.bad.length > 0);
 });
 
+await test('track runs across a hillside without grading', () => {
+  const w = flat(40, 30);
+  for (let y = 0; y < w.h; y++) for (let x = 0; x < w.w; x++) w.height[y * w.w + x] = 3 + y * 12; // steep north-south
+  const plan = planLine(w, RAIL, linePath(2, 10, 30, 10)); // east-west along the contour
+  assert.equal(plan.bad.length, 0);
+  assert.equal(plan.grading ?? 0, 0);
+  assert.equal(plan.count, 29);
+});
+
+await test('track up a slope is graded into a ramp, cliffs are refused', () => {
+  const w = flat(40, 30);
+  for (let x = 0; x < w.w; x++) for (let y = 0; y < w.h; y++) w.height[y * w.w + x] = x < 12 ? 3 : 20; // a 17 m step
+  const plan = planLine(w, RAIL, linePath(4, 5, 20, 5));
+  assert.equal(plan.bad.length, 0);
+  assert.ok((plan.grading ?? 0) > 0);
+  applyLine(w, RAIL, plan);
+  for (let x = 5; x <= 20; x++) assert.ok(Math.abs(w.height[5 * w.w + x] - w.height[5 * w.w + x - 1]) <= 9.01, `step at ${x}`);
+  const cliff = flat(40, 30);
+  for (let x = 0; x < cliff.w; x++) for (let y = 0; y < cliff.h; y++) cliff.height[y * cliff.w + x] = x < 12 ? 3 : 200;
+  const bad = planLine(cliff, RAIL, linePath(8, 5, 16, 5));
+  assert.ok(bad.bad.length > 0 && /Level land/.test(bad.reason ?? ''));
+});
+
 await test('zones need clear, gentle land', () => {
   const w = flat();
   assert.ok(w.canPlace('res', 5, 5).ok);

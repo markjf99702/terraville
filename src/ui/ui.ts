@@ -2,7 +2,7 @@
 import { BUILDINGS, DIFFICULTIES, Difficulty, Kind, MAP_SIZES, ToolDef, cityClass, dateLabel, isZone } from '../defs';
 import { DISASTER_NAMES, DisasterKind } from '../disasters';
 import { Game, SPEED_NAMES, randomCityName } from '../game';
-import { OVERLAYS, Overlay } from '../render/renderer';
+import { OVERLAYS, Overlay, SLOPE_CLASSES } from '../render/renderer';
 import { ZONE_COLORS } from '../render/color';
 import { drawBuilding } from '../render/sprites';
 import { randomSeedName } from '../rng';
@@ -547,16 +547,18 @@ export class UI {
   }
 
   setOverlay(o: Overlay): void {
-    if (this.game.mode === 'editor' && o !== 'none') o = 'none';
+    if (this.game.mode === 'editor' && o !== 'none' && o !== 'slope') o = 'none';
     this.game.renderer.setOverlay(o);
     this.syncOverlay();
   }
 
-  private syncOverlay(): void {
+  syncOverlay(): void {
     const sel = $<HTMLSelectElement>(this.root, '#overlaySel');
     const o = this.game.renderer.overlay;
     sel.value = o;
-    sel.disabled = this.game.mode !== 'city';
+    const editor = this.game.mode === 'editor';
+    sel.disabled = this.game.mode === 'title';
+    for (const opt of sel.options) opt.disabled = editor && opt.value !== 'none' && opt.value !== 'slope';
     const def = OVERLAYS.find((x) => x.id === o)!;
     $(this.root, '#minimapCard').classList.toggle('show', o !== 'none');
     const leg = $(this.root, '#legend');
@@ -565,6 +567,12 @@ export class UI {
       return;
     }
     leg.hidden = false;
+    if (o === 'slope') {
+      leg.style.flexWrap = 'wrap';
+      leg.innerHTML = SLOPE_CLASSES.map((c, k) => `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:6px" title="${c.note}"><i style="width:10px;height:10px;border-radius:3px;display:inline-block;background:${c.alpha ? `rgba(235,104,52,${c.alpha / 255})` : 'transparent'};border:1px solid var(--line-2)"></i>${c.label} <span class="num">${k < 3 ? `≤${c.max}` : `>${SLOPE_CLASSES[2].max}`} m</span></span>`).join('');
+      return;
+    }
+    leg.style.flexWrap = '';
     if (o === 'power') {
       leg.innerHTML = `<i class="swatch" style="width:10px;height:10px;border-radius:3px;background:#f2c94c"></i>Powered <i class="swatch" style="width:10px;height:10px;border-radius:3px;background:#e34948;margin-left:8px"></i>No power`;
       return;

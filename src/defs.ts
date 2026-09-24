@@ -113,7 +113,7 @@ export const CITY_TOOLS: ToolDef[] = [
   { id: 'seaport', name: 'Seaport', kind: 'place', building: 'seaport', group: 'port', tip: '' },
   { id: 'airport', name: 'Airport', kind: 'place', building: 'airport', group: 'port', tip: '' },
   { id: 'trees', name: 'Plant trees', kind: 'rect', key: 'g', cost: 3, group: 'land', tip: 'Drag to plant trees. $3 a tile.' },
-  { id: 'level', name: 'Level land', kind: 'brush', key: 'l', group: 'land', tip: 'Hold over a slope to flatten it to the height where you first pressed. $2 per metre of earth moved. Zones and buildings also level gentle slopes by themselves.' },
+  { id: 'level', name: 'Level land', kind: 'brush', key: 'l', group: 'land', tip: 'Hold over a slope to flatten it to the height where you first pressed. $2 per metre of earth moved. Shows the Steepness layer while selected. Roads, rail and zones grade moderate slopes by themselves.' },
 ];
 
 for (const t of CITY_TOOLS) {
