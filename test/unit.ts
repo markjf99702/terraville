@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { World, encodeArray, decodeArray } from '../src/world';
 import { Sim } from '../src/sim';
 import { generateTerrain, DEFAULT_TERRAIN } from '../src/terrain';
-import { linePath, planLine, applyLine, planZones } from '../src/tools';
+import { linePath, planLine, applyLine, planZones, applyBuildings } from '../src/tools';
 import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST } from '../src/defs';
 import { encode, decode } from '../src/save';
 
@@ -75,6 +75,25 @@ await test('zones need clear, gentle land', () => {
   assert.equal(steep.canPlace('res', 5, 5).ok, false);
   const plan = planZones(flat(), 'res', 5, 5, 11, 5);
   assert.equal(plan.count, 3);
+});
+
+await test('zoning grades a moderate slope for a price, but not a cliff', () => {
+  const w = flat();
+  w.city.funds = 10000;
+  for (let dx = 0; dx < 3; dx++) w.height[7 * w.w + 4 + dx] = 18; // bottom row 15 m higher: spread 15 > 9
+  assert.equal(w.canPlace('ind', 4, 5).ok, false);
+  const r = w.canPlace('ind', 4, 5, true);
+  assert.equal(r.ok, true);
+  assert.ok(r.grade > 0);
+  const plan = planZones(w, 'ind', 5, 6, 5, 6);
+  assert.equal(plan.count, 1);
+  assert.ok((plan.grading ?? 0) > 0 && plan.cost > 100);
+  applyBuildings(w, 'ind', plan);
+  assert.equal(w.buildings.size, 1);
+  assert.ok(w.footprintSpread(4, 5, 3) < 0.01);
+  const cliff = flat();
+  cliff.height[6 * cliff.w + 5] = 60;
+  assert.equal(cliff.canPlace('ind', 4, 5, true).ok, false);
 });
 
 await test('power flows through lines and touching zones only', () => {

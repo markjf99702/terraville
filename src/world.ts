@@ -1,7 +1,7 @@
 // The map and everything built on it. Pure data plus placement rules; the
 // simulation and renderer both read from here.
 import {
-  BUILDINGS, BuildingDef, Difficulty, Kind, NET_MAX_SLOPE, POWER, RAIL, ROAD, isZone, ZONE_POP,
+  AUTO_GRADE, BUILDINGS, BuildingDef, Difficulty, Kind, NET_MAX_SLOPE, POWER, RAIL, ROAD, isZone, ZONE_POP,
 } from './defs';
 
 export interface Building {
@@ -194,25 +194,52 @@ export class World {
 
   // ---- buildings -------------------------------------------------------
 
-  canPlace(kind: Kind, x: number, y: number): { ok: boolean; reason?: string; clear: number } {
+  /**
+   * Can `kind` go here? With grade=true a moderately steep lot is allowed and
+   * `grade` reports the metres of earth that levelling it would move.
+   */
+  canPlace(kind: Kind, x: number, y: number, grade = false): { ok: boolean; reason?: string; clear: number; grade: number } {
     const def = BUILDINGS[kind];
     const s = def.size;
-    if (x < 0 || y < 0 || x + s > this.w || y + s > this.h) return { ok: false, reason: 'Off the map', clear: 0 };
+    if (x < 0 || y < 0 || x + s > this.w || y + s > this.h) return { ok: false, reason: 'Off the map', clear: 0, grade: 0 };
     let clear = 0;
     for (let dy = 0; dy < s; dy++) {
       for (let dx = 0; dx < s; dx++) {
         const i = (y + dy) * this.w + x + dx;
-        if (this.water[i] || this.flood[i]) return { ok: false, reason: 'Needs dry land', clear: 0 };
-        if (this.occ[i]) return { ok: false, reason: 'Something is already here', clear: 0 };
-        if (this.net[i]) return { ok: false, reason: 'Clear the roads and lines first', clear: 0 };
-        if (this.fire[i]) return { ok: false, reason: 'On fire', clear: 0 };
-        if (this.rad[i]) return { ok: false, reason: 'Radioactive ground', clear: 0 };
+        if (this.water[i] || this.flood[i]) return { ok: false, reason: 'Needs dry land', clear: 0, grade: 0 };
+        if (this.occ[i]) return { ok: false, reason: 'Something is already here', clear: 0, grade: 0 };
+        if (this.net[i]) return { ok: false, reason: 'Clear the roads and lines first', clear: 0, grade: 0 };
+        if (this.fire[i]) return { ok: false, reason: 'On fire', clear: 0, grade: 0 };
+        if (this.rad[i]) return { ok: false, reason: 'Radioactive ground', clear: 0, grade: 0 };
         if (this.trees[i] || this.rubble[i]) clear++;
       }
     }
-    if (this.footprintSpread(x, y, s) > def.maxSpread) return { ok: false, reason: 'Too steep. Level the land first', clear: 0 };
-    if (def.needsShore && !this.touchesWater(x, y, s)) return { ok: false, reason: 'Must touch the shore', clear: 0 };
-    return { ok: true, clear };
+    if (def.needsShore && !this.touchesWater(x, y, s)) return { ok: false, reason: 'Must touch the shore', clear: 0, grade: 0 };
+    const spread = this.footprintSpread(x, y, s);
+    if (spread > def.maxSpread) {
+      if (!grade || spread > def.maxSpread * AUTO_GRADE) {
+        return { ok: false, reason: 'Too steep. Flatten it first with Level land (L), or pick gentler ground', clear: 0, grade: 0 };
+      }
+      return { ok: true, clear, grade: this.gradeInfo(x, y, s).moved };
+    }
+    return { ok: true, clear, grade: 0 };
+  }
+
+  /** Average height of a square lot and the metres of earth needed to make it flat. */
+  gradeInfo(x: number, y: number, s: number): { avg: number; moved: number } {
+    let sum = 0;
+    for (let dy = 0; dy < s; dy++) for (let dx = 0; dx < s; dx++) sum += this.height[(y + dy) * this.w + x + dx];
+    const avg = sum / (s * s);
+    let moved = 0;
+    for (let dy = 0; dy < s; dy++) for (let dx = 0; dx < s; dx++) moved += Math.abs(this.height[(y + dy) * this.w + x + dx] - avg);
+    return { avg, moved };
+  }
+
+  /** Flatten a square lot to its average height. */
+  grade(x: number, y: number, s: number): void {
+    const { avg } = this.gradeInfo(x, y, s);
+    for (let dy = 0; dy < s; dy++) for (let dx = 0; dx < s; dx++) this.height[(y + dy) * this.w + x + dx] = Math.max(0.4, avg);
+    this.dirty(x - 1, y - 1, x + s, y + s, true);
   }
 
   touchesWater(x: number, y: number, s: number): boolean {

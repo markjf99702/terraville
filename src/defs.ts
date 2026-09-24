@@ -72,6 +72,10 @@ export const NET_UPKEEP = { road: 0.15, rail: 0.3, bridge: 1 };
 /** Max height difference to a neighbour, in metres, that each network tolerates. */
 export const NET_MAX_SLOPE = { road: 14, rail: 9, power: 999 };
 export const BULLDOZE_COST = 1;
+/** Dollars per metre of earth moved, by the Level land brush or when a lot is graded. */
+export const GRADE_COST = 2;
+/** Lots up to this many times their normal slope limit are graded automatically. */
+export const AUTO_GRADE = 3;
 
 export type ToolKind = 'click' | 'line' | 'zone' | 'rect' | 'place' | 'brush';
 
@@ -89,7 +93,7 @@ export interface ToolDef {
 
 export const CITY_TOOLS: ToolDef[] = [
   { id: 'query', name: 'Inspect', kind: 'click', key: 'q', group: 'look', tip: 'Click a tile to see what is there.' },
-  { id: 'bulldoze', name: 'Bulldoze', kind: 'rect', key: 'b', cost: BULLDOZE_COST, group: 'look', tip: 'Drag to clear an area. $1 a tile.' },
+  { id: 'bulldoze', name: 'Bulldoze', kind: 'rect', key: 'b', cost: BULLDOZE_COST, group: 'look', tip: 'Drag to clear buildings, roads, trees and rubble. $1 a tile. It does not flatten hills: use Level land for that.' },
   { id: 'road', name: 'Road', kind: 'line', key: 'r', net: ROAD, cost: NET_COST.road, group: 'move', tip: 'Drag to lay road. Over water it becomes a bridge.' },
   { id: 'rail', name: 'Rail', kind: 'line', key: 't', net: RAIL, cost: NET_COST.rail, group: 'move', tip: 'Drag to lay track. Trips by rail add no car traffic.' },
   { id: 'power', name: 'Power line', kind: 'line', key: 'p', net: POWER, cost: NET_COST.power, group: 'move', tip: 'Carries power. Zones also pass power to neighbours.' },
@@ -109,7 +113,7 @@ export const CITY_TOOLS: ToolDef[] = [
   { id: 'seaport', name: 'Seaport', kind: 'place', building: 'seaport', group: 'port', tip: '' },
   { id: 'airport', name: 'Airport', kind: 'place', building: 'airport', group: 'port', tip: '' },
   { id: 'trees', name: 'Plant trees', kind: 'rect', key: 'g', cost: 3, group: 'land', tip: 'Drag to plant trees. $3 a tile.' },
-  { id: 'level', name: 'Level land', kind: 'brush', key: 'l', group: 'land', tip: 'Flattens slopes so they can be built on. Costs $2 per metre moved.' },
+  { id: 'level', name: 'Level land', kind: 'brush', key: 'l', group: 'land', tip: 'Hold over a slope to flatten it to the height where you first pressed. $2 per metre of earth moved. Zones and buildings also level gentle slopes by themselves.' },
 ];
 
 for (const t of CITY_TOOLS) {

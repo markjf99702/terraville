@@ -1,7 +1,7 @@
 // Game controller: modes, the tool state machine, money, undo, the clock.
 import { Audio } from './audio';
 import {
-  BUILDINGS, CITY_CLASSES, CITY_TOOLS, DIFFICULTIES, Difficulty, EDITOR_TOOLS, Kind, MAP_SIZES, ToolDef, cityClass,
+  BUILDINGS, CITY_CLASSES, CITY_TOOLS, DIFFICULTIES, Difficulty, EDITOR_TOOLS, GRADE_COST, Kind, MAP_SIZES, ToolDef, cityClass,
 } from './defs';
 import { Minimap } from './render/minimap';
 import { Renderer } from './render/renderer';
@@ -572,6 +572,7 @@ export class Game {
         t.id === 'bulldoze' ? `${plan.count} to clear` :
         t.kind === 'rect' ? `${plan.count} tile${plan.count > 1 ? 's' : ''}` : t.name;
       html = `${t.kind === 'place' ? '' : t.name + ' · '}${what} · <span class="num">${fmtMoney(plan.cost)}</span>`;
+      if (plan.grading) html += ` · includes <span class="num">${fmtMoney(plan.grading)}</span> to level the ground`;
       if (plan.cost > funds) {
         html += ' · not enough money';
         bad = true;
@@ -708,7 +709,7 @@ export class Game {
       protectBuilt: city,
     });
     if (city) {
-      const cost = res.moved * 2;
+      const cost = res.moved * GRADE_COST;
       if (cost > this.world.city.funds) {
         // Too dear: put the ground back and stop.
         this.world.height.set(saved!);

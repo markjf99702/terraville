@@ -1,5 +1,5 @@
 // Turning a drag or click into changes on the map, with prices.
-import { BRIDGE_COST, BUILDINGS, BULLDOZE_COST, Kind, NET_COST, POWER, RAIL, ROAD } from './defs';
+import { BRIDGE_COST, BUILDINGS, BULLDOZE_COST, GRADE_COST, Kind, NET_COST, POWER, RAIL, ROAD } from './defs';
 import { World } from './world';
 
 export type Pt = [number, number];
@@ -14,6 +14,8 @@ export interface Plan {
   reason?: string;
   /** Number of things that will be built. */
   count: number;
+  /** Part of the cost spent levelling sloped lots. */
+  grading?: number;
 }
 
 /** An L-shaped path: the longer leg first, like dragging a road in the original. */
@@ -101,11 +103,13 @@ export function planZones(world: World, kind: Kind, ax: number, ay: number, bx: 
     for (let i = 0; i < nx; i++) {
       const x = ox + i * s * sx;
       const y = oy + j * s * sy;
-      const r = world.canPlace(kind, x, y);
+      const r = world.canPlace(kind, x, y, true);
       if (r.ok) {
+        const grading = Math.round(r.grade * GRADE_COST);
         plan.tiles.push([x, y]);
         plan.count++;
-        plan.cost += BUILDINGS[kind].cost + r.clear * BULLDOZE_COST;
+        plan.cost += BUILDINGS[kind].cost + r.clear * BULLDOZE_COST + grading;
+        plan.grading = (plan.grading ?? 0) + grading;
       } else {
         plan.bad.push([x, y]);
         plan.reason = r.reason;
@@ -119,14 +123,18 @@ export function planPlace(world: World, kind: Kind, cx: number, cy: number): Pla
   const s = BUILDINGS[kind].size;
   const x = cx - Math.floor((s - 1) / 2);
   const y = cy - Math.floor((s - 1) / 2);
-  const r = world.canPlace(kind, x, y);
+  const r = world.canPlace(kind, x, y, true);
   if (!r.ok) return { tiles: [], bad: [[x, y]], cost: 0, count: 0, reason: r.reason };
-  return { tiles: [[x, y]], bad: [], cost: BUILDINGS[kind].cost + r.clear * BULLDOZE_COST, count: 1 };
+  const grading = Math.round(r.grade * GRADE_COST);
+  return { tiles: [[x, y]], bad: [], cost: BUILDINGS[kind].cost + r.clear * BULLDOZE_COST + grading, count: 1, grading };
 }
 
 export function applyBuildings(world: World, kind: Kind, plan: Plan): void {
   for (const [x, y] of plan.tiles) {
-    if (world.canPlace(kind, x, y).ok) world.place(kind, x, y);
+    const r = world.canPlace(kind, x, y, true);
+    if (!r.ok) continue;
+    if (r.grade > 0) world.grade(x, y, BUILDINGS[kind].size);
+    world.place(kind, x, y);
   }
 }
 
@@ -171,10 +179,12 @@ export function applyBulldoze(world: World, plan: Plan): void {
 export function planParks(world: World, rect: Pt[]): Plan {
   const plan: Plan = { tiles: [], bad: [], cost: 0, count: 0 };
   for (const [x, y] of rect) {
-    const r = world.canPlace('park', x, y);
+    const r = world.canPlace('park', x, y, true);
     if (r.ok) {
+      const grading = Math.round(r.grade * GRADE_COST);
       plan.tiles.push([x, y]);
-      plan.cost += BUILDINGS.park.cost + r.clear * BULLDOZE_COST;
+      plan.cost += BUILDINGS.park.cost + r.clear * BULLDOZE_COST + grading;
+      plan.grading = (plan.grading ?? 0) + grading;
       plan.count++;
     } else {
       plan.bad.push([x, y]);
