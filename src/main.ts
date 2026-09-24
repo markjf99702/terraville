@@ -49,12 +49,20 @@ function start(hot: HotData): void {
   window.__terraville = game;
 
   let last = performance.now();
+  let failures = 0;
   const loop = (now: number) => {
     const dt = Math.min(0.1, Math.max(0, (now - last) / 1000));
     last = now;
-    input.update(dt);
-    game.frame(dt);
-    ui.tick(dt);
+    try {
+      input.update(dt);
+      game.frame(dt);
+      ui.tick(dt);
+    } catch (e) {
+      // Keep the loop alive; say so once rather than freezing silently.
+      console.error(e);
+      if (failures++ === 0) ui.toast('Something went wrong. Save a city code from the menu to be safe.', 'warn');
+      if (game.speed > 0 && failures > 30) game.setSpeed(0);
+    }
     requestAnimationFrame(loop);
   };
   requestAnimationFrame(loop);

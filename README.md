@@ -24,9 +24,18 @@ Open `index.html` in any current browser. It is a single self-contained file: no
 - History charts, a city report with approval and residents' top worries, and a news ticker that can jump to the scene.
 - Terraforming in the city: level hillsides for a price.
 
+**Challenges**, after the original's scenarios, each a ready-made city with a goal and a deadline:
+- *Boomtown* (1900): grow an empty coast to 12,000 residents in 15 years.
+- *Gridlock* (1955): untangle downtown traffic without losing people.
+- *Smog Valley* (1968): clean the air without killing the jobs.
+- *Aftershock* (1989): rebuild after an earthquake and keep growing.
+- *Monster Bay* (1957): something in the bay is drawn to smoke, and it keeps coming back.
+
 **Modern bits**
 - Smooth zoom from the whole map down to street level, with detail that adapts to the zoom.
 - Animated traffic on busy roads, trains, departing planes, boats, smoke and wind turbines.
+- A day and night cycle: streetlights and lit windows after dark.
+- Commuters spread across the city's job centres, so traffic piles up on the arterials into downtown.
 - Drag to zone many lots at once, with live cost and a reason when something can't be built.
 - Autosave, named save slots, and city codes: the whole map compressed into text you can paste on another device.
 - Touch support: pinch to zoom, two fingers to move.
@@ -53,7 +62,7 @@ Open `index.html` in any current browser. It is a single self-contained file: no
 ```sh
 npm install
 npm run build        # writes index.html (and dist/page.html, a body-only copy)
-npm test             # unit checks for terrain, power, traffic, saves, disasters
+npm test             # unit checks for terrain, power, traffic, saves, undo, disasters
 npm run bot -- 30    # a bot plays 30 years and prints a yearly summary
 npx tsc --noEmit     # typecheck
 ```
@@ -67,6 +76,7 @@ Source lives in `src/`:
 | `sim.ts` | Weekly simulation: power, traffic, pollution, crime, land value, growth, demand, budget, advice |
 | `disasters.ts` | Fires, floods, tornadoes, earthquakes, the monster, meltdowns |
 | `tools.ts` | Turning drags and clicks into priced changes |
+| `scenarios.ts` | The challenges and the builder that lays out their starting cities |
 | `game.ts` | Modes, the tool state machine, undo, the clock, autosave |
 | `render/` | Chunk-cached canvas renderer, procedural sprites, terrain painter, vehicles, minimap |
 | `ui/` | Top bar, toolbox, dialogs and charts |

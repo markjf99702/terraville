@@ -364,18 +364,27 @@ export class World {
   }
 
   static deserialize(s: SavedWorld): World {
+    if (!(s.w > 0 && s.h > 0 && s.w <= 1024 && s.h <= 1024)) throw new Error('The saved map has an impossible size.');
     const w = new World(s.w, s.h);
-    w.height = new Float32Array(decodeArray(s.height).buffer);
-    w.water = decodeArray(s.water);
-    w.trees = decodeArray(s.trees);
-    w.net = decodeArray(s.net);
-    w.rubble = decodeArray(s.rubble);
-    w.fire = decodeArray(s.fire);
-    w.flood = decodeArray(s.flood);
-    w.rad = decodeArray(s.rad);
+    const n = s.w * s.h;
+    const bytes = (a: Uint8Array, len: number, what: string) => {
+      if (a.length !== len) throw new Error(`The saved ${what} layer is damaged.`);
+      return a;
+    };
+    w.height = new Float32Array(bytes(decodeArray(s.height), n * 4, 'height').buffer);
+    w.water = bytes(decodeArray(s.water), n, 'water');
+    w.trees = bytes(decodeArray(s.trees), n, 'tree');
+    w.net = bytes(decodeArray(s.net), n, 'road');
+    w.rubble = bytes(decodeArray(s.rubble), n, 'rubble');
+    w.fire = bytes(decodeArray(s.fire), n, 'fire');
+    w.flood = bytes(decodeArray(s.flood), n, 'flood');
+    w.rad = bytes(decodeArray(s.rad), n, 'radiation');
     for (const [id, kind, x, y, level, seed, age] of s.buildings) {
       const def = BUILDINGS[kind as Kind];
-      if (!def) continue;
+      if (!def || !(id > 0) || x < 0 || y < 0 || x + def.size > s.w || y + def.size > s.h) continue;
+      let clash = false;
+      for (let dy = 0; dy < def.size && !clash; dy++) for (let dx = 0; dx < def.size; dx++) if (w.occ[(y + dy) * s.w + x + dx]) clash = true;
+      if (clash) continue;
       const b: Building = {
         id, kind: kind as Kind, x, y, size: def.size, level, pop: 0,
         powered: false, seed, age, road: true, trip: true,
@@ -386,7 +395,7 @@ export class World {
         for (let dx = 0; dx < def.size; dx++) w.occ[(y + dy) * w.w + x + dx] = id;
       }
     }
-    w.nextId = s.nextId;
+    w.nextId = Math.max(s.nextId, ...[...w.buildings.keys()].map((k) => k + 1), 1);
     w.city = { ...newCityState(), ...s.city };
     w.city.history = { ...emptyHistory(), ...s.city.history };
     return w;
@@ -403,11 +412,12 @@ export class World {
       rubble: this.rubble.slice(),
       buildings: [...this.buildings.values()].map((b) => ({ ...b })),
       nextId: this.nextId,
-      funds: this.city.funds,
     };
   }
 
-  restore(s: WorldSnapshot): void {
+  /** Put the map back as it was. Money is the caller's business. Returns false for a snapshot of another map. */
+  restore(s: WorldSnapshot): boolean {
+    if (s.height.length !== this.n) return false;
     this.height.set(s.height);
     this.water.set(s.water);
     this.trees.set(s.trees);
@@ -416,8 +426,8 @@ export class World {
     this.rubble.set(s.rubble);
     this.buildings = new Map(s.buildings.map((b) => [b.id, { ...b }]));
     this.nextId = s.nextId;
-    this.city.funds = s.funds;
     this.dirtyAll(true);
+    return true;
   }
 }
 
@@ -430,7 +440,6 @@ export interface WorldSnapshot {
   rubble: Uint8Array;
   buildings: Building[];
   nextId: number;
-  funds: number;
 }
 
 export interface SavedWorld {

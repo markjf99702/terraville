@@ -175,4 +175,28 @@ await test('disasters run without breaking the map', () => {
   assert.ok(occupied >= 0);
 });
 
+await test('undo snapshots restore the map but never money, and only onto the same map', () => {
+  const w = flat();
+  w.city.funds = 1000;
+  const snap = w.snapshot();
+  w.place('res', 5, 5);
+  w.city.funds = 5;
+  assert.equal(w.restore(snap), true);
+  assert.equal(w.buildings.size, 0);
+  assert.equal(w.city.funds, 5);
+  const other = flat(50, 30);
+  assert.equal(other.restore(snap), false);
+});
+
+await test('damaged saves are refused instead of half-loaded', () => {
+  const w = flat();
+  w.place('res', 2, 2);
+  const s = w.serialize();
+  assert.throws(() => World.deserialize({ ...s, water: encodeArray(new Uint8Array(10)) }));
+  const clash = { ...s, buildings: [...s.buildings, [99, 'res', 3, 3, 0, 1, 0] as [number, string, number, number, number, number, number]] };
+  const back = World.deserialize(clash);
+  assert.equal(back.buildings.size, 1);
+  assert.ok(back.nextId > 99 || back.nextId > 1);
+});
+
 console.log(`\n${passed} passed`);

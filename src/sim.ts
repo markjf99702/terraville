@@ -111,18 +111,27 @@ export class Sim {
     this.stats = this.blankStats();
     this.disasters = new Disasters(this);
     this.refreshTerrainAppeal();
-    world.onDirty((_x0, _y0, _x1, _y1, terrain) => {
+    this.unsubscribe = world.onDirty((_x0, _y0, _x1, _y1, terrain) => {
       this.powerDirty = true;
       if (terrain) this.terrainDirty = true;
     });
     this.computePower();
     this.computeTraffic();
+    // Twice: crime depends on land value, which is not saved.
+    this.computeMaps();
     this.computeMaps();
     this.tally();
     this.lastPop = this.stats.residents;
   }
 
   private terrainDirty = false;
+  private unsubscribe: () => void;
+
+  /** Stop listening to the world; call when this Sim is replaced. */
+  dispose(): void {
+    this.unsubscribe();
+    this.listeners = [];
+  }
 
   on(fn: (e: SimEvent) => void): void {
     this.listeners.push(fn);

@@ -162,6 +162,7 @@ export class UI {
   }
 
   enterCity(): void {
+    this.lastMessage = null;
     this.showChrome();
     $(this.root, '#editorPanel').hidden = true;
     $(this.root, '#ticker').hidden = false;
@@ -591,6 +592,12 @@ export class UI {
     this.dropdownBtn = btn;
   }
 
+  closeDropdownIfOpen(): boolean {
+    if (!this.dropdownEl) return false;
+    this.closeDropdown();
+    return true;
+  }
+
   private closeDropdown(): void {
     this.dropdownEl?.remove();
     this.dropdownBtn?.setAttribute('aria-expanded', 'false');
@@ -930,7 +937,10 @@ export class UI {
         this.btn('Stay', '', () => this.closeModal()),
         this.btn('Leave', 'primary', async () => {
           this.closeModal();
-          if (this.game.mode === 'city' && this.game.settings.autosave) await this.game.autosave();
+          if (this.game.mode === 'city' && this.game.settings.autosave && !(await this.game.autosave())) {
+            this.toast('The autosave failed, probably because storage is full. Save a city code from the menu if you want to keep this city.', 'warn');
+            return;
+          }
           this.game.showTitle();
         }),
       ],
@@ -1226,6 +1236,11 @@ export class UI {
           this.btn('Open', 'small primary', async () => {
             const f = await loadSlot(s.id);
             if (!f) return this.toast('That save could not be read.', 'warn');
+            try {
+              World.deserialize(f.world);
+            } catch (e) {
+              return this.toast(`That save is damaged: ${(e as Error).message}`, 'warn');
+            }
             this.closeModal();
             g.loadFile(f, s.id);
             this.toast(`Opened ${s.name}.`);
@@ -1281,6 +1296,7 @@ export class UI {
       err.textContent = '';
       try {
         const f: SaveFile = await decode(code);
+        World.deserialize(f.world);
         this.closeModal();
         g.loadFile(f);
         this.toast(`Opened ${f.world.city.name}.`);

@@ -15,6 +15,8 @@ export class Input {
   private start = { x: 0, y: 0, camX: 0, camY: 0 };
   private pinch = { d: 1, zoom: 1, cx: 0, cy: 0, tx: 0, ty: 0 };
   private space = false;
+  /** Space was used to drag the map, so releasing it should not toggle pause. */
+  private spacePanned = false;
   private keys = new Set<string>();
 
   constructor(private game: Game, private canvas: HTMLCanvasElement) {
@@ -34,7 +36,12 @@ export class Input {
     window.addEventListener('keydown', (e) => this.keydown(e));
     window.addEventListener('keyup', (e) => {
       this.keys.delete(e.key);
-      if (e.key === ' ') this.space = false;
+      if (e.key === ' ') {
+        const g = this.game;
+        if (this.space && !this.spacePanned && g.mode === 'city' && !g.ui.modalOpen) g.togglePause();
+        this.space = false;
+        this.spacePanned = false;
+      }
     });
     window.addEventListener('blur', () => {
       this.keys.clear();
@@ -56,6 +63,8 @@ export class Input {
     const g = this.game;
     if (g.mode === 'title') return;
     g.audio.unlock();
+    // A click on the map that closes a menu does nothing else.
+    if (g.ui.closeDropdownIfOpen()) return;
     this.canvas.setPointerCapture(e.pointerId);
     const p = this.local(e);
     this.pointers.set(e.pointerId, { ...p, type: e.pointerType });
@@ -74,6 +83,7 @@ export class Input {
     const cam = g.renderer.cam;
     this.start = { x: p.x, y: p.y, camX: cam.x, camY: cam.y };
     if (e.button === 1 || e.button === 2 || this.space) {
+      if (this.space) this.spacePanned = true;
       this.mode = 'pan';
       this.canvas.classList.add('grabbing');
       return;
@@ -183,12 +193,14 @@ export class Input {
     const mod = e.ctrlKey || e.metaKey;
     if (mod && (k === 'z' || k === 'Z')) {
       e.preventDefault();
+      if (g.ui.modalOpen || g.dragging) return;
       if (e.shiftKey) g.redo();
       else g.undo();
       return;
     }
     if (mod && (k === 'y' || k === 'Y')) {
       e.preventDefault();
+      if (g.ui.modalOpen || g.dragging) return;
       g.redo();
       return;
     }
@@ -202,7 +214,8 @@ export class Input {
     if (g.ui.modalOpen) return;
     if (k === ' ') {
       e.preventDefault();
-      if (!this.space && g.mode === 'city' && this.mode === 'none') g.togglePause();
+      // Pause toggles on release, unless Space was held to drag the map.
+      if (!this.space) this.spacePanned = this.mode !== 'none';
       this.space = true;
       return;
     }

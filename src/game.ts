@@ -19,6 +19,11 @@ import { World, WorldSnapshot, newCityState } from './world';
 
 export type Mode = 'title' | 'editor' | 'city';
 
+interface UndoEntry {
+  snap: WorldSnapshot;
+  cost: number;
+}
+
 /** Simulated weeks per real second at each speed. */
 export const SPEEDS = [0, 0.7, 1.8, 5, 14];
 export const SPEED_NAMES = ['Paused', 'Slow', 'Normal', 'Fast', 'Ultra'];
@@ -60,8 +65,11 @@ export class Game {
   slotId: string | null = null;
 
   private acc = 0;
-  private undoStack: WorldSnapshot[] = [];
-  private redoStack: WorldSnapshot[] = [];
+  /** Undo entries: the map before an action and what the action cost. */
+  private undoStack: UndoEntry[] = [];
+  private redoStack: UndoEntry[] = [];
+  /** A building placement waiting for the pointer to lift. */
+  private pendingPlace = false;
   private anchor: { x: number; y: number } | null = null;
   private brushOn = false;
   private brushAt = { x: 0, y: 0 };
@@ -115,7 +123,9 @@ export class Game {
 
   showTitle(): void {
     this.mode = 'title';
-    this.sim = null;
+    this.setSim(null);
+    this.clearUndo();
+    this.renderer.setOverlay('none');
     const styles: TerrainStyle[] = ['coast', 'island', 'lakes', 'valley', 'archipelago'];
     const seed = randomSeedName();
     const style = styles[hashString(seed) % styles.length];
@@ -134,13 +144,13 @@ export class Game {
 
   startEditor(params?: Partial<TerrainParams>): void {
     this.mode = 'editor';
-    this.sim = null;
+    this.setSim(null);
+    this.renderer.setOverlay('none');
     this.terrain = { ...this.terrain, ...params };
     this.world = generateTerrain(this.terrain);
     this.renderer.setWorld(this.world, null);
     this.fitMap();
-    this.undoStack = [];
-    this.redoStack = [];
+    this.clearUndo();
     this.slotId = null;
     this.applySettings();
     this.setTool('raise');
@@ -151,12 +161,12 @@ export class Game {
   /** Continue editing the land already on screen (from the title or a quick start). */
   editCurrentLand(): void {
     this.mode = 'editor';
-    this.sim = null;
+    this.setSim(null);
+    this.renderer.setOverlay('none');
     this.world.city = newCityState();
     this.renderer.setWorld(this.world, null);
     this.fitMap();
-    this.undoStack = [];
-    this.redoStack = [];
+    this.clearUndo();
     this.applySettings();
     this.setTool('raise');
     this.minimap.markDirty();
@@ -193,6 +203,9 @@ export class Game {
     this.terrain = { ...DEFAULT_TERRAIN, style: styles[hashString(seed) % styles.length], seed, w: size.w, h: size.h };
     this.world = generateTerrain(this.terrain);
     this.mode = 'editor';
+    this.setSim(null);
+    this.clearUndo();
+    this.renderer.setOverlay('none');
     this.renderer.setWorld(this.world, null);
     this.fitMap();
     this.applySettings();
@@ -214,8 +227,7 @@ export class Game {
     this.startSim();
     this.mode = 'city';
     this.speed = 2;
-    this.undoStack = [];
-    this.redoStack = [];
+    this.clearUndo();
     this.slotId = null;
     this.applySettings();
     this.setTool('query');
@@ -226,11 +238,17 @@ export class Game {
     this.audio.play('fanfare');
   }
 
+  private setSim(sim: Sim | null): void {
+    this.sim?.dispose();
+    this.sim = sim;
+  }
+
   private startSim(): void {
-    this.sim = new Sim(this.world);
-    this.renderer.setWorld(this.world, this.sim);
+    const sim = new Sim(this.world);
+    this.setSim(sim);
+    this.renderer.setWorld(this.world, sim);
     this.minimap.markDirty();
-    this.sim.on((e) => {
+    sim.on((e) => {
       switch (e.type) {
         case 'message':
           this.ui.onMessage(e.message);
@@ -241,6 +259,9 @@ export class Game {
           this.renderer.vehicles.addDust(e.x, e.y);
           break;
         case 'month':
+          // Undo reaches back to the start of the month; after that the
+          // simulation has moved on and undo would rewrite history.
+          if (this.canUndo() || this.canRedo()) this.clearUndo();
           this.minimap.markDirty();
           this.renderer.refreshOverlay();
           this.ui.onMonth();
@@ -248,10 +269,6 @@ export class Game {
           break;
         case 'year':
           this.audio.play('coin');
-          // Undo only reaches back within the current year.
-          this.undoStack = [];
-          this.redoStack = [];
-          this.ui.syncUndo();
           if (this.settings.autosave) void this.autosave();
           break;
       }
@@ -277,8 +294,7 @@ export class Game {
     this.world.city.classReached = CITY_CLASSES.reduce((acc, c, i) => (sim.stats.residents >= c.min ? i : acc), 0);
     this.mode = 'city';
     this.speed = 2;
-    this.undoStack = [];
-    this.redoStack = [];
+    this.clearUndo();
     this.slotId = null;
     this.applySettings();
     this.setTool('query');
@@ -321,8 +337,7 @@ export class Game {
     this.world = worldFrom(file);
     if (file.terrain) this.terrain = { ...this.terrain, ...(file.terrain as Partial<TerrainParams>), w: this.world.w, h: this.world.h };
     else this.terrain = { ...this.terrain, w: this.world.w, h: this.world.h };
-    this.undoStack = [];
-    this.redoStack = [];
+    this.clearUndo();
     this.slotId = slotId;
     if (file.mode === 'city' && this.world.city.founded) {
       this.mode = 'city';
@@ -333,7 +348,8 @@ export class Game {
       this.ui.enterCity();
     } else {
       this.mode = 'editor';
-      this.sim = null;
+      this.setSim(null);
+      this.renderer.setOverlay('none');
       this.renderer.setWorld(this.world, null);
       this.applySettings();
       this.setTool('raise');
@@ -357,9 +373,9 @@ export class Game {
     };
   }
 
-  async autosave(): Promise<void> {
-    if (this.mode !== 'city') return;
-    await saveSlot('auto', this.makeSaveFile(), this.sim?.stats.residents ?? 0);
+  async autosave(): Promise<boolean> {
+    if (this.mode !== 'city') return true;
+    return saveSlot('auto', this.makeSaveFile(), this.sim?.stats.residents ?? 0);
   }
 
   async saveTo(id: string): Promise<boolean> {
@@ -446,8 +462,10 @@ export class Game {
   }
 
   setTool(id: string): void {
+    if (this.brushOn && this.mode === 'city') this.setUndoCost(this.brushSpent);
     this.toolId = id;
     this.anchor = null;
+    this.pendingPlace = false;
     this.brushOn = false;
     this.renderer.preview = null;
     this.ui?.syncTool();
@@ -455,13 +473,15 @@ export class Game {
 
   cancelTool(): void {
     this.anchor = null;
+    this.pendingPlace = false;
+    if (this.brushOn && this.mode === 'city') this.setUndoCost(this.brushSpent);
     this.brushOn = false;
     this.renderer.preview = null;
     this.ui.cursorTip(0, 0, null);
   }
 
   get dragging(): boolean {
-    return this.anchor !== null || this.brushOn;
+    return this.anchor !== null || this.brushOn || this.pendingPlace;
   }
 
   /** Pointer moved over the map (tile coords, float) at screen position sx, sy. */
@@ -569,21 +589,13 @@ export class Game {
       case 'click':
         if (!inside) return;
         if (t.id === 'query') this.ui.inspect(tx, ty);
-        else if (t.id === 'spring') {
-          this.pushUndo();
-          const n = addSpring(this.world, tx, ty);
-          if (n) {
-            this.audio.play('terrain');
-            this.minimap.markDirty();
-          } else this.ui.toast('The water had nowhere to go.', 'warn');
-        } else if (t.id === 'pan') this.ui.cursorTip(sx, sy, `<span class="num">${Math.round(this.world.height[ty * this.world.w + tx])} m</span>`);
+        else if (t.id === 'spring') this.pendingPlace = true;
+        else if (t.id === 'pan') this.ui.cursorTip(sx, sy, `<span class="num">${Math.round(this.world.height[ty * this.world.w + tx])} m</span>`);
         return;
-      case 'place': {
-        const plan = this.plan(tx, ty);
-        if (plan) this.commit(plan);
-        this.pointerMove(fx, fy, sx, sy);
+      case 'place':
+        // Build when the pointer lifts, so a pinch that starts here builds nothing.
+        if (inside) this.pendingPlace = true;
         return;
-      }
       case 'brush':
         if (!inside) return;
         this.pushUndo();
@@ -604,7 +616,23 @@ export class Game {
     if (this.brushOn) {
       this.brushOn = false;
       this.minimap.markDirty();
+      if (this.mode === 'city') this.setUndoCost(this.brushSpent);
       if (this.brushSpent > 0) this.ui.toast(`Levelled for ${fmtMoney(this.brushSpent)}`);
+      return;
+    }
+    if (this.pendingPlace) {
+      this.pendingPlace = false;
+      const tx = Math.floor(fx);
+      const ty = Math.floor(fy);
+      const t = this.tool();
+      if (this.world.inBounds(tx, ty)) {
+        if (t.id === 'spring') this.dropSpring(tx, ty);
+        else {
+          const plan = this.plan(tx, ty);
+          if (plan) this.commit(plan);
+        }
+      }
+      this.pointerMove(fx, fy, sx, sy);
       return;
     }
     if (!this.anchor) return;
@@ -612,6 +640,19 @@ export class Game {
     this.anchor = null;
     if (plan) this.commit(plan);
     this.pointerMove(fx, fy, sx, sy);
+  }
+
+  private dropSpring(tx: number, ty: number): void {
+    this.pushUndo();
+    const n = addSpring(this.world, tx, ty);
+    if (n) {
+      this.audio.play('terrain');
+      this.minimap.markDirty();
+    } else {
+      this.undoStack.pop();
+      this.ui.syncUndo();
+      this.ui.toast('The water had nowhere to go.', 'warn');
+    }
   }
 
   private commit(plan: Plan): void {
@@ -632,7 +673,10 @@ export class Game {
     else if (t.id === 'bulldoze') applyBulldoze(this.world, plan);
     else if (t.id === 'trees') applyTrees(this.world, plan);
     else if (t.building) applyBuildings(this.world, t.building as Kind, plan);
-    if (this.mode === 'city') city.funds -= plan.cost;
+    if (this.mode === 'city') {
+      city.funds -= plan.cost;
+      this.setUndoCost(plan.cost);
+    }
     if (this.sim) this.sim.powerDirty = true;
     this.minimap.markDirty();
     this.audio.play(t.id === 'bulldoze' ? 'bulldoze' : t.kind === 'zone' ? 'zone' : 'build');
@@ -651,6 +695,7 @@ export class Game {
       this.ui.toast('Out of money for levelling.', 'warn');
       return;
     }
+    const saved = city ? this.world.height.slice() : null;
     const res = applyBrush(this.world, t.id, this.brushAt.x, this.brushAt.y, {
       radius: this.brush.radius,
       strength: city ? 0.8 : this.brush.strength,
@@ -660,6 +705,15 @@ export class Game {
     });
     if (city) {
       const cost = res.moved * 2;
+      if (cost > this.world.city.funds) {
+        // Too dear: put the ground back and stop.
+        this.world.height.set(saved!);
+        this.world.dirty(res.x0 - 1, res.y0 - 1, res.x1 + 1, res.y1 + 1, true);
+        this.brushOn = false;
+        this.setUndoCost(this.brushSpent);
+        this.ui.toast('Not enough money to keep levelling.', 'warn');
+        return;
+      }
       this.world.city.funds -= cost;
       this.brushSpent += cost;
     }
@@ -671,30 +725,54 @@ export class Game {
 
   // ---- undo ---------------------------------------------------------------------
 
+  clearUndo(): void {
+    this.undoStack = [];
+    this.redoStack = [];
+    this.ui?.syncUndo();
+  }
+
   pushUndo(): void {
     if (!this.world) return;
-    this.undoStack.push(this.world.snapshot());
+    this.undoStack.push({ snap: this.world.snapshot(), cost: 0 });
     if (this.undoStack.length > (this.mode === 'editor' ? 40 : 25)) this.undoStack.shift();
     this.redoStack = [];
     this.ui?.syncUndo();
   }
 
+  /** Record what the most recent undoable action cost, so undo refunds exactly that. */
+  private setUndoCost(cost: number): void {
+    const top = this.undoStack[this.undoStack.length - 1];
+    if (top) top.cost = cost;
+  }
+
   undo(): void {
-    const s = this.undoStack.pop();
-    if (!s) return;
-    this.redoStack.push(this.world.snapshot());
-    this.restore(s);
+    const e = this.undoStack.pop();
+    if (!e) return;
+    this.redoStack.push({ snap: this.world.snapshot(), cost: e.cost });
+    this.restore(e.snap);
+    if (this.mode === 'city') this.world.city.funds += e.cost;
+    this.ui.onFunds();
   }
 
   redo(): void {
-    const s = this.redoStack.pop();
-    if (!s) return;
-    this.undoStack.push(this.world.snapshot());
-    this.restore(s);
+    const e = this.redoStack.pop();
+    if (!e) return;
+    if (this.mode === 'city' && e.cost > this.world.city.funds) {
+      this.redoStack.push(e);
+      this.ui.toast('Not enough money to redo that.', 'warn');
+      return;
+    }
+    this.undoStack.push({ snap: this.world.snapshot(), cost: e.cost });
+    this.restore(e.snap);
+    if (this.mode === 'city') this.world.city.funds -= e.cost;
+    this.ui.onFunds();
   }
 
   private restore(s: WorldSnapshot): void {
-    this.world.restore(s);
+    if (!this.world.restore(s)) {
+      this.clearUndo();
+      return;
+    }
     if (this.sim) {
       this.sim.powerDirty = true;
       this.sim.refreshTerrainAppeal();
