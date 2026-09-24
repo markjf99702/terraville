@@ -27,6 +27,7 @@ export const ICONS: Record<string, string> = {
   play3: s('<path d="M2 6l6.5 6L2 18zM8.5 6l6.5 6-6.5 6zM15 6l6.5 6-6.5 6z"/>'),
   play4: s('<path d="M13 3L5 14h6l-1 7 8-11h-6z"/>'),
   check: s('<path d="M5 12.5l4.5 4.5L19 7.5"/>'),
+  book: s('<path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5"/><path d="M8 7h8M8 10.5h6"/>'),
   guide: s('<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/>'),
   budget: s('<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/><path d="M7 15h4"/>'),
   charts: s('<path d="M4 20V4M4 20h16"/><path d="M7 15l4-5 3 3 5-7"/>'),

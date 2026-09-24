@@ -12,6 +12,7 @@ import { STYLE_NAMES, TerrainStyle, hasSea } from '../terrain';
 import { GoalState, SCENARIOS, Scenario } from '../scenarios';
 import { World } from '../world';
 import { lineChart } from './charts';
+import { buildGuide, trackGuide } from './guide';
 import { ICONS } from './icons';
 
 const $ = <T extends HTMLElement = HTMLElement>(root: ParentNode, sel: string): T => root.querySelector(sel) as T;
@@ -68,6 +69,8 @@ interface ModalSpec {
   foot?: HTMLElement[];
   onClose?: () => void;
   wide?: boolean;
+  /** Maximum width in pixels, for dialogs wider than `wide`. */
+  width?: number;
 }
 
 export class UI {
@@ -123,6 +126,7 @@ export class UI {
           <button class="btn primary" data-act="quick"><span>Start a new city</span><small>Random land</small></button>
           <button class="btn" data-act="editor"><span>Shape the land first</span><small>Terrain editor</small></button>
           <button class="btn" data-act="challenges"><span>Challenges</span><small>Cities in trouble</small></button>
+          <button class="btn" data-act="guide"><span>Strategy guide</span><small>How cities grow</small></button>
           ${auto ? `<button class="btn" data-act="continue"><span>Continue ${esc(auto.name)}</span><small class="num">${dateLabel(auto.date)} · pop ${auto.pop.toLocaleString()}</small></button>` : ''}
           <button class="btn" data-act="open"><span>Open a saved city</span><small>Saves and city codes</small></button>
         </div>
@@ -137,6 +141,7 @@ export class UI {
       if (act === 'quick') this.game.quickStart();
       else if (act === 'editor') this.game.startEditor({ seed: randomSeedName() });
       else if (act === 'challenges') this.openChallenges();
+      else if (act === 'guide') this.openGuide();
       else if (act === 'continue') {
         if (!(await this.game.continueAuto())) this.toast('That save could not be opened.', 'warn');
       } else if (act === 'open') this.openFiles();
@@ -661,6 +666,7 @@ export class UI {
       d.appendChild(b);
     };
     add('file', this.game.mode === 'city' ? 'Save, open and share' : 'Save, open and share terrain', () => this.openFiles());
+    add('book', 'Strategy guide', () => this.openGuide());
     add('settings', 'Settings and keys', () => this.openSettings());
     if (this.game.mode === 'city') add('guide', 'Show the starter checklist', () => {
       this.guideDismissed = false;
@@ -789,7 +795,9 @@ export class UI {
         ${items.map(([ok, text]) => `<li style="display:flex;gap:8px;align-items:flex-start;${ok ? 'color:var(--muted)' : ''}">
           <span style="flex:none;width:18px;height:18px;border-radius:5px;display:grid;place-items:center;border:1px solid ${ok ? 'var(--good)' : 'var(--line-2)'};background:${ok ? 'var(--good)' : 'transparent'};color:#fff">${ok ? ICONS.check.replace('<svg', '<svg style="width:13px;height:13px"') : ''}</span>
           <span style="${ok ? 'text-decoration:line-through' : ''}">${text}</span></li>`).join('')}
-      </ol>`;
+      </ol>
+      <button class="btn small" id="guideOpen" style="margin-top:10px;width:100%">Read the strategy guide</button>`;
+    $(box, '#guideOpen').onclick = () => this.openGuide();
     $(box, '.close').onclick = () => {
       this.guideDismissed = true;
       try { localStorage.setItem('terraville.guide', 'done'); } catch { /* ignore */ }
@@ -843,7 +851,8 @@ export class UI {
     this.closeModal();
     this.closeDropdown();
     const root = $(this.root, '#modalRoot');
-    const m = el(`<div class="modal" role="dialog" aria-modal="true" ${spec.wide ? 'style="width:min(860px,100%)"' : ''}>
+    const width = spec.width ?? (spec.wide ? 860 : 0);
+    const m = el(`<div class="modal" role="dialog" aria-modal="true" ${width ? `style="width:min(${width}px,100%)"` : ''}>
       <header><div style="flex:1"><h2>${esc(spec.title)}</h2>${spec.sub ? `<div class="sub">${spec.sub}</div>` : ''}</div>
       <button class="iconbtn" data-close aria-label="Close">${ICONS.close}</button></header>
       <div class="body"></div></div>`);
@@ -882,7 +891,6 @@ export class UI {
       return true;
     }
     if (this.modalOpen) {
-      if (this.game.mode === 'title') return false;
       this.closeModal();
       return true;
     }
@@ -967,6 +975,21 @@ export class UI {
         }),
       ],
     });
+  }
+
+  // Strategy guide -----------------------------------------------------------------------
+
+  openGuide(): void {
+    const body = buildGuide();
+    const m = this.openModal({
+      title: 'Strategy guide',
+      sub: 'How Terraville cities work, and how to grow one. The clock stops while this is open.',
+      body,
+      width: 960,
+    });
+    const scroller = $(m, '.body');
+    scroller.classList.add('guide-scroll');
+    trackGuide(body, scroller);
   }
 
   // Challenges ---------------------------------------------------------------------------

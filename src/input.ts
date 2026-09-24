@@ -205,7 +205,11 @@ export class Input {
     const g = this.game;
     const target = e.target as HTMLElement | null;
     if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')) return;
-    if (g.mode === 'title') return;
+    // Dialogs opened from the title screen close with Escape too.
+    if (g.mode === 'title') {
+      if (e.key === 'Escape') g.ui.closeTop();
+      return;
+    }
     const k = e.key;
     const mod = e.ctrlKey || e.metaKey;
     if (mod && (k === 'z' || k === 'Z')) {
