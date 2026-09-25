@@ -210,6 +210,9 @@ export class UI {
         </div>
       </div>
       <div class="panel menu">
+        <button data-act="undo" id="btnUndo" title="Undo (Ctrl+Z)" aria-label="Undo">${ICONS.undo}</button>
+        <button data-act="redo" id="btnRedo" class="hide-sm" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">${ICONS.redo}</button>
+        <span class="menu-sep" aria-hidden="true"></span>
         <button data-act="budget" title="Budget">${ICONS.budget}<span class="label">Budget</span></button>
         <button data-act="charts" title="History">${ICONS.charts}<span class="label">History</span></button>
         <button data-act="report" class="hide-sm" title="City report">${ICONS.report}<span class="label">Report</span></button>
@@ -230,6 +233,8 @@ export class UI {
       if (!b) return;
       this.game.audio.play('click');
       switch (b.dataset.act) {
+        case 'undo': return this.game.undo();
+        case 'redo': return this.game.redo();
         case 'budget': return this.openBudget();
         case 'charts': return this.openCharts();
         case 'report': return this.openReport();
@@ -239,6 +244,7 @@ export class UI {
       }
     };
     this.syncSpeed();
+    this.syncUndo();
   }
 
   private buildTopbarEditor(): void {

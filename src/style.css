@@ -197,6 +197,8 @@ button.sign:hover { background: var(--sign-hi); box-shadow: inset 0 0 0 2px var(
 .menu button:hover { background: var(--panel-3); color: var(--text); }
 .menu button[aria-expanded="true"] { background: var(--panel-3); color: var(--text); border-color: var(--line-2); }
 .menu svg, .speed svg, .iconbtn svg { width: 18px; height: 18px; }
+.menu-sep { width: 1px; align-self: stretch; margin: 6px 2px; background: var(--line); }
+.menu button:disabled { opacity: 0.35; cursor: default; }
 .menu .primary { background: var(--sign); color: #fff; }
 .menu .primary:hover { background: var(--sign-hi); color: #fff; }
 

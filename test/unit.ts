@@ -168,6 +168,41 @@ await test('separate grids do not share power, and a line across a road joins th
   assert.equal(sim.gridAt(3 * w.w + 42)!.demand, 18);
 });
 
+await test('area undo puts back only what the action touched', () => {
+  const w = flat();
+  const other = w.place('res', 20, 20);
+  // A road: the area is exactly the road.
+  let full = w.snapshot();
+  applyLine(w, ROAD, planLine(w, ROAD, linePath(2, 5, 12, 5)));
+  const roadBox = w.changedArea(full)!;
+  assert.deepEqual({ ...roadBox }, { x0: 2, y0: 5, x1: 12, y1: 5 });
+  const roadUndo = w.areaSnapshot(roadBox, full);
+  // The city grows elsewhere, then the road is undone: the growth stays.
+  w.setLevel(other, 3);
+  assert.equal(w.restoreArea(roadUndo), true);
+  for (let x = 2; x <= 12; x++) assert.equal(w.net[5 * w.w + x] & ROAD, 0);
+  assert.equal(w.buildings.get(other.id)!.level, 3);
+  // Bulldozing one tile of a lot takes the whole lot, so the area grows to fit it.
+  const lot = w.place('res', 5, 8);
+  w.setLevel(lot, 2);
+  full = w.snapshot();
+  w.bulldoze(6, 9);
+  const lotBox = w.changedArea(full)!;
+  assert.deepEqual({ ...lotBox }, { x0: 5, y0: 8, x1: 7, y1: 10 });
+  const back = w.areaSnapshot(lotBox, full);
+  const redo = w.areaSnapshot(lotBox);
+  assert.equal(w.restoreArea(back), true);
+  const again = w.buildings.get(lot.id)!;
+  assert.equal(again.level, 2);
+  assert.equal(w.occ[9 * w.w + 6], lot.id);
+  // Redo takes it away again, and nothing changed means no area at all.
+  assert.equal(w.restoreArea(redo), true);
+  assert.equal(w.buildings.has(lot.id), false);
+  assert.equal(w.changedArea(w.snapshot()), null);
+  // A snapshot of another map is refused.
+  assert.equal(flat(10, 10).restoreArea(back), false);
+});
+
 await test('commutes need a road to a destination', () => {
   const w = flat();
   const r = w.place('res', 2, 2);

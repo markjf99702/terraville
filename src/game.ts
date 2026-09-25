@@ -15,14 +15,24 @@ import {
   planTrees, planZones, rectTiles,
 } from './tools';
 import type { UI } from './ui/ui';
-import { World, WorldSnapshot, newCityState } from './world';
+import { AreaSnapshot, Box, World, WorldSnapshot, newCityState } from './world';
 
 export type Mode = 'title' | 'editor' | 'city';
 
 interface UndoEntry {
-  snap: WorldSnapshot;
+  /** The whole map in the editor. In a city, just the area the action touched. */
+  snap: WorldSnapshot | AreaSnapshot;
   cost: number;
+  /** The month of the action, to decide whether undoing it still refunds the cost. */
+  month: number;
+  /** Still a whole-map copy, waiting to be cut down to the area that changed. */
+  open?: boolean;
+  /** For a brush stroke: the area it has touched so far (null for none yet). */
+  within?: Box | null;
 }
+
+/** Undo refunds an action's cost for this many game months after it (always while paused). */
+const REFUND_MONTHS = 3;
 
 /** Simulated weeks per real second at each speed. */
 export const SPEEDS = [0, 0.7, 1.8, 5, 14];
@@ -263,9 +273,6 @@ export class Game {
           this.renderer.vehicles.addDust(e.x, e.y);
           break;
         case 'month':
-          // Undo reaches back to the start of the month; after that the
-          // simulation has moved on and undo would rewrite history.
-          if (this.canUndo() || this.canRedo()) this.clearUndo();
           this.minimap.markDirty();
           this.renderer.refreshOverlay();
           this.ui.onMonth();
@@ -420,6 +427,8 @@ export class Game {
 
   frame(dt: number): void {
     const r = this.renderer;
+    // Pin down what the last action changed before the simulation moves on.
+    if (this.mode === 'city' && !this.brushOn) this.sealUndo();
     const running = this.mode === 'city' && !!this.sim && this.speed > 0 && !this.ui.modalOpen;
     if (running && this.sim) {
       this.acc += dt * SPEEDS[this.speed];
@@ -651,6 +660,7 @@ export class Game {
       case 'brush':
         if (!inside) return;
         this.pushUndo();
+        if (this.mode === 'city') this.undoStack[this.undoStack.length - 1].within = null;
         this.brushOn = true;
         this.brushAt = { x: fx, y: fy };
         this.brushSpent = 0;
@@ -738,6 +748,7 @@ export class Game {
       city.funds -= plan.cost;
       this.setUndoCost(plan.cost);
     }
+    this.sealUndo();
     if (this.sim) this.sim.powerDirty = true;
     this.minimap.markDirty();
     this.audio.play(t.id === 'bulldoze' ? 'bulldoze' : t.kind === 'zone' ? 'zone' : 'build');
@@ -765,6 +776,13 @@ export class Game {
       protectBuilt: city,
     });
     if (city) {
+      const top = this.undoStack[this.undoStack.length - 1];
+      if (top?.open) {
+        const b = top.within;
+        top.within = b
+          ? { x0: Math.min(b.x0, res.x0), y0: Math.min(b.y0, res.y0), x1: Math.max(b.x1, res.x1), y1: Math.max(b.y1, res.y1) }
+          : { x0: res.x0, y0: res.y0, x1: res.x1, y1: res.y1 };
+      }
       const cost = res.moved * GRADE_COST;
       if (cost > this.world.city.funds) {
         // Too dear: put the ground back and stop.
@@ -794,10 +812,41 @@ export class Game {
 
   pushUndo(): void {
     if (!this.world) return;
-    this.undoStack.push({ snap: this.world.snapshot(), cost: 0 });
+    this.sealUndo();
+    this.undoStack.push({
+      snap: this.world.snapshot(), cost: 0, month: this.world.city.month, open: this.mode === 'city',
+    });
     if (this.undoStack.length > (this.mode === 'editor' ? 40 : 25)) this.undoStack.shift();
     this.redoStack = [];
     this.ui?.syncUndo();
+  }
+
+  /**
+   * Cut the newest entry down to the area its action changed. In a city this
+   * has to happen before the simulation moves on, so that undo later puts back
+   * only that area and leaves growth everywhere else alone.
+   */
+  private sealUndo(): void {
+    const top = this.undoStack[this.undoStack.length - 1];
+    if (!top?.open) return;
+    top.open = false;
+    const full = top.snap as WorldSnapshot;
+    const box = top.within === null ? null : this.world.changedArea(full, top.within);
+    if (!box) {
+      this.undoStack.pop();
+      this.ui?.syncUndo();
+      return;
+    }
+    top.snap = this.world.areaSnapshot(box, full);
+  }
+
+  private refundable(e: UndoEntry): boolean {
+    return this.world.city.month - e.month <= REFUND_MONTHS;
+  }
+
+  /** A copy of what is there now, in the same shape as `s`, for the opposite stack. */
+  private copyLike(s: WorldSnapshot | AreaSnapshot): WorldSnapshot | AreaSnapshot {
+    return 'x0' in s ? this.world.areaSnapshot(s) : this.world.snapshot();
   }
 
   /** Record what the most recent undoable action cost, so undo refunds exactly that. */
@@ -807,11 +856,23 @@ export class Game {
   }
 
   undo(): void {
+    this.sealUndo();
     const e = this.undoStack.pop();
-    if (!e) return;
-    this.redoStack.push({ snap: this.world.snapshot(), cost: e.cost });
-    this.restore(e.snap);
-    if (this.mode === 'city') this.world.city.funds += e.cost;
+    if (!e) {
+      this.ui.toast('Nothing to undo.');
+      return;
+    }
+    const city = this.mode === 'city';
+    // Money back only for a quick change of mind, or undo would be free rental.
+    const refund = city && this.refundable(e) ? e.cost : 0;
+    const back = this.copyLike(e.snap);
+    if (!this.restore(e.snap)) return;
+    this.redoStack.push({ snap: back, cost: refund, month: this.world.city.month });
+    this.ui.syncUndo();
+    if (city) {
+      this.world.city.funds += refund;
+      if (e.cost >= 1 && !refund) this.ui.toast(`Undone. It cost ${fmtMoney(e.cost)}, which is only refunded within ${REFUND_MONTHS} months.`);
+    }
     this.ui.onFunds();
   }
 
@@ -823,24 +884,25 @@ export class Game {
       this.ui.toast('Not enough money to redo that.', 'warn');
       return;
     }
-    this.undoStack.push({ snap: this.world.snapshot(), cost: e.cost });
-    this.restore(e.snap);
+    const back = this.copyLike(e.snap);
+    if (!this.restore(e.snap)) return;
+    this.undoStack.push({ snap: back, cost: e.cost, month: this.world.city.month });
+    this.ui.syncUndo();
     if (this.mode === 'city') this.world.city.funds -= e.cost;
     this.ui.onFunds();
   }
 
-  private restore(s: WorldSnapshot): void {
-    if (!this.world.restore(s)) {
+  private restore(s: WorldSnapshot | AreaSnapshot): boolean {
+    if (!('x0' in s ? this.world.restoreArea(s) : this.world.restore(s))) {
       this.clearUndo();
-      return;
+      return false;
     }
     if (this.sim) {
       this.sim.powerDirty = true;
       this.sim.refreshTerrainAppeal();
     }
     this.minimap.markDirty();
-    this.ui.syncUndo();
-    this.ui.onFunds();
+    return true;
   }
 
   canUndo(): boolean {

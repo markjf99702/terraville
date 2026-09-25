@@ -452,6 +452,132 @@ export class World {
     this.dirtyAll(true);
     return true;
   }
+
+  // ---- area undo ------------------------------------------------------------
+  // In a city the simulation keeps changing the map, so undo copies back only
+  // the rectangle an action touched and leaves growth elsewhere alone.
+
+  /**
+   * The rectangle of tiles that differ from a full snapshot, grown so no
+   * building (then or now) straddles its edge. Null if nothing changed.
+   */
+  changedArea(s: WorldSnapshot, within?: Box): Box | null {
+    const { w } = this;
+    const bx0 = within ? Math.max(0, within.x0) : 0;
+    const by0 = within ? Math.max(0, within.y0) : 0;
+    const bx1 = within ? Math.min(w - 1, within.x1) : w - 1;
+    const by1 = within ? Math.min(this.h - 1, within.y1) : this.h - 1;
+    let x0 = w, y0 = this.h, x1 = -1, y1 = -1;
+    for (let y = by0; y <= by1; y++) {
+      for (let x = bx0; x <= bx1; x++) {
+        const i = y * w + x;
+        if (
+          Math.abs(this.height[i] - s.height[i]) > 1e-4 || this.water[i] !== s.water[i] || this.trees[i] !== s.trees[i] ||
+          this.net[i] !== s.net[i] || this.occ[i] !== s.occ[i] || this.rubble[i] !== s.rubble[i]
+        ) {
+          if (x < x0) x0 = x;
+          if (x > x1) x1 = x;
+          if (y < y0) y0 = y;
+          if (y > y1) y1 = y;
+        }
+      }
+    }
+    if (x1 < 0) return null;
+    const box = { x0, y0, x1, y1 };
+    const all = [...this.buildings.values(), ...s.buildings];
+    for (let grown = true; grown;) {
+      grown = false;
+      for (const b of all) {
+        if (!overlaps(b, box)) continue;
+        if (b.x < box.x0) { box.x0 = b.x; grown = true; }
+        if (b.y < box.y0) { box.y0 = b.y; grown = true; }
+        if (b.x + b.size - 1 > box.x1) { box.x1 = b.x + b.size - 1; grown = true; }
+        if (b.y + b.size - 1 > box.y1) { box.y1 = b.y + b.size - 1; grown = true; }
+      }
+    }
+    return box;
+  }
+
+  /** Copy one rectangle out of a full snapshot, or out of the map as it is now. */
+  areaSnapshot(box: Box, from: WorldSnapshot | World = this): AreaSnapshot {
+    const { x0, y0, x1, y1 } = box;
+    const bw = x1 - x0 + 1;
+    const len = bw * (y1 - y0 + 1);
+    const a: AreaSnapshot = {
+      n: this.n, x0, y0, x1, y1,
+      height: new Float32Array(len), water: new Uint8Array(len), trees: new Uint8Array(len),
+      net: new Uint8Array(len), occ: new Int32Array(len), rubble: new Uint8Array(len),
+      buildings: [],
+    };
+    for (let y = y0; y <= y1; y++) {
+      const src = y * this.w + x0;
+      const dst = (y - y0) * bw;
+      a.height.set(from.height.subarray(src, src + bw), dst);
+      a.water.set(from.water.subarray(src, src + bw), dst);
+      a.trees.set(from.trees.subarray(src, src + bw), dst);
+      a.net.set(from.net.subarray(src, src + bw), dst);
+      a.occ.set(from.occ.subarray(src, src + bw), dst);
+      a.rubble.set(from.rubble.subarray(src, src + bw), dst);
+    }
+    const list = from instanceof World ? [...from.buildings.values()] : from.buildings;
+    for (const b of list) if (overlaps(b, box)) a.buildings.push({ ...b });
+    return a;
+  }
+
+  /** Put one rectangle back as it was. Returns false for a snapshot of another map. */
+  restoreArea(a: AreaSnapshot): boolean {
+    if (a.n !== this.n) return false;
+    for (const b of [...this.buildings.values()]) {
+      if (!overlaps(b, a)) continue;
+      for (let dy = 0; dy < b.size; dy++) {
+        for (let dx = 0; dx < b.size; dx++) {
+          const i = (b.y + dy) * this.w + b.x + dx;
+          if (this.occ[i] === b.id) this.occ[i] = 0;
+        }
+      }
+      this.buildings.delete(b.id);
+    }
+    const bw = a.x1 - a.x0 + 1;
+    for (let y = a.y0; y <= a.y1; y++) {
+      const dst = y * this.w + a.x0;
+      const src = (y - a.y0) * bw;
+      this.height.set(a.height.subarray(src, src + bw), dst);
+      this.water.set(a.water.subarray(src, src + bw), dst);
+      this.trees.set(a.trees.subarray(src, src + bw), dst);
+      this.net.set(a.net.subarray(src, src + bw), dst);
+      this.occ.set(a.occ.subarray(src, src + bw), dst);
+      this.rubble.set(a.rubble.subarray(src, src + bw), dst);
+    }
+    for (const b of a.buildings) {
+      this.buildings.set(b.id, { ...b });
+      if (b.id >= this.nextId) this.nextId = b.id + 1;
+    }
+    this.dirty(a.x0 - 1, a.y0 - 1, a.x1 + 1, a.y1 + 1, true);
+    return true;
+  }
+}
+
+export interface Box {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+function overlaps(b: Building, r: Box): boolean {
+  return b.x <= r.x1 && b.y <= r.y1 && b.x + b.size - 1 >= r.x0 && b.y + b.size - 1 >= r.y0;
+}
+
+/** One rectangle of the map and the buildings inside it, for undo in a city. */
+export interface AreaSnapshot extends Box {
+  n: number;
+  height: Float32Array;
+  water: Uint8Array;
+  trees: Uint8Array;
+  net: Uint8Array;
+  occ: Int32Array;
+  rubble: Uint8Array;
+  buildings: Building[];
 }
 
 export interface WorldSnapshot {

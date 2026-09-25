@@ -16,13 +16,14 @@ Open `index.html` in any current browser. It is a single self-contained file: no
 **City**
 - The classic loop: residential, commercial and industrial zones grow from vacant lots to cottages, main streets, factories and towers when they have power, road access, a workable commute and demand on the RCI meter.
 - Roads, rail (trips by rail add no car traffic) and power lines, drawn by dragging. Straight bridges over water. Zones pass power to neighbours, as in the original.
-- Coal, nuclear, wind and solar power, each with a capacity in MW. Brownouts cut off the far end of the grid first.
+- Coal, nuclear, wind and solar power, each with a capacity in MW. Each connected grid has to power itself, and brownouts cut off its far end first. Inspect and the Power grid layer show which grid is short.
 - Police, fire, schools, hospitals, parks, a stadium, a seaport and an airport. Big cities stall without the last three, like they used to.
 - Pollution, crime, land value, traffic, density and service coverage maps, viewable as overlays.
 - Monthly budget with tax rate, funding sliders for police, fire and roads (underfunded roads crumble), and loans.
 - Fires that spread, floods on low shores, tornadoes, earthquakes, a monster drawn to pollution, and nuclear meltdowns. Toggle random disasters or set one off yourself.
 - History charts, a city report with approval and residents' top worries, and a news ticker that can jump to the scene.
 - Terraforming in the city: level hillsides for a price.
+- Undo and redo for the last 25 actions, even while the clock runs. Undo puts back only the area an action touched, so the rest of the city keeps growing. The cost is refunded if you undo within three game months.
 
 **Challenges**, after the original's scenarios, each a ready-made city with a goal and a deadline:
 - *Boomtown* (1900): grow an empty coast to 12,000 residents in 15 years.
