@@ -56,6 +56,7 @@ export function buildShell(root: HTMLElement): { map: HTMLCanvasElement; minimap
     <div id="tooltip" class="panel" hidden></div>
     <div id="cursorTip" hidden></div>
     <div id="toast" class="panel hide" role="status" aria-live="polite"></div>
+    <button id="pausedPill" class="panel" hidden title="Resume (Space)">${ICONS.pause}<b>Paused</b><span>Space to resume</span></button>
     <div id="dropRoot"></div>
     <div id="modalRoot" hidden></div>
     <section id="title" hidden></section>`;
@@ -99,6 +100,10 @@ export class UI {
       this.closeDropdown();
     });
     window.addEventListener('resize', () => this.closeDropdown());
+    $(root, '#pausedPill').onclick = () => {
+      this.game.togglePause();
+      this.game.audio.play('click');
+    };
     try {
       this.guideDismissed = localStorage.getItem('terraville.guide') === 'done';
     } catch {
@@ -188,7 +193,7 @@ export class UI {
     top.innerHTML = `
       <button class="sign" id="citySign" aria-label="City report"><b id="signName"></b><small id="signSub"></small></button>
       <div class="panel stat-strip">
-        <div class="stat"><span class="label">Date</span><span class="value" id="stDate"></span></div>
+        <div class="stat" id="stDateBox"><span class="label" id="stDateLabel">Date</span><span class="value" id="stDate"></span></div>
         <div class="stat" id="stFundsBox"><span class="label">Funds</span><span class="value" id="stFunds"></span><span class="delta" id="stDelta"></span></div>
         <div class="rci" title="Demand for residential, commercial and industrial land">
           <div class="bar"><div class="fill r" id="rciR"></div></div>
@@ -267,6 +272,21 @@ export class UI {
     for (const b of this.root.querySelectorAll<HTMLElement>('[data-speed]')) {
       b.setAttribute('aria-pressed', String(Number(b.dataset.speed) === this.game.speed));
     }
+    // A lit pause button reads as "playing" to anyone used to media players,
+    // so say it in words where the date is.
+    const paused = this.game.speed === 0;
+    this.root.querySelector('#stDateBox')?.classList.toggle('paused', paused);
+    const label = this.root.querySelector('#stDateLabel');
+    if (label) label.textContent = paused ? 'Paused' : 'Date';
+    this.syncPausedPill();
+  }
+
+  /** The map badge: only in a city, with no dialog or toast in its place. */
+  private syncPausedPill(): void {
+    const g = this.game;
+    const show = g.mode === 'city' && g.speed === 0 && !this.modalOpen && this.toastTimer <= 0;
+    const pill = $(this.root, '#pausedPill');
+    if (pill.hidden === show) pill.hidden = !show;
   }
 
   syncUndo(): void {
@@ -321,6 +341,7 @@ export class UI {
       this.toastTimer -= dt;
       if (this.toastTimer <= 0) $(this.root, '#toast').classList.add('hide');
     }
+    this.syncPausedPill();
     this.guideTimer -= dt;
     if (this.guideTimer <= 0) {
       this.guideTimer = 1;

@@ -432,6 +432,12 @@ export class Game {
       if (this.acc > 1) this.acc = 0;
       r.stepFrac = this.acc;
     }
+    // Keep the grid current between weekly steps, and while paused, so a new
+    // plant or line lights up the zones it reaches as soon as it is built.
+    if (this.mode === 'city' && this.sim?.powerDirty) {
+      this.sim.computePower();
+      if (r.overlay === 'power') r.refreshOverlay();
+    }
     r.running = running;
     if (this.mode === 'title') {
       const c = r.cam;

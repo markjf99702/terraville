@@ -227,13 +227,23 @@ export class Sim {
 
   // ---- power --------------------------------------------------------------
 
+  private powerComp?: Int32Array;
+  private powerQueue?: Int32Array;
+
   computePower(): void {
     const world = this.world;
     const { w, h, n } = world;
     const powered = world.powered;
     powered.fill(0);
-    const comp = new Int32Array(n);
-    const queue = new Int32Array(n);
+    // Reused between calls: the game recomputes power every frame something
+    // changes, not only on the weekly step.
+    if (!this.powerComp || this.powerComp.length !== n) {
+      this.powerComp = new Int32Array(n);
+      this.powerQueue = new Int32Array(n);
+    }
+    const comp = this.powerComp;
+    const queue = this.powerQueue!;
+    comp.fill(0);
     let compId = 0;
     let supplyTotal = 0;
     let demandTotal = 0;
