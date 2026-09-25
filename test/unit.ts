@@ -143,6 +143,31 @@ await test('a plant powers what it can and the far end browns out', () => {
   assert.deepEqual(zones.map((z) => z.powered), [true, true, false]);
 });
 
+await test('separate grids do not share power, and a line across a road joins them', () => {
+  const w = flat(60, 20);
+  w.place('wind', 1, 1); // grid A: 18 MW for three lots
+  const a = [w.place('res', 2, 0), w.place('res', 5, 0), w.place('res', 8, 0)];
+  w.place('wind', 40, 1); // grid B: 18 MW for one lot
+  const b = w.place('res', 41, 0);
+  applyLine(w, ROAD, planLine(w, ROAD, linePath(0, 3, 50, 3)));
+  const sim = new Sim(w);
+  sim.computePower();
+  // City-wide supply covers demand, yet grid A is short.
+  assert.equal(sim.stats.powerSupply, 36);
+  assert.equal(sim.stats.powerDemand, 36);
+  assert.equal(sim.stats.powerGrids, 2);
+  assert.equal(sim.stats.gridsShort, 1);
+  assert.equal(a[2].powered, false);
+  assert.equal(b.powered, true);
+  assert.match(sim.describe(9, 1).rows.find((r) => r[0] === 'Power')![1], /overloaded/);
+  // A lot across the road, fed by one tile of line over the road, joins grid B.
+  const c = w.place('res', 41, 4);
+  applyLine(w, POWER, planLine(w, POWER, linePath(42, 3, 42, 3)));
+  sim.computePower();
+  assert.equal(c.powered, true);
+  assert.equal(sim.gridAt(3 * w.w + 42)!.demand, 18);
+});
+
 await test('commutes need a road to a destination', () => {
   const w = flat();
   const r = w.place('res', 2, 2);

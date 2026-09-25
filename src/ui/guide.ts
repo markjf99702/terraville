@@ -133,7 +133,8 @@ function sections(): Section[] {
           <li>Every tile of every building draws 1 MW, so a 3×3 lot needs 9 MW even while it is still vacant.</li>
           <li>Power flows through power lines and through buildings that touch, except parks. Roads and rail do not carry it. You can string a power line along an existing road.</li>
           <li>The grid updates the moment you build, even while paused. A flashing bolt on a lot means no power reaches it yet.</li>
-          <li>When demand outruns supply, the lots furthest from the plants go dark first. The news ticker warns about brownouts.</li>
+          <li>When a grid needs more than its plants make, the lots furthest from its plants go dark first. The news ticker warns about brownouts.</li>
+          <li>Plants only share power within one connected grid. Two plants on grids that never touch can leave one short while the other has plenty spare, even when the Report's city-wide total looks fine. The Power grid layer shows overloaded grids in orange, and Inspect on any lot or line gives its grid's load.</li>
         </ul>
         ${tip('Build the next plant when demand reaches about 80% of supply. The Report shows both numbers.')}`,
     },

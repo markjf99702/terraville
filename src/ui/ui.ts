@@ -600,7 +600,11 @@ export class UI {
     }
     leg.style.flexWrap = '';
     if (o === 'power') {
-      leg.innerHTML = `<i class="swatch" style="width:10px;height:10px;border-radius:3px;background:#f2c94c"></i>Powered <i class="swatch" style="width:10px;height:10px;border-radius:3px;background:#e34948;margin-left:8px"></i>No power`;
+      const sw = (c: string, label: string, title: string) => `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:8px" title="${title}"><i style="width:10px;height:10px;border-radius:3px;display:inline-block;background:${c}"></i>${label}</span>`;
+      leg.style.flexWrap = 'wrap';
+      leg.innerHTML = sw('#f2c94c', 'Powered', 'Buildings and lines with power') +
+        sw('#f08a3c', 'Grid overloaded', 'Connected, but this grid needs more power than its plants make') +
+        sw('#e34948', 'Not connected', 'No power plant reaches this');
       return;
     }
     leg.innerHTML = `<span>${def.low}</span><span class="ramp" style="background:linear-gradient(90deg, ${def.color}33, ${def.color})"></span><span>${def.high}</span>`;
@@ -1256,6 +1260,7 @@ export class UI {
         </dl>
         <dl class="kv">
           <dt>Power</dt><dd>${s.powerDemand.toLocaleString()} of ${s.powerSupply.toLocaleString()} MW</dd>
+          <dt>Power grids</dt><dd>${s.powerGrids}${s.gridsShort ? `, <span style="color:var(--critical-ink)">${s.gridsShort} overloaded</span>` : ''}</dd>
           <dt>Unpowered zones</dt><dd>${s.unpowered}</dd>
           <dt>Average land value</dt><dd>${money(s.avgLandValue * 40)}/acre</dd>
           <dt>Fires burning</dt><dd>${s.fires}</dd>

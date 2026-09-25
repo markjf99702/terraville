@@ -776,7 +776,9 @@ export class Renderer {
         if (world.powered[i]) {
           d[o] = 242; d[o + 1] = 201; d[o + 2] = 76; d[o + 3] = 200;
         } else if (id && world.buildings.get(id)?.kind !== 'park') {
-          d[o] = 227; d[o + 1] = 73; d[o + 2] = 72; d[o + 3] = 220;
+          // Connected to a plant but its grid is short, or not connected at all.
+          if (this.sim?.gridAt(i)) { d[o] = 240; d[o + 1] = 138; d[o + 2] = 60; d[o + 3] = 220; }
+          else { d[o] = 227; d[o + 1] = 73; d[o + 2] = 72; d[o + 3] = 220; }
         } else if (world.net[i] & 4) {
           d[o] = 120; d[o + 1] = 110; d[o + 2] = 90; d[o + 3] = 200;
         }

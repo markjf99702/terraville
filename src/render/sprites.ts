@@ -408,16 +408,17 @@ export function drawNet(dc: DC, tx: number, ty: number): void {
   if (v & ROAD) drawRoad(dc, tx, ty, connMask(world, tx, ty, (j) => (world.net[j] & ROAD) !== 0), wet);
   if (v & RAIL) drawRail(dc, tx, ty, connMask(world, tx, ty, (j) => (world.net[j] & RAIL) !== 0), wet, (v & ROAD) !== 0);
   if (v & POWER) {
-    // Standalone lines reach into the buildings they feed; lines strung
-    // along a road just follow the road.
-    const alone = !(v & (ROAD | RAIL));
-    const m = connMask(world, tx, ty, (j) => {
-      if (world.net[j] & POWER) return true;
-      if (!alone) return false;
+    // Lines reach into the buildings they feed. A line strung along a road
+    // just follows the road, but where it only crosses one, or ends on it,
+    // it is drawn into the buildings on either side, or it would vanish.
+    const feeds = (j: number) => {
       const id = world.occ[j];
       return id !== 0 && world.buildings.get(id)?.kind !== 'park';
-    });
-    drawPower(dc, tx, ty, m, (v & (ROAD | RAIL)) !== 0, wet);
+    };
+    const onOther = (v & (ROAD | RAIL)) !== 0;
+    let m = connMask(world, tx, ty, (j) => (world.net[j] & POWER) !== 0);
+    if (!onOther || bits(m) < 2) m |= connMask(world, tx, ty, feeds);
+    drawPower(dc, tx, ty, m, onOther, wet);
   }
 }
 
@@ -614,18 +615,28 @@ function drawPower(dc: DC, tx: number, ty: number, m: number, onOther: boolean, 
   const Y = ty * L;
   const c = L / 2;
   const off = L * 0.07;
-  ctx.strokeStyle = 'rgba(40,34,30,0.85)';
-  ctx.lineWidth = Math.max(0.7, L * 0.02);
-  ctx.beginPath();
-  const line = (x0: number, y0: number, x1: number, y1: number) => {
-    ctx.moveTo(X + x0, Y + y0);
-    ctx.lineTo(X + x1, Y + y1);
+  const wires = () => {
+    ctx.beginPath();
+    const line = (x0: number, y0: number, x1: number, y1: number) => {
+      ctx.moveTo(X + x0, Y + y0);
+      ctx.lineTo(X + x1, Y + y1);
+    };
+    if (m & N) { line(c - off, c, c - off, 0); line(c + off, c, c + off, 0); }
+    if (m & S) { line(c - off, c, c - off, L); line(c + off, c, c + off, L); }
+    if (m & W) { line(c, c - off, 0, c - off); line(c, c + off, 0, c + off); }
+    if (m & E) { line(c, c - off, L, c - off); line(c, c + off, L, c + off); }
+    ctx.stroke();
   };
-  if (m & N) { line(c - off, c, c - off, 0); line(c + off, c, c + off, 0); }
-  if (m & S) { line(c - off, c, c - off, L); line(c + off, c, c + off, L); }
-  if (m & W) { line(c, c - off, 0, c - off); line(c, c + off, 0, c + off); }
-  if (m & E) { line(c, c - off, L, c - off); line(c, c + off, L, c + off); }
-  ctx.stroke();
+  const w = Math.max(0.7, L * 0.02);
+  if (onOther) {
+    // Dark wire disappears on asphalt: give it a pale casing there.
+    ctx.strokeStyle = 'rgba(236,228,205,0.75)';
+    ctx.lineWidth = w + Math.max(1, L * 0.035);
+    wires();
+  }
+  ctx.strokeStyle = 'rgba(40,34,30,0.85)';
+  ctx.lineWidth = w;
+  wires();
   if (onOther) return;
   const p = Math.max(1.5, L * 0.1);
   if (wet) {

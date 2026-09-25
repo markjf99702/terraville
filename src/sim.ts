@@ -47,6 +47,9 @@ export interface Stats {
   unemployment: number;
   powerSupply: number;
   powerDemand: number;
+  /** Separate grids with at least one plant, and how many of them are short. */
+  powerGrids: number;
+  gridsShort: number;
   zones: { res: number; com: number; ind: number };
   vacant: { res: number; com: number; ind: number };
   unpowered: number;
@@ -144,7 +147,7 @@ export class Sim {
   private blankStats(): Stats {
     return {
       residents: 0, comJobs: 0, indJobs: 0, workers: 0, unemployment: 0,
-      powerSupply: 0, powerDemand: 0,
+      powerSupply: 0, powerDemand: 0, powerGrids: 0, gridsShort: 0,
       zones: { res: 0, com: 0, ind: 0 }, vacant: { res: 0, com: 0, ind: 0 },
       unpowered: 0, noRoad: 0, noTrip: 0,
       avgLandValue: 0, avgPollution: 0, avgCrime: 0, avgTraffic: 0, fires: 0,
@@ -229,6 +232,14 @@ export class Sim {
 
   private powerComp?: Int32Array;
   private powerQueue?: Int32Array;
+  /** Supply and demand of each grid, indexed by its component id minus one. */
+  grids: PowerGrid[] = [];
+
+  /** The grid a tile belongs to, or null if no plant reaches it. */
+  gridAt(i: number): PowerGrid | null {
+    const c = this.powerComp ? this.powerComp[i] : 0;
+    return c ? this.grids[c - 1] : null;
+  }
 
   computePower(): void {
     const world = this.world;
@@ -246,6 +257,7 @@ export class Sim {
     comp.fill(0);
     let compId = 0;
     let supplyTotal = 0;
+    this.grids = [];
     let demandTotal = 0;
     for (const b of world.buildings.values()) {
       b.powered = false;
@@ -298,13 +310,16 @@ export class Sim {
       }
       supplyTotal += supply;
       let left = supply;
+      let demand = 0;
       for (const b of order) {
         const need = b.size * b.size;
+        demand += need;
         if (left >= need) {
           b.powered = true;
           left -= need;
         }
       }
+      this.grids.push({ supply, demand });
       // Line tiles light up on the overlay if the component has any supply.
       if (supply > 0) {
         for (let k = 0; k < tail; k++) {
@@ -321,6 +336,8 @@ export class Sim {
     }
     this.stats.powerSupply = supplyTotal;
     this.stats.powerDemand = demandTotal;
+    this.stats.powerGrids = this.grids.length;
+    this.stats.gridsShort = this.grids.filter((g) => g.demand > g.supply).length;
     this.powerDirty = false;
   }
 
@@ -873,10 +890,16 @@ export class Sim {
     const month = city.month;
     if (zones > 0 && s.powerSupply === 0) {
       this.say('noplant', 'Zones are waiting for electricity. Build a power plant and connect it.', 'warn', undefined, 4);
-    } else if (s.unpowered > 0 && s.powerDemand > s.powerSupply) {
-      this.say('brownout', `Brownouts: demand is ${s.powerDemand} MW but plants supply ${s.powerSupply} MW.`, 'warn', this.findUnpowered(), 6);
+    } else if (s.gridsShort > 0) {
+      // Judge each grid on its own: two plants only share if their grids join.
+      let worst = this.grids[0];
+      for (const g of this.grids) if (g.demand - g.supply > worst.demand - worst.supply) worst = g;
+      const text = this.grids.length > 1
+        ? `Brownouts: one of your ${this.grids.length} separate power grids needs ${worst.demand} MW but its plants make ${worst.supply} MW. Join it to a grid with power to spare, or build a plant on it.`
+        : `Brownouts: the grid needs ${worst.demand} MW but the plants make ${worst.supply} MW. Build another plant.`;
+      this.say('brownout', text, 'warn', this.findUnpowered(true), 6);
     } else if (s.unpowered > 0 && month > 2) {
-      this.say('unconnected', `${s.unpowered} zone${s.unpowered > 1 ? 's are' : ' is'} not connected to the grid.`, 'warn', this.findUnpowered(), 8);
+      this.say('unconnected', `${s.unpowered} zone${s.unpowered > 1 ? 's are' : ' is'} not connected to a power plant.`, 'warn', this.findUnpowered(false), 8);
     }
     if (s.noRoad > 0 && month > 1) this.say('noroad', 'Some zones have no road access and cannot develop.', 'warn', undefined, 10);
     if (s.noTrip > 2 && month > 3) this.say('notrip', 'Commuters cannot reach work. Connect residential zones to commercial and industrial ones by road.', 'warn', undefined, 10);
@@ -908,9 +931,10 @@ export class Sim {
     }
   }
 
-  private findUnpowered(): { x: number; y: number } | undefined {
+  private findUnpowered(short: boolean): { x: number; y: number } | undefined {
     for (const b of this.world.buildings.values()) {
-      if (isZone(b.kind) && !b.powered) return { x: b.x + 1, y: b.y + 1 };
+      if (!isZone(b.kind) || b.powered) continue;
+      if (!!this.gridAt(b.y * this.world.w + b.x) === short) return { x: b.x + 1, y: b.y + 1 };
     }
     return undefined;
   }
@@ -954,10 +978,20 @@ export class Sim {
         else if (!b.trip) rows.push(['Problem', 'Commute too long']);
       }
       if (def.capacity) rows.push(['Output', `${def.capacity} MW`]);
-      rows.push(['Power', def.capacity ? 'Generating' : b.powered ? 'Connected' : b.kind === 'park' ? 'Not needed' : 'None']);
+      const grid = this.gridAt(b.y * world.w + b.x);
+      rows.push(['Power',
+        def.capacity ? 'Generating' :
+        b.kind === 'park' ? 'Not needed' :
+        b.powered ? 'Connected' :
+        grid ? 'None: its grid is overloaded' : 'None: no plant connected']);
+      if (grid) rows.push(['Its grid', gridLoad(grid)]);
       if (def.upkeep) rows.push(['Upkeep', `$${def.upkeep}/mo`]);
     } else if (world.water[i]) {
       title = net & ROAD ? 'Road bridge' : net & RAIL ? 'Rail bridge' : net & POWER ? 'Power line' : 'Water';
+      if (net & POWER) {
+        const grid = this.gridAt(i);
+        rows.push(['Its grid', grid ? gridLoad(grid) : 'No plant connected']);
+      }
     } else if (net) {
       const parts = [];
       if (net & ROAD) parts.push('Road');
@@ -965,6 +999,10 @@ export class Sim {
       if (net & POWER) parts.push('Power line');
       title = parts.join(' + ');
       if (net & ROAD) rows.push(['Traffic', level5(world.traffic[i])]);
+      if (net & POWER) {
+        const grid = this.gridAt(i);
+        rows.push(['Its grid', grid ? gridLoad(grid) : 'No plant connected']);
+      }
     } else if (world.rubble[i]) {
       title = 'Rubble';
     } else if (world.trees[i]) {
@@ -985,6 +1023,17 @@ export class Sim {
   dateLabel(): string {
     return dateLabel(this.world.city.month);
   }
+}
+
+export interface PowerGrid {
+  supply: number;
+  demand: number;
+}
+
+function gridLoad(g: PowerGrid): string {
+  return g.demand > g.supply
+    ? `Overloaded: needs ${g.demand.toLocaleString()} MW, makes ${g.supply.toLocaleString()}`
+    : `${g.demand.toLocaleString()} of ${g.supply.toLocaleString()} MW used`;
 }
 
 export function zoneTitle(k: 'res' | 'com' | 'ind', level: number): string {
