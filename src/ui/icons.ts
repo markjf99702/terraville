@@ -36,6 +36,7 @@ export const ICONS: Record<string, string> = {
   disaster: s('<path d="M12 3l9.5 17h-19z"/><path d="M12 10v4M12 17v.1"/>'),
   menu: s('<path d="M4 7h16M4 12h16M4 17h16"/>'),
   close: s('<path d="M6 6l12 12M18 6L6 18"/>'),
+  cloud: s('<path d="M7 18.5h10a4 4 0 0 0 .5-7.97A5.5 5.5 0 0 0 6.8 11 3.75 3.75 0 0 0 7 18.5z"/>'),
   undo: s('<path d="M9 7L4 12l5 5"/><path d="M4 12h11a5 5 0 0 1 0 10h-2"/>'),
   redo: s('<path d="M15 7l5 5-5 5"/><path d="M20 12H9a5 5 0 0 0 0 10h2"/>'),
   dice: s('<rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="9" cy="9" r="1" fill="currentColor"/><circle cx="15" cy="15" r="1" fill="currentColor"/><circle cx="15" cy="9" r="1" fill="currentColor"/><circle cx="9" cy="15" r="1" fill="currentColor"/>'),

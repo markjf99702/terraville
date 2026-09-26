@@ -1,4 +1,5 @@
 // Saving cities in the browser, plus portable text codes for sharing.
+import { deviceLabel } from './drive';
 import { SavedWorld, World } from './world';
 
 export interface SaveFile {
@@ -16,6 +17,8 @@ export interface SlotMeta {
   date: number;
   savedAt: number;
   mode: 'city' | 'editor';
+  /** Set on a city's own save, which its autosave keeps up to date. */
+  city?: string;
 }
 
 const INDEX = 'terraville.slots';
@@ -59,18 +62,61 @@ function writeIndex(list: SlotMeta[]): void {
 }
 
 export async function saveSlot(id: string, file: SaveFile, pop: number): Promise<boolean> {
+  try {
+    return saveCode(await encode(file), { id, name: file.world.city.name, pop, date: file.world.city.month, savedAt: Date.now(), mode: file.mode });
+  } catch {
+    return false;
+  }
+}
+
+/** Store an already encoded city code under a slot. */
+export function saveCode(code: string, meta: SlotMeta): boolean {
   const s = store();
   if (!s) return false;
   try {
-    const code = await encode(file);
-    s.setItem(PREFIX + id, code);
-    const list = listSlots().filter((m) => m.id !== id);
-    list.push({ id, name: file.world.city.name, pop, date: file.world.city.month, savedAt: Date.now(), mode: file.mode });
+    s.setItem(PREFIX + meta.id, code);
+    const list = listSlots().filter((m) => m.id !== meta.id);
+    list.push(meta);
     writeIndex(list);
     return true;
   } catch {
     return false;
   }
+}
+
+export function readCode(id: string): string | null {
+  try {
+    return store()?.getItem(PREFIX + id) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** The slot a city's autosave keeps up to date. */
+export function citySlot(city: string): string {
+  return `c-${city}`;
+}
+
+export function newCityId(): string {
+  const a = new Uint32Array(2);
+  crypto.getRandomValues(a);
+  return a[0].toString(36) + a[1].toString(36);
+}
+
+/** A lasting id for this browser, and a name for it, to tell its Drive copies apart. */
+export function thisDevice(): { id: string; label: string } {
+  const label = deviceLabel(navigator.userAgent, navigator.maxTouchPoints || 0);
+  const s = store();
+  let id = s?.getItem('terraville.device') ?? '';
+  if (!/^[a-z0-9]{6,20}$/.test(id)) {
+    id = newCityId();
+    try {
+      s?.setItem('terraville.device', id);
+    } catch {
+      /* a new id each visit, then */
+    }
+  }
+  return { id, label };
 }
 
 export async function loadSlot(id: string): Promise<SaveFile | null> {

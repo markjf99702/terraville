@@ -34,6 +34,8 @@ export interface History {
 }
 
 export interface CityState {
+  /** Stays the same for the life of a city, across saves and devices. */
+  id?: string;
   name: string;
   difficulty: Difficulty['id'];
   funds: number;

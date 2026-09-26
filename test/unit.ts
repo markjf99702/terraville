@@ -6,6 +6,7 @@ import { generateTerrain, DEFAULT_TERRAIN } from '../src/terrain';
 import { linePath, planLine, applyLine, planZones, applyBuildings } from '../src/tools';
 import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST } from '../src/defs';
 import { encode, decode } from '../src/save';
+import { Drive, GisOAuth2 } from '../src/drive';
 
 let passed = 0;
 async function test(name: string, fn: () => void | Promise<void>) {
@@ -299,6 +300,138 @@ await test('damaged saves are refused instead of half-loaded', () => {
   const back = World.deserialize(clash);
   assert.equal(back.buildings.size, 1);
   assert.ok(back.nextId > 99 || back.nextId > 1);
+});
+
+
+// ---- Google Drive, against a fake of the parts of the API Terraville uses ----
+
+interface FakeFile { id: string; name: string; parents: string[]; appProperties: Record<string, string>; content: string; trashed: boolean; modifiedTime: string }
+
+class FakeDrive {
+  files = new Map<string, FakeFile>();
+  valid = new Set<string>();
+  calls: string[] = [];
+  private n = 0;
+  fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const url = new URL(String(input));
+    const method = init?.method ?? 'GET';
+    const auth = String((init?.headers as Record<string, string>)?.Authorization ?? '').replace('Bearer ', '');
+    this.calls.push(`${method} ${url.pathname}`);
+    if (!this.valid.has(auth)) return new Response('{"error":{"message":"Invalid Credentials"}}', { status: 401 });
+    const json = (o: unknown) => new Response(JSON.stringify(o), { status: 200 });
+    const m = /\/files\/([^/?]+)$/.exec(url.pathname);
+    const f = m ? this.files.get(m[1]) : undefined;
+    if (m && !f) return new Response('{"error":{"message":"File not found"}}', { status: 404 });
+    if (method === 'GET' && !m) {
+      const q = url.searchParams.get('q') ?? '';
+      const want = [...q.matchAll(/key='([^']+)' and value='([^']+)'/g)].map((x) => [x[1], x[2]]);
+      const list = [...this.files.values()].filter((x) => !x.trashed && want.every(([k, v]) => x.appProperties[k] === v));
+      return json({ files: list.map(({ id, appProperties, modifiedTime }) => ({ id, appProperties, modifiedTime })) });
+    }
+    if (method === 'GET' && f) return new Response(f.content, { status: 200 });
+    const body = String(init?.body ?? '');
+    let meta: Partial<FakeFile> & { mimeType?: string } = {};
+    let content = '';
+    if (url.searchParams.get('uploadType') === 'multipart') {
+      const parts = body.split(/--terraville[a-z0-9]+(?:--)?\r?\n?/).filter((p) => p.trim());
+      meta = JSON.parse(parts[0].split('\r\n\r\n')[1]);
+      content = parts[1].split('\r\n\r\n').slice(1).join('\r\n\r\n').replace(/\r\n$/, '');
+    } else meta = JSON.parse(body || '{}');
+    const now = new Date(Date.now() + this.n * 1000).toISOString();
+    if (method === 'POST') {
+      if (meta.parents?.some((p) => !this.files.has(p) || this.files.get(p)!.trashed)) return new Response('{"error":{"message":"File not found"}}', { status: 404 });
+      const id = `f${++this.n}`;
+      this.files.set(id, { id, name: meta.name ?? '', parents: meta.parents ?? [], appProperties: meta.appProperties ?? {}, content, trashed: false, modifiedTime: now });
+      return json({ id });
+    }
+    if (method === 'PATCH' && f) {
+      if (meta.trashed) f.trashed = true;
+      if (meta.appProperties) f.appProperties = { ...f.appProperties, ...meta.appProperties };
+      if (meta.name) f.name = meta.name;
+      if (url.searchParams.get('uploadType')) f.content = content;
+      f.modifiedTime = now;
+      return json({ id: f.id });
+    }
+    return new Response('bad', { status: 400 });
+  };
+}
+
+function memStorage(): Storage {
+  const m = new Map<string, string>();
+  return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k), clear: () => m.clear(), key: () => null, get length() { return m.size; } } as Storage;
+}
+
+function fakeGis(token: () => string): GisOAuth2 {
+  return {
+    initTokenClient: (c) => ({ requestAccessToken: () => c.callback({ access_token: token(), expires_in: 3600 }) }),
+    hasGrantedAllScopes: () => true,
+  };
+}
+
+const tick = () => new Promise((r) => setTimeout(r, 0));
+
+await test('cities sync through Google Drive, one file per city per device', async () => {
+  const server = new FakeDrive();
+  let tok = 'a1';
+  server.valid.add('a1');
+  let clock = 1_000_000;
+  const mk = (id: string, label: string, t: () => string) => new Drive({
+    fetch: server.fetch as typeof fetch, storage: memStorage(), now: () => clock, device: { id, label }, origin: 'https://junkdrawer.works', loadGis: async () => fakeGis(t),
+  });
+  assert.equal(new Drive({ fetch: server.fetch as typeof fetch, storage: null, now: () => 0, device: { id: 'x', label: 'x' }, origin: 'null' }).status(), 'unavailable');
+  const a = mk('deva', 'Mac', () => tok);
+  assert.equal(a.status(), 'off');
+  // The first tap only loads Google's library; the next opens sign-in.
+  assert.equal(a.connect(), false);
+  await tick();
+  assert.equal(a.connect(), true);
+  assert.equal(a.status(), 'ok');
+  a.push('TV1g:riverton-1', { city: 'riv', name: 'Riverton', pop: 100, date: 5, saved: 10 });
+  a.push('TV1g:lakeside-1', { city: 'lak', name: 'Lakeside', pop: 50, date: 2, saved: 11 });
+  for (let i = 0; i < 20 && (a.pending || a.status() === 'busy'); i++) await tick();
+  a.push('TV1g:riverton-2', { city: 'riv', name: 'Riverton', pop: 200, date: 9, saved: 20 });
+  for (let i = 0; i < 20 && (a.pending || a.status() === 'busy'); i++) await tick();
+  const folders = [...server.files.values()].filter((f) => f.appProperties.terraville === 'folder');
+  assert.equal(folders.length, 1);
+  let listA = await a.list();
+  assert.deepEqual(listA.map((c) => [c.name, c.pop, c.mine, c.label]), [['Riverton', 200, true, 'Mac'], ['Lakeside', 50, true, 'Mac']]);
+  assert.equal(await a.download(listA[0].fileId), 'TV1g:riverton-2');
+  assert.equal(a.needsPush('riv', 20), false);
+  assert.equal(a.needsPush('riv', 21), true);
+
+  // A second device sees the first one's cities and writes its own copy.
+  server.valid.add('b1');
+  const b = mk('devb', 'iPhone', () => 'b1');
+  b.connect();
+  await tick();
+  b.connect();
+  const listB = await b.list();
+  assert.deepEqual(listB.map((c) => [c.name, c.mine, c.label]), [['Riverton', false, 'Mac'], ['Lakeside', false, 'Mac']]);
+  b.push('TV1g:riverton-3', { city: 'riv', name: 'Riverton', pop: 300, date: 14, saved: 30 });
+  for (let i = 0; i < 20 && (b.pending || b.status() === 'busy'); i++) await tick();
+  listA = await a.list();
+  assert.deepEqual(listA.filter((c) => c.city === 'riv').map((c) => [c.label, c.pop]), [['iPhone', 300], ['Mac', 200]]);
+  assert.equal(await a.download(listA[0].fileId), 'TV1g:riverton-3');
+  assert.equal(await a.download(listA[1].fileId), 'TV1g:riverton-2');
+
+  // An hour later Google refuses the token: the save waits for the next sign-in.
+  server.valid.delete('a1');
+  a.push('TV1g:riverton-4', { city: 'riv', name: 'Riverton', pop: 400, date: 20, saved: 40 });
+  for (let i = 0; i < 20 && a.status() === 'busy'; i++) await tick();
+  assert.equal(a.status(), 'signin');
+  assert.equal(a.pending, 1);
+  tok = 'a2';
+  server.valid.add('a2');
+  a.connect();
+  for (let i = 0; i < 20 && (a.pending || a.status() === 'busy'); i++) await tick();
+  assert.equal(a.status(), 'ok');
+  assert.equal(a.pending, 0);
+  assert.equal(await a.download((await a.list()).find((c) => c.city === 'riv' && c.mine)!.fileId), 'TV1g:riverton-4');
+
+  // Deleting a city trashes every device's copy.
+  await a.remove('riv');
+  assert.deepEqual((await b.list()).map((c) => c.name), ['Lakeside']);
+  clock++;
 });
 
 console.log(`\n${passed} passed`);

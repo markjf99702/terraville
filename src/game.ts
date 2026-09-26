@@ -6,7 +6,8 @@ import {
 import { Minimap } from './render/minimap';
 import { Renderer, SLOPE_CLASSES } from './render/renderer';
 import { hashString, makeRng, pick, randomSeedName } from './rng';
-import { SaveFile, loadSlot, saveSlot, worldFrom } from './save';
+import { Drive, DriveCopy } from './drive';
+import { SaveFile, SlotMeta, citySlot, decode, deleteSlot, encode, listSlots, loadSlot, newCityId, readCode, saveCode, saveSlot, thisDevice, worldFrom } from './save';
 import { SCENARIOS, buildScenario } from './scenarios';
 import { Sim } from './sim';
 import { DEFAULT_TERRAIN, TerrainParams, TerrainStyle, addSpring, applyBrush, generateTerrain } from './terrain';
@@ -67,6 +68,7 @@ export class Game {
   minimap: Minimap;
   audio = new Audio();
   ui!: UI;
+  drive: Drive;
   speed = 2;
   terrain: TerrainParams;
   toolId = 'query';
@@ -94,6 +96,19 @@ export class Game {
     const size = MAP_SIZES[1];
     this.terrain = { ...DEFAULT_TERRAIN, seed: randomSeedName(), w: size.w, h: size.h };
     this.loadSettings();
+    let storage: Storage | null = null;
+    try {
+      storage = window.localStorage;
+    } catch {
+      /* blocked */
+    }
+    this.drive = new Drive({ fetch: (u, o) => fetch(u, o), storage, now: () => Date.now(), device: thisDevice(), origin: location.origin });
+    this.drive.onSignedIn = () => this.pushLocalCities();
+    if (this.drive.connected) this.drive.prepare();
+    // Leaving the page (switching apps, closing the tab) saves, so the other device gets the latest.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden' && this.mode === 'city' && this.settings.autosave) void this.saveCity();
+    });
   }
 
   // ---- settings --------------------------------------------------------------
@@ -243,6 +258,7 @@ export class Game {
     this.speed = 2;
     this.clearUndo();
     this.slotId = null;
+    this.world.city.id = newCityId();
     this.applySettings();
     this.setTool('query');
     this.ui.enterCity();
@@ -307,6 +323,7 @@ export class Game {
     this.speed = 2;
     this.clearUndo();
     this.slotId = null;
+    this.world.city.id = newCityId();
     this.applySettings();
     this.setTool('query');
     this.ui.enterCity();
@@ -346,6 +363,8 @@ export class Game {
 
   loadFile(file: SaveFile, slotId: string | null = null): void {
     this.world = worldFrom(file);
+    // Cities saved before ids existed get one now; their saves follow it from here on.
+    if (file.mode === 'city' && !this.world.city.id) this.world.city.id = newCityId();
     if (file.terrain) this.terrain = { ...this.terrain, ...(file.terrain as Partial<TerrainParams>), w: this.world.w, h: this.world.h };
     else this.terrain = { ...this.terrain, w: this.world.w, h: this.world.h };
     this.clearUndo();
@@ -385,8 +404,54 @@ export class Game {
   }
 
   async autosave(): Promise<boolean> {
+    return this.saveCity();
+  }
+
+  /** Save the city to its own slot here, and to Google Drive when connected. */
+  async saveCity(): Promise<boolean> {
     if (this.mode !== 'city') return true;
-    return saveSlot('auto', this.makeSaveFile(), this.sim?.stats.residents ?? 0);
+    const city = this.world.city;
+    if (!city.id) city.id = newCityId();
+    const meta = { city: city.id, name: city.name, pop: this.sim?.stats.residents ?? 0, date: city.month, saved: Date.now() };
+    let code: string;
+    try {
+      code = await encode(this.makeSaveFile());
+    } catch {
+      return false;
+    }
+    const ok = saveCode(code, { id: citySlot(meta.city), name: meta.name, pop: meta.pop, date: meta.date, savedAt: meta.saved, mode: 'city', city: meta.city });
+    if (ok) {
+      // The old single autosave slot is superseded by the city's own.
+      if (this.slotId === 'auto') deleteSlot('auto');
+      this.slotId = citySlot(meta.city);
+    }
+    // Drive gets it even when this browser's storage is full.
+    this.drive.push(code, meta);
+    return ok;
+  }
+
+  /** Upload every city saved here since its last trip to Drive. */
+  pushLocalCities(): void {
+    for (const s of listSlots()) {
+      if (!s.city || !this.drive.needsPush(s.city, s.savedAt)) continue;
+      const code = readCode(s.id);
+      if (code) this.drive.push(code, { city: s.city, name: s.name, pop: s.pop, date: s.date, saved: s.savedAt });
+    }
+  }
+
+  /** The newest city saved in this browser. */
+  latestLocal(): SlotMeta | undefined {
+    return listSlots().find((s) => s.mode === 'city' && (s.city || s.id === 'auto'));
+  }
+
+  /** Download a copy of a city from Drive, keep it here, and open it. Throws with a readable message. */
+  async openFromDrive(copy: DriveCopy): Promise<void> {
+    const code = await this.drive.download(copy.fileId);
+    const file = await decode(code);
+    World.deserialize(file.world);
+    file.world.city.id = copy.city;
+    saveCode(code, { id: citySlot(copy.city), name: copy.name, pop: copy.pop, date: copy.date, savedAt: copy.saved, mode: 'city', city: copy.city });
+    this.loadFile(file, citySlot(copy.city));
   }
 
   async saveTo(id: string): Promise<boolean> {
@@ -395,10 +460,11 @@ export class Game {
     return ok;
   }
 
-  async continueAuto(): Promise<boolean> {
-    const f = await loadSlot('auto');
-    if (!f) return false;
-    this.loadFile(f, 'auto');
+  async continueLatest(): Promise<boolean> {
+    const s = this.latestLocal();
+    const f = s ? await loadSlot(s.id) : null;
+    if (!s || !f) return false;
+    this.loadFile(f, s.id);
     return true;
   }
 

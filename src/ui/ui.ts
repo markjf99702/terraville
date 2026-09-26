@@ -6,7 +6,8 @@ import { OVERLAYS, Overlay, SLOPE_CLASSES } from '../render/renderer';
 import { ZONE_COLORS } from '../render/color';
 import { drawBuilding } from '../render/sprites';
 import { randomSeedName } from '../rng';
-import { SaveFile, decode, deleteSlot, encode, listSlots, loadSlot, storageAvailable } from '../save';
+import { DRIVE_HOME, DriveCopy } from '../drive';
+import { SaveFile, SlotMeta, decode, deleteSlot, encode, listSlots, loadSlot, storageAvailable } from '../save';
 import type { Message } from '../sim';
 import { STYLE_NAMES, TerrainStyle, hasSea } from '../terrain';
 import { GoalState, SCENARIOS, Scenario } from '../scenarios';
@@ -25,6 +26,16 @@ function el<T extends HTMLElement = HTMLElement>(html: string): T {
 
 function esc(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+}
+
+/** How long ago a moment was, briefly. */
+export function ago(t: number): string {
+  const s = Math.max(0, (Date.now() - t) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.round(s / 60)} min ago`;
+  if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+  if (s < 86400 * 7) return `${Math.round(s / 86400)} d ago`;
+  return `on ${new Date(t).toLocaleDateString()}`;
 }
 
 export function money(n: number): string {
@@ -76,6 +87,8 @@ interface ModalSpec {
 
 export class UI {
   modalOpen = false;
+  /** Set while the save dialog is open, to redraw it when Drive changes. */
+  private filesRefresh: (() => void) | null = null;
   private statTimer = 0;
   private toastTimer = 0;
   private inspectAt: { x: number; y: number } | null = null;
@@ -100,6 +113,11 @@ export class UI {
       this.closeDropdown();
     });
     window.addEventListener('resize', () => this.closeDropdown());
+    game.drive.onChange(() => {
+      this.syncDrive();
+      this.filesRefresh?.();
+      if (game.mode === 'title') this.renderTitleDrive();
+    });
     $(root, '#pausedPill').onclick = () => {
       this.game.togglePause();
       this.game.audio.play('click');
@@ -119,7 +137,7 @@ export class UI {
     for (const id of ['#topbar', '#toolbox', '#editorPanel', '#minimapCard', '#ticker', '#log', '#inspect', '#guide', '#goal']) $(this.root, id).hidden = true;
     const t = $(this.root, '#title');
     t.hidden = false;
-    const auto = listSlots().find((s) => s.id === 'auto');
+    const last = this.game.latestLocal();
     t.innerHTML = `
       <div class="title-inner">
         <div class="bigsign" role="img" aria-label="Terraville, established 1900">
@@ -132,8 +150,9 @@ export class UI {
           <button class="btn" data-act="editor"><span>Shape the land first</span><small>Terrain editor</small></button>
           <button class="btn" data-act="challenges"><span>Challenges</span><small>Cities in trouble</small></button>
           <button class="btn" data-act="guide"><span>Strategy guide</span><small>How cities grow</small></button>
-          ${auto ? `<button class="btn" data-act="continue"><span>Continue ${esc(auto.name)}</span><small class="num">${dateLabel(auto.date)} · pop ${auto.pop.toLocaleString()}</small></button>` : ''}
+          ${last ? `<button class="btn" data-act="continue"><span>Continue ${esc(last.name)}</span><small class="num">${dateLabel(last.date)} · pop ${last.pop.toLocaleString()}</small></button>` : ''}
           <button class="btn" data-act="open"><span>Open a saved city</span><small>Saves and city codes</small></button>
+          <div id="titleDrive" class="title-drive"></div>
         </div>
         <div class="title-foot">A city builder in the spirit of the 1989 classic and its terrain editor. Best with a mouse; touch works too.</div>
       </div>`;
@@ -148,9 +167,64 @@ export class UI {
       else if (act === 'challenges') this.openChallenges();
       else if (act === 'guide') this.openGuide();
       else if (act === 'continue') {
-        if (!(await this.game.continueAuto())) this.toast('That save could not be opened.', 'warn');
-      } else if (act === 'open') this.openFiles();
+        if (!(await this.game.continueLatest())) this.toast('That save could not be opened.', 'warn');
+      } else if (act === 'continue-drive' && this.titleCopy) {
+        const c = this.titleCopy;
+        try {
+          await this.game.openFromDrive(c);
+          this.toast(`Opened ${c.name}, saved on ${c.label} ${ago(c.saved)}.`);
+        } catch (e) {
+          this.toast(`Could not open it from Google Drive: ${(e as Error).message}`, 'warn');
+        }
+      } else if (act === 'drive-signin') {
+        if (!this.game.drive.connect()) this.toast('Google sign-in is still loading. Try again in a moment.');
+      } else if (act === 'open' || act === 'drive-setup') this.openFiles();
     };
+    this.titleCopy = null;
+    this.titleChecked = false;
+    this.game.drive.prepare();
+    this.renderTitleDrive();
+  }
+
+  private titleCopy: DriveCopy | null = null;
+  private titleChecked = false;
+
+  /**
+   * The title screen's line about Google Drive. When another device saved a
+   * city more recently than anything here, Continue offers that copy instead.
+   */
+  private renderTitleDrive(): void {
+    const box = this.root.querySelector<HTMLElement>('#titleDrive');
+    if (!box) return;
+    const drive = this.game.drive;
+    const st = drive.status();
+    if (st === 'unavailable') {
+      box.innerHTML = '';
+    } else if (st === 'off') {
+      box.innerHTML = `<button class="linkbtn" data-act="drive-setup">Keep cities in Google Drive to carry on from any device</button>`;
+    } else if (st === 'signin') {
+      box.innerHTML = `<button class="linkbtn" data-act="drive-signin">Sign in to Google Drive</button> <span>to pick up cities from your other devices</span>`;
+    } else {
+      box.innerHTML = this.titleChecked ? '' : '<span>Checking Google Drive…</span>';
+      if (this.titleChecked) return;
+      this.titleChecked = true;
+      drive.list().then((copies) => {
+        if (this.game.mode !== 'title') return;
+        const here = this.game.latestLocal();
+        const local = new Map(listSlots().filter((s) => s.city).map((s) => [s.city!, s.savedAt]));
+        const best = copies.find((c) => !c.mine && c.saved > (local.get(c.city) ?? 0) + 2000);
+        box.innerHTML = '';
+        if (!best || (here && here.savedAt >= best.saved)) return;
+        this.titleCopy = best;
+        const btn = el(`<button class="btn" data-act="continue-drive"><span>Continue ${esc(best.name)}</span><small class="num">From ${esc(best.label)} · ${ago(best.saved)}</small></button>`);
+        const old = this.root.querySelector('#title [data-act="continue"]');
+        // The same city, older, is not worth a second button.
+        if (old && here?.city === best.city) old.replaceWith(btn);
+        else this.root.querySelector('#title [data-act="open"]')?.before(btn);
+      }, () => {
+        box.innerHTML = '';
+      });
+    }
   }
 
   private showChrome(): void {
@@ -212,6 +286,7 @@ export class UI {
       <div class="panel menu">
         <button data-act="undo" id="btnUndo" title="Undo (Ctrl+Z)" aria-label="Undo">${ICONS.undo}</button>
         <button data-act="redo" id="btnRedo" class="hide-sm" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">${ICONS.redo}</button>
+        <button data-act="drive" id="driveBtn" hidden aria-label="Google Drive">${ICONS.cloud}<span class="label" id="driveLbl"></span></button>
         <span class="menu-sep" aria-hidden="true"></span>
         <button data-act="budget" title="Budget">${ICONS.budget}<span class="label">Budget</span></button>
         <button data-act="charts" title="History">${ICONS.charts}<span class="label">History</span></button>
@@ -235,6 +310,15 @@ export class UI {
       switch (b.dataset.act) {
         case 'undo': return this.game.undo();
         case 'redo': return this.game.redo();
+        case 'drive': {
+          const d = this.game.drive;
+          if (d.status() === 'signin') {
+            if (!d.connect()) this.toast('Google sign-in is still loading. Try again in a moment.');
+            return;
+          }
+          if (d.status() === 'error') void d.flush();
+          return this.openFiles();
+        }
         case 'budget': return this.openBudget();
         case 'charts': return this.openCharts();
         case 'report': return this.openReport();
@@ -245,6 +329,26 @@ export class UI {
     };
     this.syncSpeed();
     this.syncUndo();
+    this.syncDrive();
+  }
+
+  /** The top-bar cloud: shown once Drive is connected, loud only when it needs a tap. */
+  syncDrive(): void {
+    const b = this.root.querySelector<HTMLElement>('#driveBtn');
+    if (!b) return;
+    const d = this.game.drive;
+    const st = d.status();
+    b.hidden = st === 'unavailable' || st === 'off';
+    b.dataset.s = st;
+    // Phones have no room for the cloud, so the menu button carries a dot instead.
+    this.root.querySelector('#topbar [data-act="menu"]')?.classList.toggle('attn', st === 'signin' || st === 'error');
+    const lbl = $(b, '#driveLbl');
+    lbl.textContent = st === 'signin' ? 'Sign in' : st === 'error' ? 'Sync failed' : '';
+    b.title =
+      st === 'signin' ? 'Google signed Terraville out. Click to sign in again and keep saving to Drive.' :
+      st === 'error' ? `Saving to Google Drive failed: ${d.error} Click to try again.` :
+      st === 'busy' ? 'Saving to Google Drive…' :
+      d.lastUpload ? `Saved to Google Drive ${ago(d.lastUpload)}` : 'Connected to Google Drive';
   }
 
   private buildTopbarEditor(): void {
@@ -696,6 +800,12 @@ export class UI {
       };
       d.appendChild(b);
     };
+    const drive = this.game.drive;
+    if (this.game.mode === 'city' && drive.status() === 'signin') {
+      add('cloud', 'Sign in to Google Drive', () => {
+        if (!drive.connect()) this.toast('Google sign-in is still loading. Try again in a moment.');
+      });
+    }
     add('file', this.game.mode === 'city' ? 'Save, open and share' : 'Save, open and share terrain', () => this.openFiles());
     add('book', 'Strategy guide', () => this.openGuide());
     add('settings', 'Settings and keys', () => this.openSettings());
@@ -990,7 +1100,7 @@ export class UI {
   }
 
   private confirmQuit(): void {
-    const body = el(`<p class="note" style="font-size:14px">${this.game.mode === 'city' ? 'The city is autosaved each year and can be continued from the title screen. Save it to a slot first if you want to keep this exact moment.' : 'Unsaved terrain will be lost.'}</p>`);
+    const body = el(`<p class="note" style="font-size:14px">${this.game.mode === 'city' ? (this.game.settings.autosave ? 'The city is saved as you leave, and you can carry on from the title screen.' : 'Autosave is off, so this city is not saved. Use Save now first if you want to keep it.') : 'Unsaved terrain will be lost.'}</p>`);
     this.openModal({
       title: 'Leave for the title screen?',
       body,
@@ -1280,12 +1390,17 @@ export class UI {
 
   openFiles(): void {
     const g = this.game;
+    const drive = g.drive;
     const canStore = storageAvailable();
     const inGame = g.mode !== 'title';
+    drive.prepare();
     const body = el(`<div style="display:flex;flex-direction:column;gap:18px">
       ${canStore ? '' : '<p class="note">This browser is blocking storage, so saves cannot be kept here. City codes still work: copy one somewhere safe and paste it back later.</p>'}
-      ${inGame && canStore ? `<div><h3>Save</h3><div style="display:flex;gap:8px;flex-wrap:wrap" id="fSaveBtns"></div></div>` : ''}
-      ${canStore ? '<div><h3>Saved here</h3><div class="slots" id="fSlots"></div></div>' : ''}
+      ${inGame ? `<div><h3>Save</h3><div style="display:flex;gap:8px;flex-wrap:wrap" id="fSaveBtns"></div>
+        ${g.mode === 'city' ? '<p class="note" style="margin-top:6px">The city also saves itself every 90 seconds and whenever you leave the page.</p>' : ''}</div>` : ''}
+      <div><h3>Your cities</h3><div class="slots" id="fCities"></div></div>
+      <div id="fDrive"></div>
+      <div id="fOtherBox"><h3>Snapshots and terrain on this device</h3><div class="slots" id="fOther"></div></div>
       ${inGame ? `<div><h3>Share this ${g.mode === 'city' ? 'city' : 'terrain'}</h3>
         <p class="note" style="margin-bottom:8px">A city code holds the whole map. Paste it into Open a city code on any device.</p>
         <div style="display:flex;gap:8px;margin-bottom:8px"><button class="btn small" id="fMake">Create city code</button><button class="btn small" id="fCopy" disabled>Copy</button></div>
@@ -1299,52 +1414,196 @@ export class UI {
         </div>
       </div>
     </div>`);
-    const renderSlots = () => {
-      const box = body.querySelector('#fSlots');
-      if (!box) return;
-      const slots = listSlots();
-      box.innerHTML = slots.length ? '' : '<p class="note">Nothing saved yet.</p>';
+
+    const openLocal = async (id: string, name: string) => {
+      const f = await loadSlot(id);
+      if (!f) return this.toast('That save could not be read.', 'warn');
+      try {
+        World.deserialize(f.world);
+      } catch (e) {
+        return this.toast(`That save is damaged: ${(e as Error).message}`, 'warn');
+      }
+      this.closeModal();
+      g.loadFile(f, id);
+      this.toast(`Opened ${name}.`);
+    };
+
+    // Cities: this device's own saves merged with the copies in Drive, newest first.
+    let copies: DriveCopy[] | null = null;
+    let listing = false;
+    let listErr = '';
+    const fetchCopies = () => {
+      if (listing || !drive.hasToken()) return;
+      listing = true;
+      drive.list().then(
+        (c) => {
+          copies = c;
+          listErr = '';
+        },
+        (e) => {
+          listErr = (e as Error).message || 'Could not reach Google Drive.';
+        },
+      ).finally(() => {
+        listing = false;
+        renderCities();
+      });
+    };
+    const renderCities = () => {
+      const box = $(body, '#fCities');
+      type Row = { name: string; pop: number; date: number; local?: SlotMeta; remote?: DriveCopy; copies: number };
+      const rows = new Map<string, Row>();
+      for (const s of listSlots()) {
+        if (s.mode !== 'city' || !(s.city || s.id === 'auto')) continue;
+        rows.set(s.city ?? 'auto', { name: s.name, pop: s.pop, date: s.date, local: s, copies: 0 });
+      }
+      for (const c of copies ?? []) {
+        const r: Row = rows.get(c.city) ?? { name: c.name, pop: c.pop, date: c.date, copies: 0 };
+        r.copies++;
+        if (!r.remote || c.saved > r.remote.saved) r.remote = c;
+        rows.set(c.city, r);
+      }
+      const newest = (r: { local?: SlotMeta; remote?: DriveCopy }) => Math.max(r.local?.savedAt ?? 0, r.remote?.saved ?? 0);
+      const list = [...rows.entries()].sort((a, b) => newest(b[1]) - newest(a[1]));
+      box.innerHTML = '';
+      if (!list.length) {
+        box.innerHTML = `<p class="note">${listing ? 'Looking in Google Drive…' : 'No cities saved yet.'}</p>`;
+      }
+      for (const [city, r] of list) {
+        // Open whichever copy is newer; a copy from another device wins by more than a moment.
+        const useRemote = !!r.remote && (!r.local || r.remote.saved > r.local.savedAt + 2000);
+        const show = useRemote ? r.remote! : null;
+        const name = show ? show.name : r.name;
+        const pop = show ? show.pop : r.local!.pop;
+        const date = show ? show.date : r.local!.date;
+        const where = !r.remote
+          ? `On this device${r.local!.id === 'auto' ? ' (autosave)' : ''} · saved ${ago(r.local!.savedAt)}`
+          : useRemote
+            ? `${r.local ? 'Newer copy in Drive' : 'In Drive'}, from ${esc(r.remote.mine ? 'this device' : r.remote.label)} · saved ${ago(r.remote.saved)}`
+            : `On this device and in Drive · saved ${ago(r.local!.savedAt)}`;
+        const row = el(`<div class="slot"><b>${esc(name)}</b>
+          <div class="actions"></div>
+          <span class="meta num">${dateLabel(date)} · pop ${pop.toLocaleString()}</span>
+          <span class="meta" style="grid-column:1/-1">${where}</span></div>`);
+        const del = this.btn('Delete', 'small danger', async () => {
+          const everywhere = !!r.remote && drive.hasToken();
+          if (!del.dataset.sure) {
+            del.dataset.sure = '1';
+            del.textContent = everywhere ? 'Tap again to delete everywhere' : 'Tap again to delete';
+            return;
+          }
+          if (r.local) deleteSlot(r.local.id);
+          if (everywhere) {
+            try {
+              await drive.remove(city);
+              copies = (copies ?? []).filter((c) => c.city !== city);
+            } catch (e) {
+              this.toast((e as Error).message || 'Could not delete it from Google Drive.', 'warn');
+            }
+          }
+          renderCities();
+        });
+        $(row, '.actions').append(
+          this.btn('Open', 'small primary', async () => {
+            if (!useRemote) return openLocal(r.local!.id, name);
+            try {
+              await g.openFromDrive(r.remote!);
+              this.closeModal();
+              this.toast(`Opened ${name}, saved on ${r.remote!.mine ? 'this device' : r.remote!.label} ${ago(r.remote!.saved)}.`);
+            } catch (e) {
+              this.toast(`Could not open it from Google Drive: ${(e as Error).message}`, 'warn');
+            }
+          }),
+          del,
+        );
+        box.appendChild(row);
+      }
+      if (listErr) box.appendChild(el(`<p class="note" style="color:var(--critical-ink)">${esc(listErr)}</p>`));
+      else if (listing && list.length) box.appendChild(el('<p class="note">Looking in Google Drive…</p>'));
+    };
+
+    const renderOther = () => {
+      const box = $(body, '#fOther');
+      const slots = listSlots().filter((s) => !(s.mode === 'city' && (s.city || s.id === 'auto')));
+      $(body, '#fOtherBox').hidden = !slots.length;
+      box.innerHTML = '';
       for (const s of slots) {
-        const row = el(`<div class="slot"><b>${esc(s.name)}${s.id === 'auto' ? ' <span class="note">(autosave)</span>' : ''}</b>
+        const row = el(`<div class="slot"><b>${esc(s.name)}</b>
           <div class="actions"></div>
           <span class="meta num">${s.mode === 'city' ? `${dateLabel(s.date)} · pop ${s.pop.toLocaleString()}` : 'Terrain'} · saved ${new Date(s.savedAt).toLocaleDateString()}</span></div>`);
-        const actions = $(row, '.actions');
-        actions.append(
-          this.btn('Open', 'small primary', async () => {
-            const f = await loadSlot(s.id);
-            if (!f) return this.toast('That save could not be read.', 'warn');
-            try {
-              World.deserialize(f.world);
-            } catch (e) {
-              return this.toast(`That save is damaged: ${(e as Error).message}`, 'warn');
-            }
-            this.closeModal();
-            g.loadFile(f, s.id);
-            this.toast(`Opened ${s.name}.`);
-          }),
+        $(row, '.actions').append(
+          this.btn('Open', 'small primary', () => openLocal(s.id, s.name)),
           this.btn('Delete', 'small danger', () => {
             deleteSlot(s.id);
-            renderSlots();
+            renderOther();
           }),
         );
         box.appendChild(row);
       }
     };
-    renderSlots();
+
+    const renderDrive = () => {
+      const box = $(body, '#fDrive');
+      const st = drive.status();
+      const err = drive.error ? `<p class="note" style="color:var(--critical-ink)">${esc(drive.error)}</p>` : '';
+      if (st === 'unavailable') {
+        box.innerHTML = location.href.startsWith(DRIVE_HOME) ? '' :
+          `<h3>Google Drive</h3><p class="note">Keeping cities in Google Drive works in the copy at <a href="${DRIVE_HOME}" target="_blank" rel="noopener">junkdrawer.works/terraville</a>.</p>`;
+        return;
+      }
+      if (st === 'off') {
+        box.innerHTML = `<h3>Google Drive</h3>
+          <p class="note">Keep your cities in your own Google Drive and carry on from any device. Terraville can see only the files it makes: a Terraville folder with one file per city. <a href="privacy.html" target="_blank" rel="noopener">Privacy</a></p>${err}
+          <div style="display:flex;gap:8px;margin-top:8px"><button class="btn small primary" id="fDvGo">Connect Google Drive</button></div>`;
+      } else if (st === 'signin') {
+        box.innerHTML = `<h3>Google Drive</h3>
+          <p class="note">Google signs Terraville out after an hour. Sign in again to keep cities syncing; they are safe on this device meanwhile.</p>${err}
+          <div style="display:flex;gap:8px;margin-top:8px"><button class="btn small primary" id="fDvGo">Sign in to Google Drive</button><button class="btn small" id="fDvOff">Disconnect this device</button></div>`;
+      } else {
+        const last = drive.lastUpload ? `Last upload ${ago(drive.lastUpload)}.` : 'Connected.';
+        box.innerHTML = `<h3>Google Drive</h3>
+          <p class="note">${st === 'busy' ? 'Uploading…' : last} Every save also goes to <b>My Drive › Terraville</b>, one file per city for each device. Opening a city takes its newest copy.</p>${err}
+          <div style="display:flex;gap:8px;margin-top:8px"><button class="btn small" id="fDvOff">Disconnect this device</button></div>`;
+      }
+      const go = box.querySelector<HTMLButtonElement>('#fDvGo');
+      if (go) go.onclick = () => {
+        if (!drive.connect()) this.toast('Google sign-in is still loading. Try again in a moment.');
+      };
+      const off = box.querySelector<HTMLButtonElement>('#fDvOff');
+      if (off) off.onclick = () => {
+        drive.disconnect();
+        copies = null;
+        this.toast('Google Drive is disconnected on this device. Your cities stay here and in Drive.');
+      };
+    };
+
+    // Re-draw when Drive signs in or finishes an upload, and look again after an upload.
+    let was = drive.status();
+    this.filesRefresh = () => {
+      const now = drive.status();
+      renderDrive();
+      if (drive.hasToken() && (copies === null || (was === 'busy' && now !== 'busy'))) fetchCopies();
+      else renderCities();
+      was = now;
+    };
+    renderDrive();
+    renderCities();
+    renderOther();
+    fetchCopies();
+
     const saveBtns = body.querySelector('#fSaveBtns');
     if (saveBtns) {
-      if (g.slotId && g.slotId !== 'auto') {
-        saveBtns.appendChild(this.btn('Save', 'primary', async () => {
-          const ok = await g.saveTo(g.slotId!);
-          this.toast(ok ? 'Saved.' : 'Saving failed. Storage may be full.', ok ? 'info' : 'warn');
-          renderSlots();
+      if (g.mode === 'city') {
+        saveBtns.appendChild(this.btn('Save now', 'primary', async () => {
+          const ok = await g.saveCity();
+          this.toast(ok ? `Saved${drive.connected ? ', and on its way to Google Drive' : ''}.` : 'Saving failed. Storage may be full.', ok ? 'info' : 'warn');
+          renderCities();
         }));
       }
-      saveBtns.appendChild(this.btn(g.slotId && g.slotId !== 'auto' ? 'Save as a new slot' : 'Save to a new slot', g.slotId && g.slotId !== 'auto' ? '' : 'primary', async () => {
+      saveBtns.appendChild(this.btn(g.mode === 'city' ? 'Save a snapshot' : 'Save this terrain', g.mode === 'city' ? '' : 'primary', async () => {
         const id = 's' + Date.now().toString(36);
         const ok = await g.saveTo(id);
-        this.toast(ok ? 'Saved.' : 'Saving failed. Storage may be full.', ok ? 'info' : 'warn');
-        renderSlots();
+        this.toast(ok ? (g.mode === 'city' ? 'Snapshot saved on this device.' : 'Saved.') : 'Saving failed. Storage may be full.', ok ? 'info' : 'warn');
+        renderOther();
       }));
     }
     const make = body.querySelector<HTMLButtonElement>('#fMake');
@@ -1386,7 +1645,7 @@ export class UI {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (file) await openCode(await file.text());
     };
-    this.openModal({ title: inGame ? 'Save, open and share' : 'Open a saved city', body, wide: false });
+    this.openModal({ title: inGame ? 'Save, open and share' : 'Open a saved city', body, wide: false, onClose: () => (this.filesRefresh = null) });
   }
 
   // Settings -----------------------------------------------------------------------------------
@@ -1404,7 +1663,7 @@ export class UI {
         ${sw('night', 'Day and night', 'Streetlights and lit windows after dark. Time stops when paused.')}
         ${sw('grid', 'Tile grid', 'Faint lines between tiles when zoomed in.')}
         ${sw('contours', 'Contour lines in the city', 'Always on in the terrain editor.')}
-        ${sw('autosave', 'Autosave', 'Every 90 seconds and at the end of each year.')}
+        ${sw('autosave', 'Autosave', 'Every 90 seconds, at the end of each year, and when you leave the page. Each city keeps its own save.')}
       </div>
       <div>
         <h3>Keys</h3>

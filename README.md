@@ -2,7 +2,7 @@
 
 A city builder in the spirit of the 1989 original and its companion terrain editor, rebuilt for the browser with a few modern touches.
 
-Open `index.html` in any current browser. It is a single self-contained file: no server, no install.
+Play it at [junkdrawer.works/terraville](https://junkdrawer.works/terraville/), or open `index.html` in any current browser. It is a single self-contained file: no server, no install.
 
 ## What's in it
 
@@ -38,9 +38,19 @@ Open `index.html` in any current browser. It is a single self-contained file: no
 - A day and night cycle: streetlights and lit windows after dark.
 - Commuters spread across the city's job centres, so traffic piles up on the arterials into downtown.
 - Drag to zone many lots at once, with live cost and a reason when something can't be built.
-- Autosave, named save slots, and city codes: the whole map compressed into text you can paste on another device.
+- Every city keeps its own save, updated every 90 seconds, at each year's end and whenever you leave the page. Snapshots and city codes (the whole map compressed into text you can paste on another device) are there too.
+- Optional Google Drive sync, so you can carry on with a city on another device. See below.
 - Touch support: pinch to zoom, two fingers to move.
 - A starter checklist for the first few minutes.
+
+## Google Drive sync
+
+In **Menu › Save, open and share**, choose **Connect Google Drive**. From then on every save of a city also goes to a `Terraville` folder in your Drive, as a city code in a text file. Each device writes its own file per city, such as `Riverton (iPhone).txt`, so two devices never overwrite each other. On another device, connect Drive the same way: the dialog lists every city with where its newest copy is, and the title screen's **Continue** offers a newer copy from another device when there is one.
+
+- Terraville asks Google only for `drive.file`, so it can reach the files it made and nothing else in your Drive. [privacy.html](privacy.html) says the same for anyone using it.
+- Google signs the page out after an hour. Your city keeps saving on the device meanwhile; the cloud in the top bar (or a dot on the menu, on a phone) turns amber, and one tap signs back in and uploads what waited.
+- Sync works only where Google accepts the OAuth client: `GOOGLE_CLIENT_ID` in `src/drive.ts` is the junkdrawer.works client that Shelfmark also uses, authorised for `https://junkdrawer.works`. A copy served from anywhere else shows where to go instead. To run it elsewhere, create a Web client in Google Cloud with the Drive API enabled and the `drive.file` scope, add your origin under **Authorized JavaScript origins**, and put its ID and origin in `src/drive.ts`.
+- Browser saves belong to the address the game is served from. Cities saved while it lived at `markjf99702.github.io` stay with that address, which now redirects here, so they can't be reached. Drive sync is the way around that from now on.
 
 ## Controls
 
@@ -63,7 +73,7 @@ Open `index.html` in any current browser. It is a single self-contained file: no
 ```sh
 npm install
 npm run build        # writes index.html (and dist/page.html, a body-only copy)
-npm test             # unit checks for terrain, power, traffic, saves, undo, disasters
+npm test             # unit checks for terrain, power, traffic, saves, undo, disasters, Drive sync
 npm run bot -- 30    # a bot plays 30 years and prints a yearly summary
 npx tsc --noEmit     # typecheck
 ```
@@ -79,6 +89,8 @@ Source lives in `src/`:
 | `tools.ts` | Turning drags and clicks into priced changes |
 | `scenarios.ts` | The challenges and the builder that lays out their starting cities |
 | `game.ts` | Modes, the tool state machine, undo, the clock, autosave |
+| `save.ts` | Saves in this browser, and city codes |
+| `drive.ts` | Google Drive sync: sign-in, uploads, listing and downloads |
 | `render/` | Chunk-cached canvas renderer, procedural sprites, terrain painter, vehicles, minimap |
 | `ui/` | Top bar, toolbox, dialogs and charts |
 
