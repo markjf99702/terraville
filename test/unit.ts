@@ -434,4 +434,53 @@ await test('cities sync through Google Drive, one file per city per device', asy
   clock++;
 });
 
+await test('one Google sign-in serves every junkdrawer.works app on a device', async () => {
+  const server = new FakeDrive();
+  server.valid.add('s1');
+  const clock = 1_000_000;
+  const storage = memStorage();
+  let asked = 0;
+  let revoked = 0;
+  const gis = (): GisOAuth2 => ({
+    initTokenClient: (c) => ({ requestAccessToken: () => { asked++; c.callback({ access_token: 's1', expires_in: 3600 }); } }),
+    hasGrantedAllScopes: () => true,
+    revoke: () => { revoked++; },
+  });
+  const mk = () => new Drive({ fetch: server.fetch as typeof fetch, storage, now: () => clock, device: { id: 'd', label: 'Mac' }, origin: 'https://junkdrawer.works', loadGis: async () => gis() });
+  const drain = async (d: Drive) => { for (let i = 0; i < 20 && (d.pending || d.status() === 'busy'); i++) await tick(); };
+
+  // Lotería signed in half an hour ago: connecting needs no Google window at all.
+  storage.setItem('junkdrawer.google', JSON.stringify({ token: 's1', exp: clock + 30 * 60_000, scope: 'https://www.googleapis.com/auth/drive.file', email: 'mark@gmail.com' }));
+  const a = mk();
+  assert.equal(a.connect(), true);
+  assert.equal(asked, 0);
+  assert.equal(a.status(), 'ok');
+  a.push('TV1g:riverton-1', { city: 'riv', name: 'Riverton', pop: 100, date: 5, saved: 10 });
+  await drain(a);
+  assert.equal([...server.files.values()].filter((f) => f.appProperties.terraville === 'city').length, 1);
+
+  // Disconnecting stops syncing here without signing the other apps out.
+  a.disconnect();
+  assert.equal(revoked, 0);
+  assert.ok(storage.getItem('junkdrawer.google'));
+
+  // With no shared sign-in, Google is asked once, and the token is shared from then on.
+  storage.removeItem('junkdrawer.google');
+  const b = mk();
+  b.connect();
+  await tick();
+  b.connect();
+  assert.equal(asked, 1);
+  const shared = JSON.parse(storage.getItem('junkdrawer.google')!);
+  assert.equal(shared.token, 's1');
+  assert.equal(shared.exp, clock + 3_600_000);
+
+  // Google refuses it an hour later: it's cleared for every app, and Terraville asks for a sign-in.
+  server.valid.delete('s1');
+  b.push('TV1g:riverton-2', { city: 'riv', name: 'Riverton', pop: 200, date: 9, saved: 20 });
+  for (let i = 0; i < 20 && b.status() === 'busy'; i++) await tick();
+  assert.equal(b.status(), 'signin');
+  assert.equal(storage.getItem('junkdrawer.google'), null);
+});
+
 console.log(`\n${passed} passed`);

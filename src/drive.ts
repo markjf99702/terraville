@@ -16,6 +16,19 @@ const SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const API = 'https://www.googleapis.com/drive/v3/files';
 const UP = 'https://www.googleapis.com/upload/drive/v3/files';
 const KEY = 'terraville.drive';
+/**
+ * The Google sign-in every junkdrawer.works app shares: same address, same
+ * OAuth client, so one sign-in, good for an hour, lets each of them sync.
+ */
+const SHARED = 'junkdrawer.google';
+
+interface SharedSignIn {
+  token: string;
+  /** When Google's token expires, in ms since 1970. */
+  exp: number;
+  scope?: string;
+  email?: string;
+}
 
 /** One device's copy of one city, as listed in Drive. */
 export interface DriveCopy {
@@ -63,7 +76,7 @@ interface TokenResponse {
 }
 
 interface TokenClient {
-  requestAccessToken(o?: { prompt?: string }): void;
+  requestAccessToken(o?: { prompt?: string; login_hint?: string }): void;
 }
 
 export interface GisOAuth2 {
@@ -147,7 +160,45 @@ export class Drive {
   }
 
   hasToken(): boolean {
+    if (!(this.st.token && this.deps.now() < this.st.exp) && this.st.on && this.useShared()) this.save();
     return !!this.st.token && this.deps.now() < this.st.exp;
+  }
+
+  // ---- the shared sign-in ---------------------------------------------------
+
+  private readShared(): SharedSignIn | null {
+    try {
+      return JSON.parse(this.deps.storage?.getItem(SHARED) ?? 'null') as SharedSignIn | null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Take another junkdrawer.works app's sign-in, if it has more than a minute left. */
+  private useShared(): boolean {
+    const g = this.readShared();
+    if (!g?.token || !(g.exp - 60_000 > this.deps.now()) || !String(g.scope ?? '').includes(SCOPE)) return false;
+    this.st.token = g.token;
+    this.st.exp = g.exp - 60_000;
+    return true;
+  }
+
+  private share(): void {
+    try {
+      const email = this.readShared()?.email ?? '';
+      const g: SharedSignIn = { token: this.st.token, exp: this.st.exp + 60_000, scope: SCOPE, email };
+      this.deps.storage?.setItem(SHARED, JSON.stringify(g));
+    } catch {
+      /* storage full or blocked */
+    }
+  }
+
+  private dropShared(token: string): void {
+    try {
+      if (this.readShared()?.token === token) this.deps.storage?.removeItem(SHARED);
+    } catch {
+      /* ignore */
+    }
   }
 
   status(): DriveStatus {
@@ -210,12 +261,23 @@ export class Drive {
    * a pop-up. Returns false while the sign-in library is still loading.
    */
   connect(): boolean {
+    // Signed in to another junkdrawer.works app within the hour: no Google window at all.
+    if (this.available() && this.useShared()) {
+      this.st.on = true;
+      this.st.err = '';
+      this.save();
+      this.emit();
+      this.onSignedIn?.();
+      void this.flush();
+      return true;
+    }
     if (!this.client) {
       this.prepare();
       return false;
     }
     this.st.err = '';
-    this.client.requestAccessToken({ prompt: this.st.on ? '' : 'consent' });
+    const hint = this.readShared()?.email;
+    this.client.requestAccessToken(hint ? { prompt: '', login_hint: hint } : { prompt: this.st.on ? '' : 'consent' });
     return true;
   }
 
@@ -230,6 +292,7 @@ export class Drive {
       this.st.on = true;
       this.st.err = '';
       this.save();
+      this.share();
       this.emit();
       this.onSignedIn?.();
       void this.flush();
@@ -239,13 +302,11 @@ export class Drive {
     this.emit();
   }
 
-  /** Stop syncing on this device. The files in Drive stay. */
+  /**
+   * Stop syncing on this device. The files in Drive stay. Nothing is revoked:
+   * that would cancel Google's permission for every app on the shared client.
+   */
   disconnect(): void {
-    try {
-      if (this.st.token) this.gis?.revoke?.(this.st.token, () => {});
-    } catch {
-      /* ignore */
-    }
     this.st = fresh();
     this.queue.clear();
     this.save();
@@ -403,6 +464,7 @@ export class Drive {
     if (type) headers['Content-Type'] = type;
     const r = await this.deps.fetch(url, { method, headers, body });
     if (r.status === 401) {
+      this.dropShared(this.st.token);
       this.st.token = '';
       this.st.exp = 0;
       this.save();
