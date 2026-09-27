@@ -49,6 +49,7 @@ In **Menu › Save, open and share**, choose **Connect Google Drive**. From then
 
 - Terraville asks Google only for `drive.file`, so it can reach the files it made and nothing else in your Drive. [privacy.html](privacy.html) says the same for anyone using it.
 - Google signs the page out after an hour. Your city keeps saving on the device meanwhile; the cloud in the top bar (or a dot on the menu, on a phone) turns amber, and one tap signs back in and uploads what waited.
+- The sign-in is shared with the other junkdrawer.works projects on the same device (kept under `junkdrawer.google` in localStorage), so signing in to any of them lets Terraville sync during that hour without asking. **Disconnect this device** only stops syncing here; it doesn't revoke Google's permission, which would sign every project out.
 - Sync works only where Google accepts the OAuth client: `GOOGLE_CLIENT_ID` in `src/drive.ts` is the junkdrawer.works client that Shelfmark also uses, authorised for `https://junkdrawer.works`. A copy served from anywhere else shows where to go instead. To run it elsewhere, create a Web client in Google Cloud with the Drive API enabled and the `drive.file` scope, add your origin under **Authorized JavaScript origins**, and put its ID and origin in `src/drive.ts`.
 - Browser saves belong to the address the game is served from. Cities saved while it lived at `markjf99702.github.io` stay with that address, which now redirects here, so they can't be reached. Drive sync is the way around that from now on.
 
