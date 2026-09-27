@@ -24,6 +24,13 @@ function el<T extends HTMLElement = HTMLElement>(html: string): T {
   return t.content.firstElementChild as T;
 }
 
+/** The line every junkdrawer.works project carries: on the title screen and in Settings, never over the map. */
+const JD_FOOT = `<footer class="jd-foot">
+  <a href="https://junkdrawer.works/">Part of junkdrawer.works</a>
+  <span aria-hidden="true">·</span>
+  <a href="https://junkdrawer.works/terraville/privacy.html">Privacy</a>
+</footer>`;
+
 function esc(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }
@@ -155,6 +162,7 @@ export class UI {
           <div id="titleDrive" class="title-drive"></div>
         </div>
         <div class="title-foot">A city builder in the spirit of the 1989 classic and its terrain editor. Best with a mouse; touch works too.</div>
+        ${JD_FOOT}
       </div>`;
     t.onclick = async (e) => {
       const b = (e.target as HTMLElement).closest<HTMLElement>('[data-act]');
@@ -1692,7 +1700,8 @@ export class UI {
       s[k] = t.checked;
       g.saveSettings();
     });
-    this.openModal({ title: 'Settings', body, foot: [this.btn('Done', 'primary', () => this.closeModal())] });
+    const m = this.openModal({ title: 'Settings', body, foot: [this.btn('Done', 'primary', () => this.closeModal())] });
+    $(m, '.body').appendChild(el(JD_FOOT));
   }
 }
 
