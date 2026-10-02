@@ -2,7 +2,7 @@
 
 A city builder in the spirit of the 1989 original and its companion terrain editor, rebuilt for the browser with a few modern touches.
 
-Play it at [terraville.junkdrawer.works](https://terraville.junkdrawer.works/), or open `index.html` in any current browser. It is a single self-contained file: no server, no install.
+Play it at [terraville.junkdrawer.works](https://terraville.junkdrawer.works/), or open `index.html` in any current browser. It is a single self-contained file: no server needed. At its own address it also installs as an app (from the browser's menu, or Share → Add to Home Screen on an iPhone) and works offline.
 
 ## What's in it
 
@@ -95,6 +95,6 @@ Source lives in `src/`:
 | `render/` | Chunk-cached canvas renderer, procedural sprites, terrain painter, vehicles, minimap |
 | `ui/` | Top bar, toolbox, dialogs and charts |
 
-Everything is drawn in code. There are no image assets.
+Everything in the game is drawn in code. The only images are the app icons: `icon.svg`, with `tools/icon-full-bleed.svg` for the edge-to-edge versions, and the `icon-*.png` sizes that `node tools/make-icons.mjs` renders from them for `manifest.webmanifest`. `sw.js` keeps the offline copy, and `carry.js` brought the cities saved at the old address, junkdrawer.works/terraville/, along on the first visit.
 
 `index.html` is the built game and is committed, so GitHub Pages can serve the repository root as is (`.nojekyll` skips the Jekyll step). Rebuild it with `npm run build` after changing anything in `src/`.

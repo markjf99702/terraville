@@ -26,10 +26,18 @@ const head = [
 ].join('\n');
 const body = `<div id="app"></div>\n<script>${js}</script>`;
 
+// Only the hosted copy installs to a home screen and works offline; the Artifact copy is a single page.
+const install = [
+  '<link rel="manifest" href="manifest.webmanifest">',
+  '<link rel="icon" href="icon.svg" type="image/svg+xml">',
+  '<link rel="apple-touch-icon" href="icon-180.png">',
+].join('\n');
+const offline = `<script>if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});</script>`;
+
 mkdirSync('dist', { recursive: true });
 writeFileSync('dist/page.html', `${head}\n${body}\n`);
 writeFileSync(
   'index.html',
-  `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n<meta name="theme-color" content="#0e1412">\n<script src="carry.js"></script>\n${head}\n</head>\n<body>\n${body}\n</body>\n</html>\n`,
+  `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n<meta name="theme-color" content="#0e1412">\n<script src="carry.js"></script>\n${head}\n${install}\n</head>\n<body>\n${body}\n${offline}\n</body>\n</html>\n`,
 );
 console.log(`built index.html (${(js.length / 1024).toFixed(0)} KB js, ${(css.length / 1024).toFixed(0)} KB css)`);
