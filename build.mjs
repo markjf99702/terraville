@@ -26,7 +26,15 @@ const head = [
 ].join('\n');
 const body = `<div id="app"></div>\n<script>${js}</script>`;
 
-// Only the hosted copy installs to a home screen and works offline; the Artifact copy is a single page.
+// Only the hosted copy has the link preview, installs to a home screen and works offline; the Artifact copy is a
+// single page.
+const preview = [
+  '<meta property="og:title" content="Terraville">',
+  '<meta property="og:description" content="Shape a landscape, then grow a city on it. A city builder in the spirit of the 1989 classic.">',
+  '<meta property="og:image" content="https://terraville.junkdrawer.works/og.png">',
+  '<meta property="og:url" content="https://terraville.junkdrawer.works/">',
+  '<meta name="twitter:card" content="summary_large_image">',
+].join('\n');
 const install = [
   '<link rel="manifest" href="manifest.webmanifest">',
   '<link rel="icon" href="icon.svg" type="image/svg+xml">',
@@ -38,6 +46,6 @@ mkdirSync('dist', { recursive: true });
 writeFileSync('dist/page.html', `${head}\n${body}\n`);
 writeFileSync(
   'index.html',
-  `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n<meta name="theme-color" content="#0e1412">\n<script src="carry.js"></script>\n${head}\n${install}\n</head>\n<body>\n${body}\n${offline}\n</body>\n</html>\n`,
+  `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n<meta name="theme-color" content="#0e1412">\n<script src="carry.js"></script>\n${head}\n${preview}\n${install}\n</head>\n<body>\n${body}\n${offline}\n</body>\n</html>\n`,
 );
 console.log(`built index.html (${(js.length / 1024).toFixed(0)} KB js, ${(css.length / 1024).toFixed(0)} KB css)`);
