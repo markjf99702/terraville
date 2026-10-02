@@ -28,7 +28,7 @@ function el<T extends HTMLElement = HTMLElement>(html: string): T {
 const JD_FOOT = `<footer class="jd-foot">
   <a href="https://junkdrawer.works/">Part of junkdrawer.works</a>
   <span aria-hidden="true">·</span>
-  <a href="https://junkdrawer.works/terraville/privacy.html">Privacy</a>
+  <a href="https://terraville.junkdrawer.works/privacy.html">Privacy</a>
 </footer>`;
 
 function esc(s: string): string {
@@ -1555,7 +1555,7 @@ export class UI {
       const err = drive.error ? `<p class="note" style="color:var(--critical-ink)">${esc(drive.error)}</p>` : '';
       if (st === 'unavailable') {
         box.innerHTML = location.href.startsWith(DRIVE_HOME) ? '' :
-          `<h3>Google Drive</h3><p class="note">Keeping cities in Google Drive works in the copy at <a href="${DRIVE_HOME}" target="_blank" rel="noopener">junkdrawer.works/terraville</a>.</p>`;
+          `<h3>Google Drive</h3><p class="note">Keeping cities in Google Drive works in the copy at <a href="${DRIVE_HOME}" target="_blank" rel="noopener">terraville.junkdrawer.works</a>.</p>`;
         return;
       }
       if (st === 'off') {

@@ -9,16 +9,18 @@
  * is not a secret: Google accepts it only from the origins listed below.
  */
 export const GOOGLE_CLIENT_ID = '897653851078-p5jrh2bto6h3bj0lc4jist3k1vsc1pj4.apps.googleusercontent.com';
-export const DRIVE_ORIGINS = ['https://junkdrawer.works'];
-export const DRIVE_HOME = 'https://junkdrawer.works/terraville/';
+// Terraville lives at its own address now; junkdrawer.works/terraville/ forwards there.
+export const DRIVE_ORIGINS = ['https://terraville.junkdrawer.works', 'https://junkdrawer.works'];
+export const DRIVE_HOME = 'https://terraville.junkdrawer.works/';
 
 const SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const API = 'https://www.googleapis.com/drive/v3/files';
 const UP = 'https://www.googleapis.com/upload/drive/v3/files';
 const KEY = 'terraville.drive';
 /**
- * The Google sign-in every junkdrawer.works app shares: same address, same
- * OAuth client, so one sign-in, good for an hour, lets each of them sync.
+ * The key every junkdrawer.works app keeps its Google sign-in under. Each app
+ * has its own address now, so each has its own copy: one sign-in, good for an
+ * hour, and it remembers the account for next time.
  */
 const SHARED = 'junkdrawer.google';
 

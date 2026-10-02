@@ -30,6 +30,6 @@ mkdirSync('dist', { recursive: true });
 writeFileSync('dist/page.html', `${head}\n${body}\n`);
 writeFileSync(
   'index.html',
-  `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n<meta name="theme-color" content="#0e1412">\n${head}\n</head>\n<body>\n${body}\n</body>\n</html>\n`,
+  `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n<meta name="theme-color" content="#0e1412">\n<script src="carry.js"></script>\n${head}\n</head>\n<body>\n${body}\n</body>\n</html>\n`,
 );
 console.log(`built index.html (${(js.length / 1024).toFixed(0)} KB js, ${(css.length / 1024).toFixed(0)} KB css)`);
