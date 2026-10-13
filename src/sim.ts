@@ -104,6 +104,8 @@ export class Sim {
   private heap: MinHeap;
   private hubFields: Float32Array[] = [];
   private lastPop = 0;
+  /** Kinds held at a landmark limit: no lot of that kind grows until the landmark is built. */
+  capped = { res: false, com: false, ind: false };
 
   constructor(world: World) {
     this.world = world;
@@ -701,7 +703,8 @@ export class Sim {
       if (world.landValue[ci] + (k === 'res' ? svc * 30 : 0) >= gate[L]) maxLevel = L;
     }
     // Without a commute a lot never grows, however good its spot: the missing trip only weighs on the score below.
-    if (score > 0 && b.level < maxLevel && b.trip) {
+    // Nor does it past a landmark limit, where the meter is also held below the line.
+    if (score > 0 && b.level < maxLevel && b.trip && !this.capped[k]) {
       if (r < 0.02 + score * 0.11) {
         this.setLevel(b, b.level + 1);
         this.emit({ type: 'grow', b });
@@ -748,6 +751,7 @@ export class Sim {
     s.residents = res;
     s.comJobs = com;
     s.indJobs = ind;
+    this.capped = { res: res > 18000 && !s.hasStadium, com: com > 5000 && !s.hasAirport, ind: ind > 4000 && !s.hasSeaport };
     s.workers = Math.round(res * 0.5);
     s.unemployment = s.workers > 0 ? clamp(1 - (com + ind) / s.workers, 0, 1) : 0;
     let fires = 0;
@@ -770,15 +774,15 @@ export class Sim {
     let r = valve(rTarget, R) + tax;
     let c = valve(cTarget, Jc) + tax;
     let i = valve(iTarget, Ji) + tax;
-    if (R > 18000 && !s.hasStadium) {
+    if (this.capped.res) {
       r = Math.min(r, -0.05);
       this.say('stadium', 'Residents want a stadium before more of them move in.', 'warn', undefined, 12);
     }
-    if (Jc > 5000 && !s.hasAirport) {
+    if (this.capped.com) {
       c = Math.min(c, -0.05);
       this.say('airport', 'Commerce has stalled. Businesses need an airport.', 'warn', undefined, 12);
     }
-    if (Ji > 4000 && !s.hasSeaport) {
+    if (this.capped.ind) {
       i = Math.min(i, -0.05);
       this.say('seaport', 'Industry has stalled. Factories need a seaport to ship goods.', 'warn', undefined, 12);
     }

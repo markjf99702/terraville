@@ -282,6 +282,50 @@ await test('homes with no road to any job stay empty, however strong demand is',
   }
 });
 
+await test('the landmark limits: 18,000 residents, 5,000 shop jobs, 4,000 factory jobs', () => {
+  const w = flat(60, 40);
+  for (let k = 0; k < 9; k++) w.setLevel(w.place('res', 1 + k * 3, 1), 8); // 19,800 residents
+  for (let k = 0; k < 4; k++) w.setLevel(w.place('com', 1 + k * 3, 5), 5); // 6,000 jobs
+  for (let k = 0; k < 6; k++) w.setLevel(w.place('ind', 1 + k * 3, 9), 4); // 4,560 jobs
+  const sim = new Sim(w);
+  assert.deepEqual(sim.capped, { res: true, com: true, ind: true });
+  w.place('stadium', 1, 14);
+  w.place('airport', 6, 14);
+  w.place('seaport', 13, 14);
+  sim.tally();
+  assert.deepEqual(sim.capped, { res: false, com: false, ind: false });
+});
+
+await test('past its limit, industry stops growing until a seaport opens', () => {
+  const w = flat(60, 40);
+  w.place('coal', 1, 1);
+  applyLine(w, POWER, planLine(w, POWER, linePath(5, 2, 55, 2)));
+  applyLine(w, ROAD, planLine(w, ROAD, linePath(5, 6, 55, 6)));
+  for (const x of [6, 9, 12, 15, 18, 21]) w.setLevel(w.place('ind', x, 3), 4); // 4,560 jobs, at their top level
+  const small = [24, 27, 30].map((x) => w.place('ind', x, 3));
+  for (const b of small) w.setLevel(b, 1);
+  w.place('res', 33, 3); // where the workers come from
+  const sim = new Sim(w);
+  const months = (n: number) => {
+    for (let k = 0; k < 4 * n; k++) {
+      w.city.demand.i = 1; // as strong as demand gets, every week
+      sim.step();
+    }
+  };
+  const random = Math.random;
+  Math.random = makeRng(5);
+  try {
+    months(24);
+    assert.deepEqual(small.map((b) => b.level), [1, 1, 1]);
+    assert.ok(sim.messages.some((m) => m.text === 'Industry has stalled. Factories need a seaport to ship goods.'));
+    w.place('seaport', 40, 20);
+    months(24);
+  } finally {
+    Math.random = random;
+  }
+  assert.ok(small.some((b) => b.level > 1), 'industry never grew after the seaport opened');
+});
+
 await test('a connected, powered city grows and pays taxes', () => {
   const w = flat(60, 40);
   w.city.funds = 20000;

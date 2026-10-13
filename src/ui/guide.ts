@@ -211,10 +211,10 @@ function sections(): Section[] {
       html: `
         ${table(['Challenge', 'How to approach it'], [
           ['Boomtown', 'Money is tight. Build one coal plant, lay roads every 7 tiles to save asphalt, and grow in step with the RCI meter. Twelve thousand residents needs roughly six thousand jobs.'],
-          ['Gridlock', 'Run rail from the outer housing into downtown, add parallel roads beside the jammed ones, and zone pockets of commerce inside the residential rings. Keep at least 30,000 people while you do it.'],
-          ['Smog Valley', 'The coal plants are the worst polluters. Replace them with nuclear, solar or wind, plant trees and parks between the factories and the homes, and bulldoze the industry that sits closest to houses.'],
-          ['Aftershock', 'Put the fires out first: check fire cover and bulldoze firebreaks. Then clear rubble, reconnect roads and power, and push land value up with hospitals and schools to reach 55,000.'],
-          ['Monster Bay', 'The monster returns about every two years and makes for the smoke, which here means the coal plants. Switch to clean power, keep fire cover up for the fires it starts, and keep taxes near 7% to hold approval above 60%.'],
+          ['Gridlock', 'Run rail from the outer housing into downtown, add parallel roads beside the jammed ones, and zone pockets of commerce inside the residential rings. Keep at least 30,000 people while you do it. There is no airport or seaport, so shops and factories can’t grow until you build them, though more jobs also bring more traffic.'],
+          ['Smog Valley', 'The coal plants are the worst polluters. Replace them with nuclear, solar or wind, plant trees and parks between the factories and the homes, and bulldoze the industry that sits closest to houses. Housing stops at 18,000 residents until you build a stadium.'],
+          ['Aftershock', 'Put the fires out first: check fire cover and bulldoze firebreaks. Then clear rubble, reconnect roads and power, push land value up with hospitals and schools, and build a seaport so industry can grow, to reach 55,000.'],
+          ['Monster Bay', 'The monster returns about every two years and makes for the smoke, which here means the coal plants. Switch to clean power, keep fire cover up for the fires it starts, and keep taxes near 7% to hold approval above 60%. Housing stops at 18,000 residents until you build a stadium.'],
         ])}`,
     },
     {
