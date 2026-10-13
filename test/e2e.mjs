@@ -161,6 +161,33 @@ try {
     await ctx.close();
   });
 
+  await test('a city in debt can still bulldoze, though it cannot build', async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await found(page);
+    const after = await page.evaluate(() => {
+      const g = window.__terraville;
+      const w = g.world;
+      const free = (i) => !w.water[i] && !w.occ[i] && !w.net[i] && !w.rubble[i];
+      const wooded = w.trees.findIndex((t, i) => t > 0 && free(i));
+      const bare = w.trees.findIndex((t, i) => t === 0 && free(i));
+      const use = (tool, i) => {
+        const x = (i % w.w) + 0.5;
+        const y = Math.floor(i / w.w) + 0.5;
+        g.setTool(tool);
+        g.pointerDown(x, y, 10, 10);
+        g.pointerUp(x, y, 10, 10);
+      };
+      w.city.funds = -1000;
+      use('road', bare);
+      use('bulldoze', wooded);
+      return { road: w.net[bare], trees: w.trees[wooded], funds: w.city.funds };
+    });
+    assert.deepEqual(after, { road: 0, trees: 0, funds: -1001 });
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('says what it needs with JavaScript off', async () => {
     const ctx = await profile({ ...PHONE, javaScriptEnabled: false });
     const page = await ctx.newPage();

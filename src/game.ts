@@ -681,7 +681,6 @@ export class Game {
     } else {
       r.preview = { tiles: plan.tiles, bad: plan.bad, rects: [], tint: t.id === 'bulldoze' ? '242,193,78' : undefined };
     }
-    const funds = this.world.city.funds;
     let html: string;
     let bad = false;
     if (!plan.count) {
@@ -694,7 +693,7 @@ export class Game {
         t.kind === 'rect' ? `${plan.count} tile${plan.count > 1 ? 's' : ''}` : t.name;
       html = `${t.kind === 'place' ? '' : t.name + ' · '}${what} · <span class="num">${fmtMoney(plan.cost)}</span>`;
       if (plan.grading) html += ` · includes <span class="num">${fmtMoney(plan.grading)}</span> ${t.kind === 'line' ? 'to grade the slope' : 'to level the ground'}`;
-      if (plan.cost > funds) {
+      if (!this.affordable(plan)) {
         html += ' · not enough money';
         bad = true;
       } else if (plan.bad.length && plan.reason) {
@@ -791,6 +790,11 @@ export class Game {
     }
   }
 
+  /** Whether the city can pay for a plan. Bulldozing goes ahead even in debt, so a broke city can cut its upkeep. */
+  private affordable(plan: Plan): boolean {
+    return this.mode !== 'city' || this.tool().id === 'bulldoze' || plan.cost <= this.world.city.funds;
+  }
+
   private commit(plan: Plan): void {
     const t = this.tool();
     if (!plan.count) {
@@ -799,7 +803,7 @@ export class Game {
       return;
     }
     const city = this.world.city;
-    if (this.mode === 'city' && plan.cost > city.funds) {
+    if (!this.affordable(plan)) {
       this.ui.toast(`Not enough money. That costs ${fmtMoney(plan.cost)} and the city has ${fmtMoney(city.funds)}.`, 'warn');
       this.audio.play('error');
       return;
