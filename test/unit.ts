@@ -28,6 +28,8 @@ function flat(w = 40, h = 30): World {
   return world;
 }
 
+const bounds = ({ x0, y0, x1, y1 }: { x0: number; y0: number; x1: number; y1: number }) => ({ x0, y0, x1, y1 });
+
 await test('terrain is deterministic for a seed', () => {
   const p = { ...DEFAULT_TERRAIN, seed: 'amber-isle-11', w: 60, h: 50 };
   const a = generateTerrain(p);
@@ -176,7 +178,7 @@ await test('area undo puts back only what the action touched', () => {
   let full = w.snapshot();
   applyLine(w, ROAD, planLine(w, ROAD, linePath(2, 5, 12, 5)));
   const roadBox = w.changedArea(full)!;
-  assert.deepEqual({ ...roadBox }, { x0: 2, y0: 5, x1: 12, y1: 5 });
+  assert.deepEqual(bounds(roadBox), { x0: 2, y0: 5, x1: 12, y1: 5 });
   const roadUndo = w.areaSnapshot(roadBox, full);
   // The city grows elsewhere, then the road is undone: the growth stays.
   w.setLevel(other, 3);
@@ -189,7 +191,7 @@ await test('area undo puts back only what the action touched', () => {
   full = w.snapshot();
   w.bulldoze(6, 9);
   const lotBox = w.changedArea(full)!;
-  assert.deepEqual({ ...lotBox }, { x0: 5, y0: 8, x1: 7, y1: 10 });
+  assert.deepEqual(bounds(lotBox), { x0: 5, y0: 8, x1: 7, y1: 10 });
   const back = w.areaSnapshot(lotBox, full);
   const redo = w.areaSnapshot(lotBox);
   assert.equal(w.restoreArea(back), true);
@@ -202,6 +204,26 @@ await test('area undo puts back only what the action touched', () => {
   assert.equal(w.changedArea(w.snapshot()), null);
   // A snapshot of another map is refused.
   assert.equal(flat(10, 10).restoreArea(back), false);
+});
+
+await test('undoing a bent line leaves the rest of its rectangle alone', () => {
+  const w = flat();
+  const grows = w.place('res', 10, 10); // inside the corner of the line, touching none of it
+  w.setLevel(grows, 2);
+  const burns = w.place('res', 20, 10);
+  w.setLevel(burns, 3);
+  const full = w.snapshot();
+  const path = linePath(2, 4, 30, 20); // east along y = 4, then south along x = 30
+  applyLine(w, POWER, planLine(w, POWER, path));
+  const undo = w.areaSnapshot(w.changedArea(full)!, full);
+  // Months go by: one lot grows and a fire takes the other. Then the line is undone.
+  w.setLevel(grows, 4);
+  w.remove(burns.id, true);
+  assert.equal(w.restoreArea(undo), true);
+  for (const [x, y] of path) assert.equal(w.net[y * w.w + x], 0);
+  assert.equal(w.buildings.get(grows.id)!.level, 4);
+  assert.equal(w.buildings.has(burns.id), false);
+  assert.equal(w.rubble[11 * w.w + 21], 1);
 });
 
 await test('commutes need a road to a destination', () => {

@@ -896,13 +896,13 @@ export class Game {
     if (!top?.open) return;
     top.open = false;
     const full = top.snap as WorldSnapshot;
-    const box = top.within === null ? null : this.world.changedArea(full, top.within);
-    if (!box) {
+    const area = top.within === null ? null : this.world.changedArea(full, top.within);
+    if (!area) {
       this.undoStack.pop();
       this.ui?.syncUndo();
       return;
     }
-    top.snap = this.world.areaSnapshot(box, full);
+    top.snap = this.world.areaSnapshot(area, full);
   }
 
   private refundable(e: UndoEntry): boolean {
