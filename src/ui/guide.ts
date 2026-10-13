@@ -164,7 +164,7 @@ function sections(): Section[] {
           <li><b>7%</b> keeps demand neutral. Residents start to grumble about taxes above about 12%, and every point above 7% slows growth.</li>
           <li><b>Upkeep</b> is charged monthly: roads and rail by the tile, police and fire by the station (scaled by their funding), and each plant and service building.</li>
           <li><b>Loans</b> come in $10,000 steps up to $30,000 at 7% a year. They are worth it to fund a plant or a landmark that unlocks growth, not to cover running costs.</li>
-          <li><b>In debt</b> nothing new can be built, but bulldozing still works at $1 a tile, so you can clear away what the city can't afford to run.</li>
+          <li><b>In debt</b> nothing new can be built, but bulldozing still works at $1 a tile, so you can clear away what the city can’t afford to run.</li>
           <li><b>Underfunding</b> police or fire weakens their reach. Cutting roads and rail below 90% makes tiles crumble into rubble every month.</li>
         </ul>
         ${tip('The Budget pauses the game and shows last month and the year so far line by line. The History charts show whether income is keeping up with spending.')}`,
@@ -210,11 +210,11 @@ function sections(): Section[] {
       title: 'Challenges',
       html: `
         ${table(['Challenge', 'How to approach it'], [
-          ['Boomtown', 'Money is tight. Build one coal plant, lay roads every 7 tiles to save asphalt, and grow in step with the RCI meter. Twelve thousand residents needs roughly six thousand jobs.'],
-          ['Gridlock', 'Run rail from the outer housing into downtown, add parallel roads beside the jammed ones, and zone pockets of commerce inside the residential rings. Keep at least 30,000 people while you do it. There is no airport or seaport, so shops and factories can’t grow until you build them, though more jobs also bring more traffic.'],
+          ['Boomtown', 'Money is tight. Build one coal plant and lay roads every 7 tiles to save asphalt. Then zone well ahead of the RCI meter, a dozen or more lots of housing and a few of shops and industry early on: each lot fills in slowly, so the number of lots sets the pace, and money for roads is the limit, not demand. Twelve thousand residents needs roughly six thousand jobs.'],
+          ['Gridlock', 'Run rail from the outer housing into downtown, add parallel roads beside the jammed ones, and zone pockets of commerce inside the residential rings. The city opens just short of 30,000 people and thins out from the start, because it is built denser than its land value can hold; schools, hospitals and parks raise land value and hold people. There is no airport or seaport, so shops and factories can’t grow until you build them, though more jobs also bring more traffic.'],
           ['Smog Valley', 'The coal plants are the worst polluters. Replace them with nuclear, solar or wind, plant trees and parks between the factories and the homes, and bulldoze the industry that sits closest to houses. Housing stops at 18,000 residents until you build a stadium.'],
           ['Aftershock', 'Put the fires out first: check fire cover and bulldoze firebreaks. Then clear rubble, reconnect roads and power, push land value up with hospitals and schools, and build a seaport so industry can grow, to reach 55,000.'],
-          ['Monster Bay', 'The monster returns about every two years and makes for the smoke, which here means the coal plants. Switch to clean power, keep fire cover up for the fires it starts, and keep taxes near 7% to hold approval above 60%. Housing stops at 18,000 residents until you build a stadium.'],
+          ['Monster Bay', 'The monster returns about every two years and makes for the smoke, which here means the coal plants. Switch to solar or wind: a nuclear plant the monster smashes melts down. Keep fire cover up for the fires it starts, and keep taxes near 7% to hold approval above 60%. Housing stops at 18,000 residents until you build a stadium.'],
         ])}`,
     },
     {
