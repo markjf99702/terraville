@@ -278,6 +278,17 @@ await test('disasters run without breaking the map', () => {
   assert.ok(occupied >= 0);
 });
 
+await test('fire reports read right: an airport, a school', () => {
+  const w = flat(60, 40);
+  const sim = new Sim(w);
+  for (const b of [w.place('airport', 2, 2), w.place('ind', 10, 2), w.place('school', 15, 2)]) {
+    sim.disasters.ignite(b.x, b.y);
+    w.city.month++; // past the month between fire reports
+  }
+  assert.deepEqual(sim.messages.filter((m) => m.text.startsWith('Fire')).map((m) => m.text),
+    ['Fire reported at an airport.', 'Fire reported at an industrial zone.', 'Fire reported at a school.']);
+});
+
 await test('undo snapshots restore the map but never money, and only onto the same map', () => {
   const w = flat();
   w.city.funds = 1000;

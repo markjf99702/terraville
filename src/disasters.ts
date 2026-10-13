@@ -117,7 +117,8 @@ export class Disasters {
         for (let dx = 0; dx < b.size; dx++) world.fire[(b.y + dy) * world.w + b.x + dx] = weeks;
       }
       world.dirty(b.x, b.y, b.x + b.size - 1, b.y + b.size - 1);
-      this.sim.say('fire', `Fire reported at a ${BUILDINGS[b.kind].name.toLowerCase()}.`, 'alert', { x: b.x + 1, y: b.y + 1 }, 1);
+      const name = BUILDINGS[b.kind].name.toLowerCase();
+      this.sim.say('fire', `Fire reported at ${/^[aeiou]/.test(name) ? 'an' : 'a'} ${name}.`, 'alert', { x: b.x + 1, y: b.y + 1 }, 1);
       this.sim.emit({ type: 'disaster', kind: 'fire', x, y });
       this.sim.powerDirty = true;
     } else if (world.trees[i]) {
