@@ -72,7 +72,7 @@ export const SCENARIOS: Scenario[] = [
     years: 6,
     funds: 25000,
     blurb: 'Everyone drives downtown and nobody gets there. Commuters sit in traffic for hours, and the council wants it fixed before the next election.',
-    goal: 'Bring the traffic index below 30 while keeping at least 30,000 residents.',
+    goal: 'Bring the traffic index below 30 with at least 30,000 residents and 10,000 jobs.',
     kind: 'hold',
     terrain: { seed: 'gridlock-plain-3', style: 'lakes', hills: 15, lakes: 15, forest: 25 },
     city: {
@@ -88,8 +88,14 @@ export const SCENARIOS: Scenario[] = [
     check: (sim) => {
       const t = idx(sim.stats.avgTraffic);
       const r = sim.stats.residents;
-      const met = t < 30 && r >= 30000;
-      return { progress: Math.max(0, Math.min(1, (70 - t) / 40)) * (r >= 30000 ? 1 : 0.5), status: `Traffic ${t} (goal under 30) · ${r.toLocaleString()} of 30,000 residents`, met };
+      // Jobs count too: with no jobs there are no commutes, and bulldozing them all would clear the roads.
+      const j = sim.stats.comJobs + sim.stats.indJobs;
+      const size = r >= 30000 && j >= 10000;
+      return {
+        progress: Math.max(0, Math.min(1, (70 - t) / 40)) * (size ? 1 : 0.5),
+        status: `Traffic ${t} (goal under 30) · ${r.toLocaleString()} of 30,000 residents · ${j.toLocaleString()} of 10,000 jobs`,
+        met: t < 30 && size,
+      };
     },
   },
   {
@@ -99,7 +105,7 @@ export const SCENARIOS: Scenario[] = [
     years: 8,
     funds: 30000,
     blurb: 'Factories line the river and coal smoke fills the valley. People are leaving. Clean the air without killing the jobs.',
-    goal: 'Get the pollution index below 8 with at least 20,000 residents.',
+    goal: 'Get the pollution index below 8 with at least 20,000 residents and 9,000 jobs.',
     kind: 'hold',
     terrain: { seed: 'smog-valley-5', style: 'valley', hills: 40, rivers: 1, forest: 30 },
     city: {
@@ -114,7 +120,13 @@ export const SCENARIOS: Scenario[] = [
     check: (sim) => {
       const p = idx(sim.stats.avgPollution);
       const r = sim.stats.residents;
-      return { progress: Math.max(0, Math.min(1, (30 - p) / 22)) * (r >= 20000 ? 1 : 0.5), status: `Pollution ${p} (goal under 8) · ${r.toLocaleString()} of 20,000 residents`, met: p < 8 && r >= 20000 };
+      const j = sim.stats.comJobs + sim.stats.indJobs;
+      const size = r >= 20000 && j >= 9000;
+      return {
+        progress: Math.max(0, Math.min(1, (30 - p) / 22)) * (size ? 1 : 0.5),
+        status: `Pollution ${p} (goal under 8) · ${r.toLocaleString()} of 20,000 residents · ${j.toLocaleString()} of 9,000 jobs`,
+        met: p < 8 && size,
+      };
     },
   },
   {

@@ -8,6 +8,7 @@ import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST } from '../src/defs';
 import { encode, decode, listSlots, saveCode, SlotMeta } from '../src/save';
 import { Drive, GisOAuth2 } from '../src/drive';
 import { makeRng } from '../src/rng';
+import { SCENARIOS } from '../src/scenarios';
 
 let passed = 0;
 async function test(name: string, fn: () => void | Promise<void>) {
@@ -425,6 +426,19 @@ await test('random disasters wait for a town big enough to need a fire station',
   } finally {
     Math.random = random;
   }
+});
+
+await test('Gridlock and Smog Valley are not won by bulldozing every job before the deadline', () => {
+  const sim = new Sim(flat());
+  const goal = (id: string) => SCENARIOS.find((s) => s.id === id)!.check(sim);
+  // Empty roads and clean air, because every shop and factory is gone.
+  Object.assign(sim.stats, { avgTraffic: 0, avgPollution: 0, residents: 40000, comJobs: 0, indJobs: 0 });
+  assert.equal(goal('gridlock').met, false);
+  assert.equal(goal('smog').met, false);
+  assert.match(goal('gridlock').status, /· 0 of 10,000 jobs$/);
+  Object.assign(sim.stats, { comJobs: 6000, indJobs: 4000 });
+  assert.equal(goal('gridlock').met, true);
+  assert.equal(goal('smog').met, true);
 });
 
 await test('undo snapshots restore the map but never money, and only onto the same map', () => {
