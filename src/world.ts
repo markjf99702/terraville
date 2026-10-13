@@ -75,6 +75,53 @@ export function newCityState(): CityState {
   };
 }
 
+/**
+ * A saved city's state, field by field. A city code is text anyone can edit, so each field the game reads gets its
+ * proper type here: markup where a number or a flag belongs would otherwise reach the dialogs as HTML, and the id
+ * goes into Google Drive queries. Fields this version doesn't know ride along untouched.
+ */
+function cleanCity(raw: unknown): CityState {
+  if (!raw || typeof raw !== 'object') throw new Error('The saved city is damaged.');
+  const s = raw as Record<string, unknown>;
+  const d = newCityState();
+  const funding = record(s.funding);
+  const demand = record(s.demand);
+  const history = record(s.history);
+  const series = (v: unknown) => (Array.isArray(v) ? v.map((x) => num(x, 0)) : []);
+  const city: CityState = {
+    ...(s as Partial<CityState>),
+    name: typeof s.name === 'string' ? s.name : d.name,
+    difficulty: typeof s.difficulty === 'string' ? (s.difficulty as Difficulty['id']) : d.difficulty,
+    funds: num(s.funds, d.funds),
+    month: Math.floor(num(s.month, d.month, 0)),
+    tax: Math.round(num(s.tax, d.tax, 0, 20)),
+    funding: { police: num(funding.police, 1, 0, 1), fire: num(funding.fire, 1, 0, 1), transport: num(funding.transport, 1, 0, 1) },
+    demand: { r: num(demand.r, d.demand.r), c: num(demand.c, d.demand.c), i: num(demand.i, d.demand.i) },
+    disasters: s.disasters === undefined ? d.disasters : !!s.disasters,
+    founded: !!s.founded,
+    seed: typeof s.seed === 'string' ? s.seed : d.seed,
+    history: { ...history, ...Object.fromEntries(Object.keys(d.history).map((k) => [k, series(history[k])])) } as unknown as History,
+    classReached: num(s.classReached, 0),
+    loan: num(s.loan, 0, 0),
+  };
+  // Only the plain ids Terraville makes; a city without one gets a new id when it opens.
+  if (typeof s.id !== 'string' || !/^[a-z0-9]{1,24}$/.test(s.id)) delete city.id;
+  const sc = record(s.scenario);
+  if (typeof sc.id === 'string') city.scenario = { id: sc.id, end: num(sc.end, 0), done: sc.done === 'won' || sc.done === 'lost' ? sc.done : '' };
+  else delete city.scenario;
+  return city;
+}
+
+function record(v: unknown): Record<string, unknown> {
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+}
+
+/** A number from a save, or `def` when it isn't one, kept within lo to hi. */
+function num(v: unknown, def: number, lo = -Infinity, hi = Infinity): number {
+  const n = v === undefined ? NaN : Number(v);
+  return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : def;
+}
+
 export type DirtyListener = (x0: number, y0: number, x1: number, y1: number, terrain: boolean) => void;
 
 export class World {
@@ -421,8 +468,7 @@ export class World {
       }
     }
     w.nextId = Math.max(s.nextId, ...[...w.buildings.keys()].map((k) => k + 1), 1);
-    w.city = { ...newCityState(), ...s.city };
-    w.city.history = { ...emptyHistory(), ...s.city.history };
+    w.city = cleanCity(s.city);
     return w;
   }
 

@@ -47,6 +47,29 @@ export function hasSea(style: TerrainStyle): boolean {
   return style === 'coast' || style === 'island' || style === 'archipelago';
 }
 
+/**
+ * Terrain settings from a save. A city code is text anyone can edit, and the editor's sliders are drawn from these
+ * as HTML, so a setting is taken only when it has the right type, within its slider's range; otherwise `base` keeps it.
+ */
+export function cleanTerrain(raw: unknown, base: TerrainParams): TerrainParams {
+  const s = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const pick = (k: 'water' | 'hills' | 'rough' | 'rivers' | 'lakes' | 'forest', max: number) => {
+    const n = s[k] === undefined ? NaN : Number(s[k]);
+    return Number.isFinite(n) ? clamp(n, 0, max) : base[k];
+  };
+  return {
+    ...base,
+    seed: typeof s.seed === 'string' ? s.seed : base.seed,
+    style: Object.keys(STYLE_NAMES).includes(s.style as string) ? (s.style as TerrainStyle) : base.style,
+    water: pick('water', 100),
+    hills: pick('hills', 100),
+    rough: pick('rough', 100),
+    rivers: pick('rivers', 6),
+    lakes: pick('lakes', 100),
+    forest: pick('forest', 100),
+  };
+}
+
 const DIRS4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
 export function generateTerrain(p: TerrainParams): World {

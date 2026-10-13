@@ -31,8 +31,9 @@ const JD_FOOT = `<footer class="jd-foot">
   <a href="https://terraville.junkdrawer.works/privacy.html">Privacy</a>
 </footer>`;
 
-function esc(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+/** Text made safe to put in HTML. Not-quite-text from a damaged save is shown as text rather than stopping the page. */
+function esc(s: unknown): string {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }
 
 /** How long ago a moment was, briefly. */
@@ -1340,7 +1341,7 @@ export class UI {
       for (const x of body.querySelectorAll('[data-n]')) x.setAttribute('aria-pressed', String(x === b));
       draw();
     };
-    this.openModal({ title: 'History', sub: `${g.world.city.name} since ${dateLabel(Math.max(0, g.world.city.month - h.pop.length))}`, body, wide: true });
+    this.openModal({ title: 'History', sub: `${esc(g.world.city.name)} since ${dateLabel(Math.max(0, g.world.city.month - h.pop.length))}`, body, wide: true });
     requestAnimationFrame(draw);
   }
 

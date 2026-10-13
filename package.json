@@ -6,7 +6,7 @@
   "scripts": {
     "build": "node build.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node run-test.mjs test/unit.ts",
+    "test": "node run-test.mjs test/unit.ts && node test/e2e.mjs",
     "bot": "node run-test.mjs test/bot.ts",
     "balance": "node run-test.mjs test/balance.ts"
   },

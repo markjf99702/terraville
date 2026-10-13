@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { World, encodeArray, decodeArray } from '../src/world';
 import { Sim } from '../src/sim';
-import { generateTerrain, DEFAULT_TERRAIN } from '../src/terrain';
+import { generateTerrain, cleanTerrain, DEFAULT_TERRAIN } from '../src/terrain';
 import { linePath, planLine, applyLine, planZones, applyBuildings } from '../src/tools';
 import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST } from '../src/defs';
 import { encode, decode } from '../src/save';
@@ -300,6 +300,43 @@ await test('damaged saves are refused instead of half-loaded', () => {
   const back = World.deserialize(clash);
   assert.equal(back.buildings.size, 1);
   assert.ok(back.nextId > 99 || back.nextId > 1);
+  assert.throws(() => World.deserialize({ ...s, city: undefined as never }));
+});
+
+await test('a city code is read field by field, so what someone typed into it stays text', () => {
+  const s = flat().serialize();
+  const tag = '"><img src=x onerror="alert(1)">';
+  const city = { ...s.city, name: `Harbour ${tag}`, tax: tag, disasters: tag, funds: tag, month: '18', loan: -5, id: "x' or name contains 'a",
+    funding: { police: tag, fire: 0.5, transport: 2 }, history: { ...s.city.history, pop: [tag, 5, null] }, scenario: { id: 'monster', end: tag, done: tag } };
+  const c = World.deserialize({ ...s, city: city as never }).city;
+  assert.equal(c.name, `Harbour ${tag}`); // a name can be any text; the dialogs escape it
+  assert.equal(c.tax, 7);
+  assert.equal(c.disasters, true);
+  assert.equal(c.funds, 20000);
+  assert.equal(c.month, 18);
+  assert.equal(c.loan, 0);
+  assert.equal(c.id, undefined); // not an id Terraville makes, so it never reaches a Drive query
+  assert.deepEqual(c.funding, { police: 1, fire: 0.5, transport: 1 });
+  assert.deepEqual(c.history.pop, [0, 5, 0]);
+  assert.deepEqual(c.scenario, { id: 'monster', end: 0, done: '' });
+  assert.equal(World.deserialize({ ...s, city: { ...s.city, name: 12345 } as never }).city.name, 'New City');
+
+  // A real city comes back exactly as it was saved, along with anything a later version adds.
+  const w = flat();
+  Object.assign(w.city, { id: 'k3j2h1abc9', name: 'Riverton', tax: 9, funds: -1250, month: 655, loan: 20000, classReached: 3, seed: 'river-oak-3', disasters: true });
+  w.city.funding.fire = 0.55;
+  w.city.history.pop.push(10, 20, 35);
+  w.city.scenario = { id: 'monster', end: 840, done: 'won' };
+  (w.city as unknown as Record<string, unknown>).later = { kept: true };
+  assert.deepEqual(World.deserialize(JSON.parse(JSON.stringify(w.serialize()))).city, w.city);
+});
+
+await test('terrain settings from a code are numbers in their sliders\' range', () => {
+  const base = { ...DEFAULT_TERRAIN, seed: 'harbor-pine-42', w: 120, h: 100 };
+  const t = cleanTerrain({ water: '<img src=x onerror="alert(1)">', hills: 250, rivers: '3', style: 'volcano', seed: 7, forest: 12 }, base);
+  assert.deepEqual(t, { ...base, hills: 100, rivers: 3, forest: 12 });
+  const real = { ...base, style: 'island' as const, water: 45, hills: 30, rough: 0, rivers: 6, lakes: 100, seed: 'monster-bay-2' };
+  assert.deepEqual(cleanTerrain(JSON.parse(JSON.stringify(real)), base), real);
 });
 
 

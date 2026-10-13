@@ -10,7 +10,7 @@ import { Drive, DriveCopy } from './drive';
 import { SaveFile, SlotMeta, citySlot, decode, deleteSlot, encode, listSlots, loadSlot, newCityId, readCode, saveCode, saveSlot, thisDevice, worldFrom } from './save';
 import { SCENARIOS, buildScenario } from './scenarios';
 import { Sim } from './sim';
-import { DEFAULT_TERRAIN, TerrainParams, TerrainStyle, addSpring, applyBrush, generateTerrain } from './terrain';
+import { DEFAULT_TERRAIN, TerrainParams, TerrainStyle, addSpring, applyBrush, cleanTerrain, generateTerrain } from './terrain';
 import {
   Plan, applyBuildings, applyBulldoze, applyLine, applyTrees, linePath, planBulldoze, planLine, planParks, planPlace,
   planTrees, planZones, rectTiles,
@@ -365,8 +365,7 @@ export class Game {
     this.world = worldFrom(file);
     // Cities saved before ids existed get one now; their saves follow it from here on.
     if (file.mode === 'city' && !this.world.city.id) this.world.city.id = newCityId();
-    if (file.terrain) this.terrain = { ...this.terrain, ...(file.terrain as Partial<TerrainParams>), w: this.world.w, h: this.world.h };
-    else this.terrain = { ...this.terrain, w: this.world.w, h: this.world.h };
+    this.terrain = { ...cleanTerrain(file.terrain, this.terrain), w: this.world.w, h: this.world.h };
     this.clearUndo();
     this.slotId = slotId;
     if (file.mode === 'city' && this.world.city.founded) {

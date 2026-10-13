@@ -74,7 +74,8 @@ In **Menu › Save, open and share**, choose **Connect Google Drive**. From then
 ```sh
 npm install
 npm run build        # writes index.html (and dist/page.html, a body-only copy)
-npm test             # unit checks for terrain, power, traffic, saves, undo, disasters, Drive sync
+npm test             # unit checks for terrain, power, traffic, saves, undo, disasters, Drive sync,
+                     # then plays the built index.html in Chromium (needs Playwright)
 npm run bot -- 30    # a bot plays 30 years and prints a yearly summary
 npx tsc --noEmit     # typecheck
 ```
