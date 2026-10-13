@@ -2,8 +2,8 @@
 // Tables pull from the game's own data so the numbers cannot drift, and the
 // pictures are drawn with the game's renderer.
 import {
-  AUTO_GRADE, BRIDGE_COST, BUILDINGS, CITY_CLASSES, GRADE_COST, Kind, NET_COST, NET_MAX_SLOPE, NET_UPKEEP, POWER, ROAD,
-  ZONE_LV_GATE, ZONE_POP,
+  AUTO_GRADE, BRIDGE_COST, BUILDINGS, CITY_CLASSES, DISASTER_POP, GRADE_COST, Kind, NET_COST, NET_MAX_SLOPE, NET_UPKEEP,
+  POWER, ROAD, ZONE_LV_GATE, ZONE_POP,
 } from '../defs';
 import { DC, drawBuilding, drawNet, drawTrees } from '../render/sprites';
 import { TerrainField, paintTerrain } from '../render/terrainPaint';
@@ -193,7 +193,7 @@ function sections(): Section[] {
       id: 'disasters',
       title: 'Disasters',
       html: `
-        <p>Random disasters start once a city passes 400 residents, and can be switched off from the Disasters menu. Harder difficulties bring them more often.</p>
+        <p>Random disasters start once a city passes ${DISASTER_POP.toLocaleString()} residents, about when it needs its first fire station, and can be switched off from the Disasters menu. Harder difficulties bring them more often.</p>
         ${table(['Disaster', 'How to prepare'], [
           ['Fire', 'The most common by far. Fire stations prevent fires and put them out. Buildings far from a station catch fire more often, and fire spreads through trees and touching buildings. Bulldoze a gap to stop it.'],
           ['Flood', 'Starts on low shoreline and spreads over land a few metres above the water. Keep valuable buildings on higher ground.'],

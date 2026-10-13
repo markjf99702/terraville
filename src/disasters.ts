@@ -1,5 +1,5 @@
 // Fires, floods, tornadoes, earthquakes, the monster, and meltdowns.
-import { BUILDINGS, DIFFICULTIES, FIRE_WEEKS, RAIL, ROAD } from './defs';
+import { BUILDINGS, DIFFICULTIES, DISASTER_POP, FIRE_WEEKS, RAIL, ROAD } from './defs';
 import type { Sim } from './sim';
 import type { Building } from './world';
 
@@ -52,7 +52,7 @@ export class Disasters {
     const diff = DIFFICULTIES.find((d) => d.id === city.difficulty) ?? DIFFICULTIES[0];
     const f = diff.disasters;
     const pop = this.sim.stats.residents;
-    if (pop < 400) return;
+    if (pop < DISASTER_POP) return;
     const r = Math.random();
     // Rough monthly odds; fire is by far the most common.
     if (r < 0.06 * f) this.trigger('fire');

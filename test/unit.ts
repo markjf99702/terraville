@@ -311,6 +311,28 @@ await test('a save with rubble left burning for years opens with it put out', ()
   assert.equal(back.fire[6 * w.w + 6], 7);
 });
 
+await test('random disasters wait for a town big enough to need a fire station', () => {
+  const w = flat(60, 40);
+  w.city.disasters = true;
+  w.city.difficulty = 'hard';
+  w.setLevel(w.place('res', 2, 2), 8); // 2,200 residents
+  const sim = new Sim(w);
+  const seen: string[] = [];
+  sim.on((e) => { if (e.type === 'disaster') seen.push(e.kind); });
+  const random = Math.random;
+  Math.random = () => 0.001; // every roll says "disaster"
+  try {
+    sim.disasters.month();
+    assert.deepEqual(seen, []);
+    w.setLevel(w.place('res', 5, 2), 5); // 2,560 residents
+    sim.tally();
+    sim.disasters.month();
+    assert.deepEqual(seen, ['fire']);
+  } finally {
+    Math.random = random;
+  }
+});
+
 await test('undo snapshots restore the map but never money, and only onto the same map', () => {
   const w = flat();
   w.city.funds = 1000;
