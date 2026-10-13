@@ -65,8 +65,20 @@ function zoneNext(kind: Kind): boolean {
 for (let m = 0; m < years * 12; m++) {
   for (let wk = 0; wk < 4; wk++) sim.step();
   const s = sim.stats, d = world.city.demand;
+  // The landmarks don't fit a block, so they go west of the grid like the plants, when the city nears each limit.
+  // Until one it needs is affordable, the bot saves up instead of zoning.
+  let saving = false;
+  const landmarks: [Kind, boolean][] = [['stadium', s.residents > 16000 && !s.hasStadium], ['airport', s.comJobs > 4500 && !s.hasAirport], ['seaport', s.indJobs > 3500 && !s.hasSeaport]];
+  for (const [k, want] of landmarks) {
+    if (!want) continue;
+    if (BUILDINGS[k].cost > world.city.funds) { saving = true; continue; }
+    const size = BUILDINGS[k].size;
+    search: for (let y = H - size - 1; y > 40; y--) {
+      for (let x = 4; x + size < ox - 1; x++) if (place(k, x, y)) break search;
+    }
+  }
   // Zone for demand, a few lots a month at most.
-  for (let k = 0; k < 3; k++) {
+  for (let k = 0; k < 3 && !saving; k++) {
     const want: [Kind, number][] = [['res', d.r], ['com', d.c], ['ind', d.i]];
     want.sort((a, b) => b[1] - a[1]);
     const [kind, v] = want[0];
@@ -76,7 +88,7 @@ for (let m = 0; m < years * 12; m++) {
   if (s.powerDemand > s.powerSupply * 0.85 && world.city.funds > 3500) {
     for (let t = 0; t < 40; t++) { const x = 5 + (t % 3) * 5, y = 20 + plants * 5 + Math.floor(t / 3) * 5; if (place('coal', x, y)) { buildLine(POWER, x + 4, y + 1, ox, y + 1); plants++; break; } }
   }
-  const civicWant: [Kind, number][] = [['police', 2500], ['fire', 3000], ['school', 6000], ['hospital', 12000], ['stadium', 17000], ['police', 15000], ['fire', 18000]];
+  const civicWant: [Kind, number][] = [['police', 2500], ['fire', 3000], ['school', 6000], ['hospital', 12000], ['police', 15000], ['fire', 18000]];
   for (const [k, pop] of civicWant) {
     if (s.residents > pop && civic.filter((c) => c === k).length < civicWant.filter(([c, p]) => c === k && p <= s.residents).length) {
       if (zoneNext(k)) civic.push(k);
