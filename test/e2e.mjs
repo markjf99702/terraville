@@ -180,10 +180,13 @@ try {
       };
       w.city.funds = -1000;
       use('road', bare);
+      const refused = document.querySelector('#toast').textContent;
       use('bulldoze', wooded);
-      return { road: w.net[bare], trees: w.trees[wooded], funds: w.city.funds };
+      return { road: w.net[bare], trees: w.trees[wooded], funds: w.city.funds, refused };
     });
-    assert.deepEqual(after, { road: 0, trees: 0, funds: -1001 });
+    assert.deepEqual(after, {
+      road: 0, trees: 0, funds: -1001, refused: 'Not enough money. That costs $10 and the city is $1,000 in debt.',
+    });
     assert.deepEqual(problems, []);
     await ctx.close();
   });

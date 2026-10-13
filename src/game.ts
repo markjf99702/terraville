@@ -804,7 +804,8 @@ export class Game {
     }
     const city = this.world.city;
     if (!this.affordable(plan)) {
-      this.ui.toast(`Not enough money. That costs ${fmtMoney(plan.cost)} and the city has ${fmtMoney(city.funds)}.`, 'warn');
+      const has = Math.round(city.funds) < 0 ? `is ${fmtMoney(-city.funds)} in debt` : `has ${fmtMoney(city.funds)}`;
+      this.ui.toast(`Not enough money. That costs ${fmtMoney(plan.cost)} and the city ${has}.`, 'warn');
       this.audio.play('error');
       return;
     }
