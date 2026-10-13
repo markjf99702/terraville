@@ -1,5 +1,5 @@
 // Fires, floods, tornadoes, earthquakes, the monster, and meltdowns.
-import { BUILDINGS, DIFFICULTIES, RAIL, ROAD } from './defs';
+import { BUILDINGS, DIFFICULTIES, FIRE_WEEKS, RAIL, ROAD } from './defs';
 import type { Sim } from './sim';
 import type { Building } from './world';
 
@@ -111,7 +111,7 @@ export class Disasters {
     const i = y * world.w + x;
     if (world.water[i] || world.fire[i]) return;
     const b = world.buildingAt(x, y);
-    const weeks = 5 + Math.floor(Math.random() * 5);
+    const weeks = 5 + Math.floor(Math.random() * (FIRE_WEEKS - 4));
     if (b) {
       for (let dy = 0; dy < b.size; dy++) {
         for (let dx = 0; dx < b.size; dx++) world.fire[(b.y + dy) * world.w + b.x + dx] = weeks;
@@ -137,6 +137,9 @@ export class Disasters {
     const fund = world.city.funding.fire;
     const handled = new Set<number>();
     for (const i of burning) {
+      // Put out, or burnt down along with the rest of its building, earlier in this pass. Counting it down again
+      // would wrap 0 round to 255 weeks.
+      if (!fire[i]) continue;
       const x = i % w;
       const y = (i / w) | 0;
       const cov = (world.fireCov[i] / 255) * fund;

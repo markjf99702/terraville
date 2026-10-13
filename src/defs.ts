@@ -72,6 +72,8 @@ export const NET_UPKEEP = { road: 0.15, rail: 0.3, bridge: 1 };
 /** Max height difference to a neighbour, in metres, that each network tolerates. */
 export const NET_MAX_SLOPE = { road: 14, rail: 9, power: 999 };
 export const BULLDOZE_COST = 1;
+/** A fire burns a tile for 5 weeks up to this many, unless firefighters put it out sooner. */
+export const FIRE_WEEKS = 9;
 /** Dollars per metre of earth moved, by the Level land brush or when a lot is graded. */
 export const GRADE_COST = 2;
 /** Lots up to this many times their normal slope limit are graded automatically. */

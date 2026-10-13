@@ -289,6 +289,28 @@ await test('fire reports read right: an airport, a school', () => {
     ['Fire reported at an airport.', 'Fire reported at an industrial zone.', 'Fire reported at a school.']);
 });
 
+await test('a lot that burns down stops burning, so it can be rebuilt at once', () => {
+  const w = flat();
+  const lot = w.place('res', 10, 10);
+  w.setLevel(lot, 4);
+  const sim = new Sim(w);
+  sim.disasters.ignite(11, 11);
+  // No fire station anywhere, so nothing puts it out: it burns for five to nine weeks and comes down.
+  for (let k = 0; k < 12 && w.buildings.has(lot.id); k++) sim.step();
+  assert.equal(w.buildings.has(lot.id), false);
+  for (let y = 10; y < 13; y++) for (let x = 10; x < 13; x++) assert.equal(w.fire[y * w.w + x], 0, `still burning at ${x},${y}`);
+  assert.deepEqual(w.canPlace('res', 10, 10), { ok: true, clear: 9, grade: 0 });
+});
+
+await test('a save with rubble left burning for years opens with it put out', () => {
+  const w = flat();
+  w.fire[5 * w.w + 5] = 250; // burnt-down rubble from before the fix
+  w.fire[6 * w.w + 6] = 7; // a real fire carries on
+  const back = World.deserialize(JSON.parse(JSON.stringify(w.serialize())));
+  assert.equal(back.fire[5 * w.w + 5], 0);
+  assert.equal(back.fire[6 * w.w + 6], 7);
+});
+
 await test('undo snapshots restore the map but never money, and only onto the same map', () => {
   const w = flat();
   w.city.funds = 1000;

@@ -1,7 +1,7 @@
 // The map and everything built on it. Pure data plus placement rules; the
 // simulation and renderer both read from here.
 import {
-  AUTO_GRADE, BUILDINGS, BuildingDef, Difficulty, Kind, POWER, RAIL, ROAD, isZone, ZONE_POP,
+  AUTO_GRADE, BUILDINGS, BuildingDef, Difficulty, FIRE_WEEKS, Kind, POWER, RAIL, ROAD, isZone, ZONE_POP,
 } from './defs';
 
 export interface Building {
@@ -449,6 +449,9 @@ export class World {
     w.net = bytes(decodeArray(s.net), n, 'road');
     w.rubble = bytes(decodeArray(s.rubble), n, 'rubble');
     w.fire = bytes(decodeArray(s.fire), n, 'fire');
+    // No fire lasts longer than FIRE_WEEKS. Cities saved before a fix can hold burnt-down lots left burning for
+    // up to five years; put those out.
+    for (let i = 0; i < n; i++) if (w.fire[i] > FIRE_WEEKS) w.fire[i] = 0;
     w.flood = bytes(decodeArray(s.flood), n, 'flood');
     w.rad = bytes(decodeArray(s.rad), n, 'radiation');
     for (const [id, kind, x, y, level, seed, age] of s.buildings) {
