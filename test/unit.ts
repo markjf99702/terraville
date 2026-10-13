@@ -5,7 +5,7 @@ import { Sim } from '../src/sim';
 import { generateTerrain, cleanTerrain, DEFAULT_TERRAIN } from '../src/terrain';
 import { linePath, planLine, applyLine, planZones, applyBuildings } from '../src/tools';
 import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST } from '../src/defs';
-import { encode, decode } from '../src/save';
+import { encode, decode, listSlots, saveCode, SlotMeta } from '../src/save';
 import { Drive, GisOAuth2 } from '../src/drive';
 
 let passed = 0;
@@ -337,6 +337,25 @@ await test('terrain settings from a code are numbers in their sliders\' range', 
   assert.deepEqual(t, { ...base, hills: 100, rivers: 3, forest: 12 });
   const real = { ...base, style: 'island' as const, water: 45, hills: 30, rough: 0, rivers: 6, lakes: 100, seed: 'monster-bay-2' };
   assert.deepEqual(cleanTerrain(JSON.parse(JSON.stringify(real)), base), real);
+});
+
+await test('a damaged list of saves keeps every save it can read', () => {
+  const g = globalThis as unknown as { window?: unknown };
+  const storage = memStorage();
+  g.window = { localStorage: storage };
+  try {
+    const riverton = { id: 'c-riv', name: 'Riverton', pop: 100, date: 5, savedAt: 10, mode: 'city', city: 'riv' };
+    const lakeside = { id: 'c-lak', name: 'Lakeside', pop: 200, date: 9, savedAt: 20, mode: 'city', city: 'lak' };
+    storage.setItem('terraville.slots', '[null]');
+    assert.deepEqual(listSlots(), []);
+    storage.setItem('terraville.slots', JSON.stringify([riverton, null, 'x', 7, lakeside]));
+    assert.deepEqual(listSlots().map((s) => s.name), ['Lakeside', 'Riverton']);
+    // The next save writes the list back with both cities in it.
+    assert.ok(saveCode('TV1j:e30=', { ...riverton, savedAt: 30 } as SlotMeta));
+    assert.deepEqual(listSlots().map((s) => s.name), ['Riverton', 'Lakeside']);
+  } finally {
+    delete g.window;
+  }
 });
 
 

@@ -144,6 +144,23 @@ try {
     await ctx.close();
   });
 
+  await test('a damaged list of saves still opens on the title screen, with Continue', async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await found(page);
+    assert.equal(await page.evaluate(() => window.__terraville.saveCity()), true);
+    const name = await page.evaluate(() => window.__terraville.world.city.name);
+    const real = await page.evaluate(() => JSON.parse(localStorage.getItem('terraville.slots'))[0]);
+    for (const list of [[null], [null, real], [real, null]]) {
+      await page.evaluate((v) => localStorage.setItem('terraville.slots', JSON.stringify(v)), list);
+      await page.goto(base);
+      await titleUp(page);
+      if (list.length > 1) assert.equal(await page.textContent('[data-act="continue"] span'), `Continue ${name}`);
+    }
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('fits a phone and works offline once opened', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

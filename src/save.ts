@@ -45,7 +45,8 @@ export function listSlots(): SlotMeta[] {
   if (!s) return [];
   try {
     const list = JSON.parse(s.getItem(INDEX) ?? '[]') as SlotMeta[];
-    return Array.isArray(list) ? list.sort((a, b) => b.savedAt - a.savedAt) : [];
+    // Anything in the list that isn't a save's details is skipped, so it can't hide the rest or stop the page.
+    return Array.isArray(list) ? list.filter((m) => m && typeof m === 'object').sort((a, b) => b.savedAt - a.savedAt) : [];
   } catch {
     return [];
   }
