@@ -24,7 +24,7 @@ const head = [
   '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;700;800&family=Overpass+Mono:wght@400;600&display=swap">',
   `<style>${css}</style>`,
 ].join('\n');
-const body = `<div id="app"></div>\n<script>${js}</script>`;
+const body = `<noscript>Terraville needs JavaScript to draw the map and run the city.</noscript>\n<div id="app"></div>\n<script>${js}</script>`;
 
 // Only the hosted copy has the link preview, installs to a home screen and works offline; the Artifact copy is a
 // single page.

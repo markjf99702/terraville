@@ -161,6 +161,14 @@ try {
     await ctx.close();
   });
 
+  await test('says what it needs with JavaScript off', async () => {
+    const ctx = await profile({ ...PHONE, javaScriptEnabled: false });
+    const page = await ctx.newPage();
+    await page.goto(base);
+    assert.equal(await page.innerText('body'), 'Terraville needs JavaScript to draw the map and run the city.');
+    await ctx.close();
+  });
+
   await test('fits a phone and works offline once opened', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

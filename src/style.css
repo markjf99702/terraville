@@ -52,6 +52,7 @@ button { cursor: pointer; }
 :focus-visible { outline: 2px solid var(--caution); outline-offset: 2px; }
 [hidden] { display: none !important; }
 .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+noscript { display: block; padding: 32px 16px; text-align: center; font-size: 16px; }
 
 #app { position: fixed; inset: 0; }
 #map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
