@@ -397,6 +397,28 @@ await test('a lot that burns down stops burning, so it can be rebuilt at once', 
   assert.deepEqual(w.canPlace('res', 10, 10), { ok: true, clear: 9, grade: 0 });
 });
 
+await test('a building spreads fire from all four sides in the week it comes down or is put out', () => {
+  for (const ending of ['comes down', 'is put out']) {
+    const w = flat();
+    const mid = w.place('res', 10, 10);
+    const around = [w.place('res', 13, 10), w.place('res', 7, 10), w.place('res', 10, 13), w.place('res', 10, 7)];
+    for (const b of [mid, ...around]) w.setLevel(b, 2);
+    const sim = new Sim(w);
+    sim.disasters.ignite(11, 11);
+    for (let y = 10; y < 13; y++) for (let x = 10; x < 13; x++) w.fire[y * w.w + x] = ending === 'comes down' ? 1 : 5;
+    if (ending === 'is put out') w.fireCov.fill(255); // a station so close that every roll puts it out
+    const random = Math.random;
+    Math.random = () => 0; // every spark catches
+    try {
+      sim.disasters.week();
+    } finally {
+      Math.random = random;
+    }
+    assert.equal(w.buildings.has(mid.id), ending === 'is put out', ending);
+    for (const b of around) assert.equal(w.fire[(b.y + 1) * w.w + b.x + 1], 5, `${ending}: the lot at ${b.x},${b.y} never caught`);
+  }
+});
+
 await test('a save with rubble left burning for years opens with it put out', () => {
   const w = flat();
   w.fire[5 * w.w + 5] = 250; // burnt-down rubble from before the fix

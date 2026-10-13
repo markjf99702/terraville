@@ -137,9 +137,6 @@ export class Disasters {
     const fund = world.city.funding.fire;
     const handled = new Set<number>();
     for (const i of burning) {
-      // Put out, or burnt down along with the rest of its building, earlier in this pass. Counting it down again
-      // would wrap 0 round to 255 weeks.
-      if (!fire[i]) continue;
       const x = i % w;
       const y = (i / w) | 0;
       const cov = (world.fireCov[i] / 255) * fund;
@@ -155,6 +152,9 @@ export class Disasters {
         const p = (world.occ[j] ? 0.16 : 0.22) * (1 - cov * 0.9);
         if (Math.random() < p) this.ignite(nx, ny);
       }
+      // Put out, or burnt down along with the rest of its building, earlier in this pass: it still spread this
+      // week, as above, but counting it down again would wrap 0 round to 255 weeks.
+      if (!fire[i]) continue;
       const id = world.occ[i];
       if (id) {
         if (handled.has(id)) continue;
