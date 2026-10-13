@@ -700,7 +700,8 @@ export class Sim {
       // Hospitals nearby let residential grow a notch denser.
       if (world.landValue[ci] + (k === 'res' ? svc * 30 : 0) >= gate[L]) maxLevel = L;
     }
-    if (score > 0 && b.level < maxLevel) {
+    // Without a commute a lot never grows, however good its spot: the missing trip only weighs on the score below.
+    if (score > 0 && b.level < maxLevel && b.trip) {
       if (r < 0.02 + score * 0.11) {
         this.setLevel(b, b.level + 1);
         this.emit({ type: 'grow', b });

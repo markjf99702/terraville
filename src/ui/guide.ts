@@ -62,13 +62,13 @@ function sections(): Section[] {
       id: 'growth',
       title: 'Why lots grow, or don’t',
       html: `
-        <p>A lot develops only when all four of these hold:</p>
+        <p>A lot develops only when all three of these hold:</p>
         <ul>
           <li><b>Power.</b> Unpowered lots never grow, and built ones empty out.</li>
           <li><b>A road touching the lot</b> on at least one side. A corner touching diagonally does not count.</li>
           <li><b>A commute.</b> Homes need to reach a shop or factory, and shops and factories need to reach homes, within about 80 road tiles.</li>
-          <li><b>Demand.</b> The matching bar on the RCI meter has to be above the line, and local conditions have to be decent.</li>
         </ul>
+        <p>Then <b>demand</b> and local conditions decide how fast it grows. With the matching bar on the RCI meter above the line, lots in decent spots fill in. Below the line, lots in the best spots still grow, only more slowly, and poor ones start to empty out.</p>
         <p>Growth is gradual. Each month a qualifying lot has a small chance to go up one density level, and a better score raises that chance. Pick <b>Inspect</b> (<kbd>Q</kbd>) and click a lot to see its density, residents or jobs, and any problem such as “No road access” or “Commute too long”.</p>
         <p>What counts as a good spot differs by zone:</p>
         <ul>

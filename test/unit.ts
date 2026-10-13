@@ -7,6 +7,7 @@ import { linePath, planLine, applyLine, planZones, applyBuildings } from '../src
 import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST } from '../src/defs';
 import { encode, decode, listSlots, saveCode, SlotMeta } from '../src/save';
 import { Drive, GisOAuth2 } from '../src/drive';
+import { makeRng } from '../src/rng';
 
 let passed = 0;
 async function test(name: string, fn: () => void | Promise<void>) {
@@ -252,6 +253,33 @@ await test('rail counts for commuting but carries no car traffic', () => {
   sim.computeTraffic();
   assert.equal(r.trip, true);
   for (let x = 5; x <= 29; x++) assert.equal(w.traffic[5 * w.w + x], 0);
+});
+
+await test('homes with no road to any job stay empty, however strong demand is', () => {
+  const w = flat(60, 40);
+  w.place('coal', 1, 1);
+  applyLine(w, POWER, planLine(w, POWER, linePath(5, 2, 50, 2))); // every lot below touches this line
+  applyLine(w, ROAD, planLine(w, ROAD, linePath(5, 6, 27, 6)));
+  for (const x of [6, 9, 12]) w.place(x === 9 ? 'com' : 'ind', x, 3);
+  const linked = [15, 18, 21].map((x) => w.place('res', x, 3));
+  applyLine(w, ROAD, planLine(w, ROAD, linePath(32, 6, 42, 6))); // a road of their own, joined to nothing
+  const cutOff = [33, 36, 39].map((x) => w.place('res', x, 3));
+  const sim = new Sim(w);
+  const random = Math.random;
+  Math.random = makeRng(11);
+  try {
+    for (let k = 0; k < 4 * 36; k++) {
+      w.city.demand.r = 1; // as strong as demand gets, every week
+      sim.step();
+    }
+  } finally {
+    Math.random = random;
+  }
+  assert.ok(linked.some((b) => b.level > 0), 'the homes that can reach the jobs never grew');
+  for (const b of cutOff) {
+    assert.equal(b.level, 0);
+    assert.deepEqual(sim.describe(b.x, b.y).rows.find((r) => r[0] === 'Problem'), ['Problem', 'Commute too long']);
+  }
 });
 
 await test('a connected, powered city grows and pays taxes', () => {
