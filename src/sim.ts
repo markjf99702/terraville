@@ -697,12 +697,7 @@ export class Sim {
     else local = 0.3 - lv * 0.15;
     const score = valve + local * 0.8 - (b.trip ? 0 : 0.9);
 
-    const gate = ZONE_LV_GATE[k];
-    let maxLevel = 0;
-    for (let L = 0; L < gate.length; L++) {
-      // Hospitals nearby let residential grow a notch denser.
-      if (world.landValue[ci] + (k === 'res' ? svc * 30 : 0) >= gate[L]) maxLevel = L;
-    }
+    const maxLevel = this.maxLevel(b);
     // Without a commute a lot never grows, however good its spot: the missing trip only weighs on the score below.
     // Nor does it past a landmark limit, where the meter is also held below the line.
     if (score > 0 && b.level < maxLevel && b.trip && !this.capped[k]) {
@@ -713,6 +708,18 @@ export class Sim {
     } else if ((score < -0.12 || b.level > maxLevel) && b.level > 0) {
       if (r < 0.03 + Math.max(0, -score) * 0.2) this.setLevel(b, b.level - 1);
     }
+  }
+
+  /** The densest a zone's lot can be where it stands: its land value decides, and for homes, schools and hospitals nearby help. */
+  maxLevel(b: Building): number {
+    const world = this.world;
+    const k = b.kind as 'res' | 'com' | 'ind';
+    const ci = (b.y + 1) * world.w + b.x + 1;
+    const svc = world.serviceCov[ci] / 255;
+    const gate = ZONE_LV_GATE[k];
+    let max = 0;
+    for (let L = 0; L < gate.length; L++) if (world.landValue[ci] + (k === 'res' ? svc * 30 : 0) >= gate[L]) max = L;
+    return max;
   }
 
   private setLevel(b: Building, level: number): void {

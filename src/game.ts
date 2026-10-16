@@ -11,7 +11,7 @@ import {
   SaveFile, SlotMeta, citySlot, decode, deleteSlot, encode, encodeNow, listSlots, loadSlot, newCityId, readCode, saveCode, saveSlot, thisDevice,
   worldFrom,
 } from './save';
-import { SCENARIOS, buildScenario } from './scenarios';
+import { SCENARIOS, buildScenario, openScenario } from './scenarios';
 import { Sim } from './sim';
 import { DEFAULT_TERRAIN, TerrainParams, TerrainStyle, addSpring, applyBrush, cleanTerrain, generateTerrain } from './terrain';
 import {
@@ -319,12 +319,7 @@ export class Game {
     this.terrain = { ...DEFAULT_TERRAIN, ...s.terrain, seed: this.world.city.seed, w: size.w, h: size.h };
     this.startSim();
     const sim = this.sim!;
-    for (let k = 0; k < 3; k++) {
-      sim.computeTraffic();
-      sim.computeMaps();
-    }
-    sim.tally();
-    sim.evaluate();
+    openScenario(sim);
     // A ready-made city starts at its own size class, without the fanfare.
     this.world.city.classReached = CITY_CLASSES.reduce((acc, c, i) => (sim.stats.residents >= c.min ? i : acc), 0);
     this.mode = 'city';

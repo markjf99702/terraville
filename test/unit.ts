@@ -8,7 +8,7 @@ import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST } from '../src/defs';
 import { encode, decode, listSlots, saveCode, SlotMeta } from '../src/save';
 import { Drive, GisOAuth2 } from '../src/drive';
 import { makeRng } from '../src/rng';
-import { SCENARIOS } from '../src/scenarios';
+import { SCENARIOS, buildScenario, openScenario } from '../src/scenarios';
 
 let passed = 0;
 async function test(name: string, fn: () => void | Promise<void>) {
@@ -498,6 +498,25 @@ await test('a nuclear plant melts down rarely: 0.04% a month on Medium', () => {
     Math.random = () => 0.00035;
     sim.disasters.month();
     assert.equal(seen.includes('meltdown'), true);
+  } finally {
+    Math.random = random;
+  }
+});
+
+await test('challenge cities open as dense as their land value holds, so they do not start out shrinking', () => {
+  const random = Math.random;
+  Math.random = makeRng(3);
+  try {
+    for (const s of SCENARIOS.filter((x) => x.city)) {
+      const w = buildScenario(s, 120, 100);
+      w.city.disasters = false;
+      const sim = new Sim(w);
+      openScenario(sim);
+      for (const b of w.buildings.values()) if (b.kind === 'res' || b.kind === 'com' || b.kind === 'ind') assert.ok(b.level <= sim.maxLevel(b), `${s.name}: a lot opens over its land value`);
+      const opening = sim.stats.residents;
+      for (let k = 0; k < 4 * 12; k++) sim.step();
+      assert.ok(sim.stats.residents >= opening * 0.97, `${s.name} shrank from ${opening} to ${sim.stats.residents} in its first year`);
+    }
   } finally {
     Math.random = random;
   }

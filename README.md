@@ -27,7 +27,7 @@ Play it at [terraville.junkdrawer.works](https://terraville.junkdrawer.works/), 
 
 **Challenges**, after the original's scenarios, each a ready-made city with a goal and a deadline:
 - *Boomtown* (1900): grow an empty coast to 12,000 residents in 15 years.
-- *Gridlock* (1955): untangle downtown traffic without losing people.
+- *Gridlock* (1955): grow downtown without the traffic grinding to a halt.
 - *Smog Valley* (1968): clean the air without killing the jobs.
 - *Aftershock* (1989): rebuild after an earthquake and keep growing.
 - *Monster Bay* (1957): something in the bay is drawn to smoke, and it keeps coming back.

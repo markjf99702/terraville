@@ -1,6 +1,6 @@
 // Challenges: a ready-made city in trouble, a goal, and a deadline.
 // A nod to the original's scenarios, with procedurally built cities.
-import { BUILDINGS, Kind, POWER, RAIL, ROAD } from './defs';
+import { BUILDINGS, Kind, POWER, RAIL, ROAD, isZone } from './defs';
 import { Rng, makeRng, hashString } from './rng';
 import { Sim } from './sim';
 import { DEFAULT_TERRAIN, TerrainParams, generateTerrain } from './terrain';
@@ -71,8 +71,8 @@ export const SCENARIOS: Scenario[] = [
     year: 1955,
     years: 6,
     funds: 25000,
-    blurb: 'Everyone drives downtown and nobody gets there. Commuters sit in traffic for hours, and the council wants it fixed before the next election.',
-    goal: 'Bring the traffic index below 30 with at least 30,000 residents and 10,000 jobs.',
+    blurb: 'Everyone drives downtown, and the streets can only just take it. The council wants a bigger city and more jobs by the next election, without the traffic grinding to a halt.',
+    goal: 'Keep the traffic index under 28 with at least 20,000 residents and 10,000 jobs.',
     kind: 'hold',
     terrain: { seed: 'gridlock-plain-3', style: 'lakes', hills: 15, lakes: 15, forest: 25 },
     city: {
@@ -90,11 +90,11 @@ export const SCENARIOS: Scenario[] = [
       const r = sim.stats.residents;
       // Jobs count too: with no jobs there are no commutes, and bulldozing them all would clear the roads.
       const j = sim.stats.comJobs + sim.stats.indJobs;
-      const size = r >= 30000 && j >= 10000;
+      const size = r >= 20000 && j >= 10000;
       return {
-        progress: Math.max(0, Math.min(1, (70 - t) / 40)) * (size ? 1 : 0.5),
-        status: `Traffic ${t} (goal under 30) · ${r.toLocaleString()} of 30,000 residents · ${j.toLocaleString()} of 10,000 jobs`,
-        met: t < 30 && size,
+        progress: Math.max(0, Math.min(1, (40 - t) / 12)) * (size ? 1 : 0.5),
+        status: `Traffic ${t} (goal under 28) · ${r.toLocaleString()} of 20,000 residents · ${j.toLocaleString()} of 10,000 jobs`,
+        met: t < 28 && size,
       };
     },
   },
@@ -190,6 +190,36 @@ export const SCENARIOS: Scenario[] = [
     },
   },
 ];
+
+/**
+ * Settle a challenge city as it opens: the month-end maps worked out, and every lot brought down to the density its
+ * land value holds, so the city doesn't start out by shrinking. The challenge's own opening events come after.
+ */
+export function openScenario(sim: Sim): void {
+  const passes = () => {
+    for (let k = 0; k < 3; k++) {
+      sim.computeTraffic();
+      sim.computeMaps();
+    }
+  };
+  passes();
+  // Thinning some lots moves traffic and pollution about, which can lower land value elsewhere: settle in rounds.
+  for (let round = 0; round < 6; round++) {
+    let changed = false;
+    for (const b of sim.world.buildings.values()) {
+      if (!isZone(b.kind)) continue;
+      const max = sim.maxLevel(b);
+      if (b.level > max) {
+        sim.world.setLevel(b, max);
+        changed = true;
+      }
+    }
+    if (!changed) break;
+    passes();
+  }
+  sim.tally();
+  sim.evaluate();
+}
 
 /** Build the scenario's world, ready to hand to a Sim. */
 export function buildScenario(s: Scenario, w = 120, h = 100): World {
