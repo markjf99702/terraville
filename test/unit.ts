@@ -467,6 +467,29 @@ await test('random disasters wait for a town big enough to need a fire station',
   }
 });
 
+await test('a nuclear plant melts down rarely: 0.04% a month on Medium', () => {
+  const w = flat(60, 40);
+  w.city.disasters = true;
+  w.city.difficulty = 'medium';
+  w.setLevel(w.place('res', 2, 2), 8);
+  w.setLevel(w.place('res', 5, 2), 5); // 2,560 residents, so random disasters are on
+  const plant = w.place('nuclear', 20, 20);
+  const sim = new Sim(w);
+  const seen: string[] = [];
+  sim.on((e) => { if (e.type === 'disaster') seen.push(e.kind); });
+  const random = Math.random;
+  try {
+    Math.random = () => 0.0005; // a fire, but over the meltdown odds (it was under the old 0.08%)
+    sim.disasters.month();
+    assert.deepEqual([seen.includes('meltdown'), w.buildings.has(plant.id)], [false, true]);
+    Math.random = () => 0.00035;
+    sim.disasters.month();
+    assert.equal(seen.includes('meltdown'), true);
+  } finally {
+    Math.random = random;
+  }
+});
+
 await test('Gridlock and Smog Valley are not won by bulldozing every job before the deadline', () => {
   const sim = new Sim(flat());
   const goal = (id: string) => SCENARIOS.find((s) => s.id === id)!.check(sim);

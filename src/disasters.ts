@@ -60,8 +60,9 @@ export class Disasters {
     else if (r < 0.066 * f + 0.004 * f) this.trigger('tornado');
     else if (r < 0.07 * f + 0.0025 * f) this.trigger('earthquake');
     else if (r < 0.0725 * f + 0.002 * f && this.sim.stats.avgPollution > 60) this.trigger('monster');
+    // Each plant: about 11%, 21% and 32% over 50 years on Easy, Medium and Hard. Rarely, as the toolbox says.
     for (const b of this.world.buildings.values()) {
-      if (b.kind === 'nuclear' && Math.random() < 0.0008 * f) this.meltdown(b);
+      if (b.kind === 'nuclear' && Math.random() < 0.0004 * f) this.meltdown(b);
     }
   }
 
