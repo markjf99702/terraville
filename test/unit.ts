@@ -327,6 +327,19 @@ await test('past its limit, industry stops growing until a seaport opens', () =>
   assert.ok(small.some((b) => b.level > 1), 'industry never grew after the seaport opened');
 });
 
+await test('each point of tax over 7% takes 0.05 off the demand for every zone', () => {
+  const demand = (tax: number) => {
+    const w = flat();
+    Object.assign(w.city, { tax, demand: { r: 0, c: 0, i: 0 } });
+    new Sim(w).computeDemand();
+    return w.city.demand;
+  };
+  const at7 = demand(7);
+  const at12 = demand(12);
+  // The meter moves halfway to its new reading each month, so half of the 5 x 0.05 shows after one.
+  for (const k of ['r', 'c', 'i'] as const) assert.ok(Math.abs(at7[k] - at12[k] - 0.125) < 1e-9, `${k}: ${at7[k] - at12[k]}`);
+});
+
 await test('a connected, powered city grows and pays taxes', () => {
   const w = flat(60, 40);
   w.city.funds = 20000;

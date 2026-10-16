@@ -771,7 +771,8 @@ export class Sim {
     const cTarget = R * 0.22 + Ji * 0.12 + 60;
     const iTarget = R * 0.3 + 90;
     const valve = (target: number, cur: number) => ((target - cur) / (Math.max(target, cur) + 200)) * 2.2;
-    const tax = (7 - city.tax) * 0.035;
+    // Each point of tax away from 7% pushes every bar down (or up, below 7%).
+    const tax = (7 - city.tax) * 0.05;
     let r = valve(rTarget, R) + tax;
     let c = valve(cTarget, Jc) + tax;
     let i = valve(iTarget, Ji) + tax;
