@@ -213,6 +213,49 @@ try {
     await ctx.close();
   });
 
+  await test('leaving a city that cannot be saved offers a city code, or leaving anyway', async () => {
+    const leave = async (page) => {
+      await page.click('#topbar [data-act="menu"]');
+      await page.click('[role="menu"] button:has-text("Back to the title screen")');
+    };
+    // Storage blocked: the dialog says so instead of promising a save.
+    const blocked = await profile();
+    await blocked.addInitScript(() => Object.defineProperty(window, 'localStorage', { get() { throw new DOMException('The operation is insecure.', 'SecurityError'); } }));
+    const { page, problems } = await open(blocked);
+    await found(page);
+    await leave(page);
+    assert.match(await page.textContent('.modal .body'), /blocking storage, so the city cannot be saved here\. To keep it, save a city code in Save, open and share first\./);
+    await page.click('.modal footer button:has-text("Leave anyway")');
+    await titleUp(page);
+    assert.deepEqual(problems, []);
+    await blocked.close();
+
+    // Storage full: the save on the way out fails, and the dialog comes back with the choice.
+    const full = await profile();
+    const { page: p2, problems: more } = await open(full);
+    await found(p2);
+    await p2.evaluate(() => {
+      const set = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (k, v) {
+        if (k.startsWith('terraville.slot')) throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+        return set.call(this, k, v);
+      };
+    });
+    await leave(p2);
+    await p2.click('.modal footer .btn.primary');
+    await p2.waitForSelector('.modal footer button:has-text("Leave anyway")');
+    assert.match(await p2.textContent('.modal .body'), /^Saving the city failed\. Storage may be full\. To keep it/);
+    await p2.click('.modal .body .linkbtn');
+    assert.equal(await p2.textContent('.modal h2'), 'Save, open and share');
+    await p2.keyboard.press('Escape');
+    await leave(p2);
+    await p2.click('.modal footer .btn.primary');
+    await p2.click('.modal footer button:has-text("Leave anyway")');
+    await titleUp(p2);
+    assert.deepEqual(more, []);
+    await full.close();
+  });
+
   await test('a city in debt can still bulldoze, though it cannot build', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

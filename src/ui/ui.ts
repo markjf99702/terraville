@@ -1108,21 +1108,37 @@ export class UI {
     window.setTimeout(() => $<HTMLInputElement>(body, '#fName').select(), 30);
   }
 
-  private confirmQuit(): void {
-    const body = el(`<p class="note" style="font-size:14px">${this.game.mode === 'city' ? (this.game.settings.autosave ? 'The city is saved as you leave, and you can carry on from the title screen.' : 'Autosave is off, so this city is not saved. Use Save now first if you want to keep it.') : 'Unsaved terrain will be lost.'}</p>`);
+  /**
+   * Leave for the title screen, saving the city on the way. When this browser can't keep it (storage blocked, or the
+   * save failed), say so and offer a city code, or leaving anyway.
+   */
+  private confirmQuit(failed = false): void {
+    const g = this.game;
+    const city = g.mode === 'city';
+    const blocked = city && !storageAvailable();
+    const unsaved = blocked || failed;
+    const text = !city ? 'Unsaved terrain will be lost.'
+      : blocked ? 'This browser is blocking storage, so the city cannot be saved here.'
+      : failed ? 'Saving the city failed. Storage may be full.'
+      : g.settings.autosave ? 'The city is saved as you leave, and you can carry on from the title screen.'
+      : 'Autosave is off, so this city is not saved. Use Save now first if you want to keep it.';
+    const body = el(`<p class="note" style="font-size:14px">${text}${unsaved ? ' To keep it, save a city code in <button class="linkbtn" id="qFiles">Save, open and share</button> first.' : ''}</p>`);
+    body.querySelector<HTMLElement>('#qFiles')?.addEventListener('click', () => this.openFiles());
     this.openModal({
       title: 'Leave for the title screen?',
       body,
       foot: [
         this.btn('Stay', '', () => this.closeModal()),
-        this.btn('Leave', 'primary', async () => {
-          this.closeModal();
-          if (this.game.mode === 'city' && this.game.settings.autosave && !(await this.game.autosave())) {
-            this.toast('The autosave failed, probably because storage is full. Save a city code from the menu if you want to keep this city.', 'warn');
-            return;
-          }
-          this.game.showTitle();
-        }),
+        unsaved
+          ? this.btn('Leave anyway', 'danger', () => {
+              this.closeModal();
+              g.showTitle();
+            })
+          : this.btn('Leave', 'primary', async () => {
+              this.closeModal();
+              if (city && g.settings.autosave && !(await g.saveCity())) return this.confirmQuit(true);
+              g.showTitle();
+            }),
       ],
     });
   }
