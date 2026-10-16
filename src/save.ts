@@ -176,6 +176,11 @@ export async function encode(file: SaveFile): Promise<string> {
   return 'TV1j:' + toB64(json);
 }
 
+/** The plain TV1j: form, made at once. Gzip only comes asynchronously, and a page that is closing never finishes it. */
+export function encodeNow(file: SaveFile): string {
+  return 'TV1j:' + toB64(new TextEncoder().encode(JSON.stringify(file)));
+}
+
 export async function decode(code: string): Promise<SaveFile> {
   const c = code.trim().replace(/\s+/g, '');
   let bytes: Uint8Array;

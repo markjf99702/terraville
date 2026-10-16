@@ -161,6 +161,32 @@ try {
     await ctx.close();
   });
 
+  await test('a city is kept when the page reloads or closes before its next autosave', async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    // A brand-new city, never autosaved, reloaded at once.
+    await found(page);
+    const name = await page.evaluate(() => window.__terraville.world.city.name);
+    await page.reload();
+    await titleUp(page);
+    assert.equal(await page.textContent('[data-act="continue"] span'), `Continue ${name}`);
+    // Play on, then close the tab: what changed since the last save comes back too.
+    await page.click('[data-act="continue"]');
+    await page.waitForFunction(() => window.__terraville.mode === 'city');
+    await page.evaluate(() => {
+      const g = window.__terraville;
+      g.setSpeed(0);
+      Object.assign(g.world.city, { funds: 12345, tax: 11 });
+    });
+    await page.close();
+    const { page: again, problems: later } = await open(ctx);
+    await again.click('[data-act="continue"]');
+    await again.waitForFunction(() => window.__terraville.mode === 'city');
+    assert.deepEqual(await again.evaluate(() => [window.__terraville.world.city.funds, window.__terraville.world.city.tax]), [12345, 11]);
+    assert.deepEqual([...problems, ...later], []);
+    await ctx.close();
+  });
+
   await test('a city in debt can still bulldoze, though it cannot build', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

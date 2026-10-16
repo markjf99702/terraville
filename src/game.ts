@@ -6,8 +6,11 @@ import {
 import { Minimap } from './render/minimap';
 import { Renderer, SLOPE_CLASSES } from './render/renderer';
 import { hashString, makeRng, pick, randomSeedName } from './rng';
-import { Drive, DriveCopy } from './drive';
-import { SaveFile, SlotMeta, citySlot, decode, deleteSlot, encode, listSlots, loadSlot, newCityId, readCode, saveCode, saveSlot, thisDevice, worldFrom } from './save';
+import { CityMeta, Drive, DriveCopy } from './drive';
+import {
+  SaveFile, SlotMeta, citySlot, decode, deleteSlot, encode, encodeNow, listSlots, loadSlot, newCityId, readCode, saveCode, saveSlot, thisDevice,
+  worldFrom,
+} from './save';
 import { SCENARIOS, buildScenario } from './scenarios';
 import { Sim } from './sim';
 import { DEFAULT_TERRAIN, TerrainParams, TerrainStyle, addSpring, applyBrush, cleanTerrain, generateTerrain } from './terrain';
@@ -105,9 +108,13 @@ export class Game {
     this.drive = new Drive({ fetch: (u, o) => fetch(u, o), storage, now: () => Date.now(), device: thisDevice(), origin: location.origin });
     this.drive.onSignedIn = () => this.pushLocalCities();
     if (this.drive.connected) this.drive.prepare();
-    // Leaving the page (switching apps, closing the tab) saves, so the other device gets the latest.
+    // Leaving the page (switching apps, closing the tab, reloading) saves. A closing page never finishes the
+    // compressed save, so the city is written at once as a plain code first; the compressed save and the Drive
+    // upload then replace it if the page lives on, as it does when switching apps.
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden' && this.mode === 'city' && this.settings.autosave) void this.saveCity();
+      if (document.visibilityState !== 'hidden' || this.mode !== 'city' || !this.settings.autosave) return;
+      this.saveCityNow();
+      void this.saveCity();
     });
   }
 
@@ -409,23 +416,46 @@ export class Game {
   /** Save the city to its own slot here, and to Google Drive when connected. */
   async saveCity(): Promise<boolean> {
     if (this.mode !== 'city') return true;
-    const city = this.world.city;
-    if (!city.id) city.id = newCityId();
-    const meta = { city: city.id, name: city.name, pop: this.sim?.stats.residents ?? 0, date: city.month, saved: Date.now() };
+    const meta = this.saveMeta();
     let code: string;
     try {
       code = await encode(this.makeSaveFile());
     } catch {
       return false;
     }
+    const ok = this.keepCity(code, meta);
+    // Drive gets it even when this browser's storage is full.
+    this.drive.push(code, meta);
+    return ok;
+  }
+
+  /**
+   * Save the city to its own slot here straight away, as a plain city code (about half as big again as the
+   * compressed one), for when the page is hiding and may be about to close.
+   */
+  saveCityNow(): boolean {
+    if (this.mode !== 'city') return true;
+    try {
+      return this.keepCity(encodeNow(this.makeSaveFile()), this.saveMeta());
+    } catch {
+      return false;
+    }
+  }
+
+  private saveMeta(): CityMeta {
+    const city = this.world.city;
+    if (!city.id) city.id = newCityId();
+    return { city: city.id, name: city.name, pop: this.sim?.stats.residents ?? 0, date: city.month, saved: Date.now() };
+  }
+
+  /** Store a city code in the city's own slot. The old copy is only replaced once the new one fits. */
+  private keepCity(code: string, meta: CityMeta): boolean {
     const ok = saveCode(code, { id: citySlot(meta.city), name: meta.name, pop: meta.pop, date: meta.date, savedAt: meta.saved, mode: 'city', city: meta.city });
     if (ok) {
       // The old single autosave slot is superseded by the city's own.
       if (this.slotId === 'auto') deleteSlot('auto');
       this.slotId = citySlot(meta.city);
     }
-    // Drive gets it even when this browser's storage is full.
-    this.drive.push(code, meta);
     return ok;
   }
 
