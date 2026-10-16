@@ -1,8 +1,8 @@
 // Bundle the game into a single self-contained HTML file.
 //   index.html      full document, for GitHub Pages or opening locally
 //   dist/page.html  body-only fragment for publishing as an Artifact
-import { build, transform } from 'esbuild';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { build } from 'esbuild';
+import { mkdirSync, writeFileSync } from 'node:fs';
 
 const js = (await build({
   entryPoints: ['src/main.ts'],
@@ -14,14 +14,19 @@ const js = (await build({
   logLevel: 'warning',
 })).outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
 
-const css = (await transform(readFileSync('src/style.css', 'utf8'), { loader: 'css', minify: true })).code;
+// The fonts go in as data: URIs, so the page stays one file that opens from disk and works as an Artifact.
+const css = (await build({
+  entryPoints: ['src/style.css'],
+  bundle: true,
+  minify: true,
+  write: false,
+  loader: { '.woff2': 'dataurl' },
+  logLevel: 'warning',
+})).outputFiles[0].text;
 
 const head = [
   '<title>Terraville</title>',
   '<meta name="description" content="A city builder with a terrain editor, in the spirit of the 1989 classic.">',
-  '<link rel="preconnect" href="https://fonts.googleapis.com">',
-  '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>',
-  '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;700;800&family=Overpass+Mono:wght@400;600&display=swap">',
   `<style>${css}</style>`,
 ].join('\n');
 const body = `<noscript>Terraville needs JavaScript to draw the map and run the city.</noscript>\n<div id="app"></div>\n<script>${js}</script>`;

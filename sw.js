@@ -1,6 +1,6 @@
 // Offline support: keep a copy of the app so it works with no signal.
-// Cities live in localStorage (and Drive, if it's on), not here. The fonts come from Google, so offline the
-// page falls back to the system's.
+// Cities live in localStorage (and Drive, if it's on), not here. The fonts are inside index.html, so they work
+// offline too.
 // Network first, so a new version shows up as soon as you're online.
 
 const CACHE = 'terraville-v1'; // bump the number when the file list changes

@@ -39,11 +39,9 @@ async function test(name, fn) {
 
 const browser = await pw.chromium.launch();
 
-/** A fresh browser profile. The fonts come from Google; the checks don't need them. */
-async function profile(opts = PHONE) {
-  const ctx = await browser.newContext(opts);
-  await ctx.route(/^https:\/\/fonts\.(googleapis|gstatic)\.com\//, (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
-  return ctx;
+/** A fresh browser profile. */
+function profile(opts = PHONE) {
+  return browser.newContext(opts);
 }
 
 /** Open the game in `ctx` and wait for the title screen. */
@@ -52,7 +50,7 @@ async function open(ctx) {
   const problems = [];
   page.on('pageerror', (e) => problems.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error') problems.push(m.text()); });
-  page.on('request', (r) => { if (!r.url().startsWith(base) && !/^(data|blob):/.test(r.url()) && !/^https:\/\/fonts\.(googleapis|gstatic)\.com\//.test(r.url())) problems.push('left the site: ' + r.url()); });
+  page.on('request', (r) => { if (!r.url().startsWith(base) && !/^(data|blob):/.test(r.url())) problems.push('left the site: ' + r.url()); });
   await page.goto(base);
   await titleUp(page);
   return { page, problems };
@@ -431,6 +429,18 @@ try {
     const page = await ctx.newPage();
     await page.goto(base);
     assert.equal(await page.innerText('body'), 'Terraville needs JavaScript to draw the map and run the city.');
+    await ctx.close();
+  });
+
+  await test('draws its lettering in its own fonts, from inside the page', async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    const loaded = await page.evaluate(async () => {
+      await Promise.all([document.fonts.load('16px Overpass'), document.fonts.load('600 16px "Overpass Mono"')]);
+      return [...document.fonts].filter((f) => f.status === 'loaded').map((f) => f.family.replace(/"/g, '')).sort();
+    });
+    assert.deepEqual(loaded, ['Overpass', 'Overpass Mono']);
+    assert.deepEqual(problems, []);
     await ctx.close();
   });
 

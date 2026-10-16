@@ -1,6 +1,26 @@
 /* Terraville. One committed look: a night-shift planning console whose
    signature pieces are borrowed from road signage (the green guide sign,
    Overpass lettering, the yellow warning diamond). */
+
+/* Overpass and Overpass Mono, latin letters, under the SIL Open Font License (src/fonts/OFL.txt). The build puts
+   them inside index.html, so the page stays one file that works offline and loads nothing from elsewhere. */
+@font-face {
+  font-family: 'Overpass';
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url(fonts/overpass-latin.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Overpass Mono';
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url(fonts/overpass-mono-latin.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 :root {
   color-scheme: dark;
   --bg: #0e1412;

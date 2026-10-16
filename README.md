@@ -95,7 +95,8 @@ Source lives in `src/`:
 | `drive.ts` | Google Drive sync: sign-in, uploads, listing and downloads |
 | `render/` | Chunk-cached canvas renderer, procedural sprites, terrain painter, vehicles, minimap |
 | `ui/` | Top bar, toolbox, dialogs and charts |
+| `fonts/` | Overpass and Overpass Mono, which the build embeds in `index.html` |
 
-Everything in the game is drawn in code. The only images are the app icons: `icon.svg`, with `tools/icon-full-bleed.svg` for the edge-to-edge versions, and the `icon-*.png` sizes that `node tools/make-icons.mjs` renders from them for `manifest.webmanifest`. `sw.js` keeps the offline copy, and `carry.js` brought the cities saved at the old address, junkdrawer.works/terraville/, along on the first visit.
+Everything in the game is drawn in code. The lettering is Overpass and Overpass Mono, served from here so nothing loads from elsewhere: `src/fonts/` holds their latin letters under the SIL Open Font License (`src/fonts/OFL.txt`), and the build puts them inside `index.html`. The only images are the app icons: `icon.svg`, with `tools/icon-full-bleed.svg` for the edge-to-edge versions, and the `icon-*.png` sizes that `node tools/make-icons.mjs` renders from them for `manifest.webmanifest`. `sw.js` keeps the offline copy, and `carry.js` brought the cities saved at the old address, junkdrawer.works/terraville/, along on the first visit.
 
 `index.html` is the built game and is committed, so GitHub Pages can serve the repository root as is (`.nojekyll` skips the Jekyll step). Rebuild it with `npm run build` after changing anything in `src/`.
