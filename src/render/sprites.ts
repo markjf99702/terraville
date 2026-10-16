@@ -680,9 +680,9 @@ export function drawBuilding(dc: DC, b: Building): void {
     case 'fire': drawFireStation(dc, X, Y, r); break;
     case 'school': drawSchool(dc, X, Y, r); break;
     case 'hospital': drawHospital(dc, X, Y, r); break;
-    case 'stadium': drawStadium(dc, X, Y); break;
+    case 'stadium': drawStadium(dc, b, X, Y); break;
     case 'seaport': drawSeaport(dc, b, X, Y, r); break;
-    case 'airport': drawAirport(dc, X, Y, r); break;
+    case 'airport': drawAirport(dc, b, X, Y, r); break;
     case 'coal': drawCoal(dc, X, Y, r); break;
     case 'nuclear': drawNuclear(dc, X, Y); break;
     case 'wind': drawWind(dc, X, Y); break;
@@ -1083,7 +1083,7 @@ function drawHospital(dc: DC, X: number, Y: number, r: Rng): void {
   }
 }
 
-function drawStadium(dc: DC, X: number, Y: number): void {
+function drawStadium(dc: DC, b: Building, X: number, Y: number): void {
   const { ctx, L } = dc;
   const S = L * 4;
   fill(ctx, X, Y, S, S, 'rgba(200,196,186,0.9)');
@@ -1100,6 +1100,13 @@ function drawStadium(dc: DC, X: number, Y: number): void {
   ctx.beginPath();
   ctx.ellipse(cx, cy, S * 0.47, S * 0.43, 0, 0, Math.PI * 2);
   ctx.fill();
+  if (b.level >= 2) {
+    // A big-league club: seats in its colours.
+    ctx.fillStyle = '#B4433A';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, S * 0.43, S * 0.39, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
   if (L >= 12) {
     ctx.strokeStyle = 'rgba(80,90,100,0.5)';
     ctx.lineWidth = Math.max(1, L * 0.03);
@@ -1128,7 +1135,25 @@ function drawStadium(dc: DC, X: number, Y: number): void {
     ctx.arc(cx, cy, S * 0.05, 0, Math.PI * 2);
     ctx.stroke();
   }
-  for (const [fx, fy] of [[0.1, 0.1], [0.9, 0.1], [0.1, 0.9], [0.9, 0.9]]) circle(ctx, X + S * fx, Y + S * fy, L * 0.08, '#555B61');
+  if (b.level >= 3) {
+    // The dome: a pale roof with ribs, over the field.
+    ctx.fillStyle = 'rgba(232,236,240,0.82)';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, S * 0.34, S * 0.3, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(120,130,140,0.7)';
+    ctx.lineWidth = Math.max(1, L * 0.025);
+    for (let k = -2; k <= 2; k++) {
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, Math.abs(k) * S * 0.068 + 0.01, S * 0.3, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+  const mast = b.level >= 2 ? L * 0.13 : L * 0.08;
+  for (const [fx, fy] of [[0.1, 0.1], [0.9, 0.1], [0.1, 0.9], [0.9, 0.9]]) {
+    circle(ctx, X + S * fx, Y + S * fy, mast, '#555B61');
+    if (b.level >= 2) circle(ctx, X + S * fx, Y + S * fy, mast * 0.55, '#F4E7B0');
+  }
 }
 
 function drawSeaport(dc: DC, b: Building, X: number, Y: number, r: Rng): void {
@@ -1170,16 +1195,17 @@ function drawSeaport(dc: DC, b: Building, X: number, Y: number, r: Rng): void {
       fill(ctx, cx, cy, cw, ch, pick(r, cols));
     }
   }
-  // Gantry cranes along the quay.
-  for (let k = 0; k < 2; k++) {
+  // Gantry cranes along the quay: two, and one more for each upgrade.
+  const cranes = b.level >= 3 ? [0.3, 1.15, 2.0, 2.85] : b.level === 2 ? [0.45, 1.6, 2.75] : [0.8, 2.5];
+  for (const at of cranes) {
     let x: number, y: number, w: number, h: number;
     if (horiz) {
       w = L * 0.5; h = L * 1.1;
-      x = X + L * (0.8 + k * 1.7);
+      x = X + L * at;
       y = side === 0 ? Y + L * 0.1 : Y + S - L * 1.2;
     } else {
       w = L * 1.1; h = L * 0.5;
-      y = Y + L * (0.8 + k * 1.7);
+      y = Y + L * at;
       x = side === 3 ? X + L * 0.1 : X + S - L * 1.2;
     }
     fill(ctx, x + L * 0.25, y + L * 0.3, w, h, 'rgba(0,0,0,0.28)');
@@ -1193,7 +1219,7 @@ function drawSeaport(dc: DC, b: Building, X: number, Y: number, r: Rng): void {
   }
 }
 
-function drawAirport(dc: DC, X: number, Y: number, r: Rng): void {
+function drawAirport(dc: DC, b: Building, X: number, Y: number, r: Rng): void {
   const { ctx, L } = dc;
   const S = L * 6;
   fill(ctx, X, Y, S, S, 'rgba(160,190,120,0.6)');
@@ -1220,10 +1246,12 @@ function drawAirport(dc: DC, X: number, Y: number, r: Rng): void {
     ctx.lineTo(X + S - L * 0.6, Y + L * 2.37);
     ctx.stroke();
   }
-  plane(ctx, X + L * 1.6, Y + L * 3.5, L * 0.9, -Math.PI / 2, '#F5F6F7');
-  plane(ctx, X + L * 3.1, Y + L * 3.5, L * 0.9, -Math.PI / 2, '#F5F6F7');
-  // Terminal and tower.
-  box(dc, X + L * 0.6, Y + L * 4.3, L * 4.2, L * 1.55, L * 0.45, { roof: '#AFB6BC', wall: '#D5DADE', glass: '#5F87A6', rng: r, bands: true, roofBits: 3 });
+  // Two jets at the gates, three at a jet terminal, four at an international airport.
+  const gates = [1.3, 2.4, 3.5, 4.5].slice(0, 1 + Math.max(1, b.level));
+  for (const gx of gates.length > 2 ? gates : [1.6, 3.1]) plane(ctx, X + L * gx, Y + L * 3.5, L * 0.9, -Math.PI / 2, '#F5F6F7');
+  // Terminal and tower; an international airport's terminal is taller and glassier.
+  const intl = b.level >= 3;
+  box(dc, X + L * 0.6, Y + L * 4.3, L * 4.2, L * 1.55, L * (intl ? 0.8 : 0.45), { roof: '#AFB6BC', wall: intl ? '#C9D6DF' : '#D5DADE', glass: intl ? '#4F8DBA' : '#5F87A6', rng: r, bands: true, roofBits: 3 });
   box(dc, X + L * 5.05, Y + L * 3.6, L * 0.6, L * 2.2, L * 1.4, { roof: '#6E7880', wall: '#C4CAD0', glass: '#3C5B73', rng: r, bands: true });
   dc.emit?.({ kind: 'beacon', x: (X + L * 5.35) / L, y: (Y + L * 3.75) / L, size: 0.06 });
 }

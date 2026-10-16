@@ -1,5 +1,7 @@
 // Everything in the DOM: top bar, toolbox, panels, dialogs, title screen.
-import { BUILDINGS, DIFFICULTIES, Difficulty, Kind, MAP_SIZES, ToolDef, cityClass, dateLabel, isZone } from '../defs';
+import {
+  BUILDINGS, DIFFICULTIES, Difficulty, Kind, MAP_SIZES, ToolDef, UPGRADE_LV, buildingName, cityClass, dateLabel, isZone, nextUpgrade,
+} from '../defs';
 import { DISASTER_NAMES, DisasterKind } from '../disasters';
 import { Game, SPEED_NAMES, randomCityName } from '../game';
 import { OVERLAYS, Overlay, SLOPE_CLASSES } from '../render/renderer';
@@ -936,8 +938,31 @@ export class UI {
       return;
     }
     const d = sim.describe(x, y);
-    card.innerHTML = `<button class="iconbtn close" aria-label="Close">${ICONS.close}</button><h3>${esc(d.title)}</h3><dl>${d.rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`;
+    const b = this.game.world.buildingAt(x, y);
+    const up = b && this.game.upgradeFor(b);
+    // A second stadium, say, can't add anything: only the most upgraded one of each kind counts.
+    const outdone = b && !up && nextUpgrade(b) && this.game.mode === 'city';
+    card.innerHTML = `<button class="iconbtn close" aria-label="Close">${ICONS.close}</button><h3>${esc(d.title)}</h3><dl>${d.rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>${up ? `
+      <div class="upgrade"><p class="note">Upgrade to a <b>${esc(up.name.toLowerCase())}</b>: land value rises by <span class="num">${money(UPGRADE_LV * 40)}</span>/acre across the whole city, and upkeep by <span class="num">${money(up.upkeep)}</span>/mo.</p>
+      <button class="btn small primary" id="inUpgrade">Upgrade for ${money(up.cost)}</button></div>` : outdone ? `
+      <div class="upgrade"><p class="note">Only the city's most upgraded ${esc(BUILDINGS[b.kind].name.toLowerCase())} raises land value, so this one has no upgrade.</p></div>` : ''}`;
     $(card, '.close').onclick = () => this.hideInspect();
+    const ub = card.querySelector<HTMLButtonElement>('#inUpgrade');
+    if (ub && b && up) {
+      ub.onclick = () => {
+        // A big purchase: the second tap pays.
+        if (!ub.dataset.sure) {
+          ub.dataset.sure = '1';
+          ub.textContent = `Tap again to pay ${money(up.cost)}`;
+          return;
+        }
+        const was = buildingName(b).toLowerCase();
+        if (!this.game.upgrade(b)) return;
+        const now = buildingName(b).toLowerCase();
+        this.toast(`The ${was} is now ${/^[aeiou]/.test(now) ? 'an' : 'a'} ${now}. Land value is up across the city.`);
+        this.inspect(x, y, true);
+      };
+    }
     card.hidden = false;
     // On a phone the card takes the bottom slot that the map layer card and the news log also use.
     this.root.classList.add('inspecting');

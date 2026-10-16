@@ -4,7 +4,7 @@ import { World, encodeArray, decodeArray } from '../src/world';
 import { Sim } from '../src/sim';
 import { generateTerrain, cleanTerrain, DEFAULT_TERRAIN } from '../src/terrain';
 import { linePath, planLine, applyLine, planZones, applyBuildings } from '../src/tools';
-import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST } from '../src/defs';
+import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST, UPGRADE_LV, buildingName, upkeepOf } from '../src/defs';
 import { encode, decode, listSlots, saveCode, SlotMeta } from '../src/save';
 import { Drive, GisOAuth2 } from '../src/drive';
 import { makeRng } from '../src/rng';
@@ -338,6 +338,34 @@ await test('each point of tax over 7% takes 0.05 off the demand for every zone',
   const at12 = demand(12);
   // The meter moves halfway to its new reading each month, so half of the 5 x 0.05 shows after one.
   for (const k of ['r', 'c', 'i'] as const) assert.ok(Math.abs(at7[k] - at12[k] - 0.125) < 1e-9, `${k}: ${at7[k] - at12[k]}`);
+});
+
+await test('landmark upgrades raise land value everywhere, counting the most upgraded landmark of each kind', () => {
+  const w = flat(60, 40);
+  const stadium = w.place('stadium', 2, 2);
+  const another = w.place('stadium', 8, 2);
+  const airport = w.place('airport', 2, 30);
+  const sim = new Sim(w);
+  sim.computeMaps();
+  const at = () => w.landValue[20 * w.w + 40];
+  const before = at();
+  w.setLevel(stadium, 3);
+  w.setLevel(another, 2); // the second stadium adds nothing
+  w.setLevel(airport, 2);
+  sim.computeMaps();
+  assert.equal(at() - before, 3 * UPGRADE_LV);
+  assert.equal(buildingName(stadium), 'Domed stadium');
+  assert.equal(upkeepOf(stadium), 30 + 60 + 120);
+  assert.equal(sim.describe(3, 3).title, 'Domed stadium');
+});
+
+await test('an upgraded landmark is saved, and a city code cannot claim upgrades that do not exist', () => {
+  const w = flat(60, 40);
+  w.setLevel(w.place('stadium', 2, 2), 3);
+  const s = JSON.parse(JSON.stringify(w.serialize()));
+  assert.equal(World.deserialize(s).buildingAt(2, 2)!.level, 3);
+  const with_ = (kind: string, level: unknown) => World.deserialize({ ...s, buildings: [[1, kind, 2, 2, level, 1, 0]] }).buildingAt(2, 2)!.level;
+  assert.deepEqual([with_('stadium', 9), with_('stadium', 'x'), with_('stadium', 0), with_('police', 4)], [3, 1, 1, 1]);
 });
 
 await test('a connected, powered city grows and pays taxes', () => {

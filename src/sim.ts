@@ -2,8 +2,8 @@
 // Zones are re-evaluated a quarter at a time each week, and the expensive
 // map passes (traffic, pollution, crime, land value) run at month end.
 import {
-  BUILDINGS, DIFFICULTIES, Kind, NET_UPKEEP, POWER, RAIL, ROAD, ZONE_LV_GATE, ZONE_POP, cityClass,
-  CITY_CLASSES, dateLabel, isZone,
+  BUILDINGS, DIFFICULTIES, Kind, NET_UPKEEP, POWER, RAIL, ROAD, UPGRADE_LV, ZONE_LV_GATE, ZONE_POP, buildingName, cityClass,
+  CITY_CLASSES, dateLabel, isZone, upkeepOf,
 } from './defs';
 import { MinHeap } from './heap';
 import { clamp } from './rng';
@@ -629,6 +629,7 @@ export class Sim {
     blur(crimeRaw, w, h, 2);
 
     let lvSum = 0, lvCount = 0, polSum = 0, crimeSum = 0, popTiles = 0;
+    const landmarks = this.landmarkValue();
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const i = y * w + x;
@@ -644,6 +645,7 @@ export class Sim {
         lv -= world.pollution[i] * 0.7;
         lv -= world.crime[i] * 0.25;
         lv -= world.traffic[i] * 0.08;
+        lv += landmarks;
         if (world.rad[i]) lv = 0;
         world.landValue[i] = clamp(Math.round(lv), 1, 255);
         const cr = clamp(crimeRaw[i] * 1.2 - world.policeCov[i] * 0.9, 0, 255);
@@ -817,7 +819,7 @@ export class Sim {
       if (bd.kind === 'police') b.police += def.upkeep * city.funding.police;
       else if (bd.kind === 'fire') b.fire += def.upkeep * city.funding.fire;
       else if (def.capacity) b.power += def.upkeep;
-      else b.services += def.upkeep;
+      else b.services += upkeepOf(bd);
     }
     b.interest = city.loan * 0.07 / 12;
     const spend = b.transport + b.police + b.fire + b.services + b.power + b.interest;
@@ -840,6 +842,15 @@ export class Sim {
       }
     }
     if (city.funds < 0) this.say('debt', 'The city is in debt. Raise taxes, cut costs, or take a loan.', 'alert', undefined, 3);
+  }
+
+  /** Land value the landmark upgrades add to every tile: the most upgraded stadium, seaport and airport count. */
+  landmarkValue(): number {
+    const top = new Map<Kind, number>();
+    for (const b of this.world.buildings.values()) if (b.level > 1 && !isZone(b.kind)) top.set(b.kind, Math.max(top.get(b.kind) ?? 1, b.level));
+    let v = 0;
+    for (const level of top.values()) v += (level - 1) * UPGRADE_LV;
+    return v;
   }
 
   /** Monthly tax income the city would collect at a given rate. */
@@ -984,7 +995,7 @@ export class Sim {
     const net = world.net[i];
     if (b) {
       const def = BUILDINGS[b.kind];
-      title = def.name;
+      title = buildingName(b);
       if (isZone(b.kind)) {
         const k = b.kind as 'res' | 'com' | 'ind';
         title = zoneTitle(k, b.level);
@@ -1001,7 +1012,7 @@ export class Sim {
         b.powered ? 'Connected' :
         grid ? 'None: its grid is overloaded' : 'None: no plant connected']);
       if (grid) rows.push(['Its grid', gridLoad(grid)]);
-      if (def.upkeep) rows.push(['Upkeep', `$${def.upkeep}/mo`]);
+      if (def.upkeep) rows.push(['Upkeep', `$${upkeepOf(b)}/mo`]);
     } else if (world.water[i]) {
       title = net & ROAD ? 'Road bridge' : net & RAIL ? 'Rail bridge' : net & POWER ? 'Power line' : 'Water';
       if (net & POWER) {

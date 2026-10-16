@@ -1,7 +1,7 @@
 // The map and everything built on it. Pure data plus placement rules; the
 // simulation and renderer both read from here.
 import {
-  AUTO_GRADE, BUILDINGS, BuildingDef, Difficulty, FIRE_WEEKS, Kind, POWER, RAIL, ROAD, isZone, ZONE_POP,
+  AUTO_GRADE, BUILDINGS, BuildingDef, Difficulty, FIRE_WEEKS, Kind, POWER, RAIL, ROAD, isZone, topLevel, ZONE_POP,
 } from './defs';
 
 export interface Building {
@@ -474,6 +474,8 @@ export class World {
         id, kind: kind as Kind, x, y, size: def.size, level, pop: 0,
         powered: false, seed, age, road: true, trip: true,
       };
+      // Anything but a zone is built at level 1 and goes up by its upgrades, if it has any.
+      if (!isZone(b.kind)) b.level = Math.min(topLevel(b.kind), Math.max(1, Math.floor(Number(level)) || 1));
       if (isZone(b.kind)) b.pop = ZONE_POP[b.kind as 'res' | 'com' | 'ind'][level] ?? 0;
       w.buildings.set(id, b);
       for (let dy = 0; dy < def.size; dy++) {

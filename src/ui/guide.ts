@@ -3,7 +3,7 @@
 // pictures are drawn with the game's renderer.
 import {
   AUTO_GRADE, BRIDGE_COST, BUILDINGS, CITY_CLASSES, DISASTER_POP, GRADE_COST, Kind, NET_COST, NET_MAX_SLOPE, NET_UPKEEP,
-  POWER, ROAD, ZONE_LV_GATE, ZONE_POP,
+  POWER, ROAD, UPGRADES, UPGRADE_LV, ZONE_LV_GATE, ZONE_POP,
 } from '../defs';
 import { DC, drawBuilding, drawNet, drawTrees } from '../render/sprites';
 import { TerrainField, paintTerrain } from '../render/terrainPaint';
@@ -114,6 +114,7 @@ function sections(): Section[] {
           ['Schools and hospitals nearby', '+$2,240'],
           ['Hills and high ground', '+$960'],
           ['Trees nearby', '+$880'],
+          ['Landmark upgrades, all six', `+${money(6 * UPGRADE_LV * 40)}`],
         ], [1])}
         <p>Pollution is the big one on the other side: every point of it costs more than crime or traffic does. A lot next to heavy industry can lose most of its value.</p>
         ${tip('Parks cost $10 each. A few parks around a residential block can lift it past a density threshold for less than the price of one zone.')}`,
@@ -177,6 +178,10 @@ function sections(): Section[] {
           b[k].name, money(b[k].cost), b[k].upkeep < 1 ? `$${b[k].upkeep}/mo` : `${money(b[k].upkeep)}/mo`, what,
         ]), [1, 2])}
         <p>Crime grows where people are crowded and land is cheap. Police coverage cancels it out, so place stations in dense, low-value neighbourhoods first. Service buildings need power too; an unpowered station works at about a third of its strength.</p>
+        <p>Once a city has money to spare, each landmark can be upgraded twice from its Inspect card. Every upgrade raises land value across the whole city by ${money(UPGRADE_LV * 40)}/acre, so homes and shops can grow denser and taxes bring in more, but they cost a lot and add to the upkeep. Only the most upgraded stadium, seaport and airport count, so upgrading a second one adds nothing.</p>
+        ${table(['Landmark', 'First upgrade', 'Second upgrade'], (['stadium', 'seaport', 'airport'] as Kind[]).map((k) => [
+          b[k].name, ...UPGRADES[k]!.map((u) => `${u.name}<br>${money(u.cost)}, +${money(u.upkeep)}/mo`),
+        ]))}
         ${tip('Turn on the Police reach, Fire cover or Schools & health layer to find the gaps in coverage.')}`,
     },
     {

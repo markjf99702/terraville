@@ -45,6 +45,47 @@ export const BUILDINGS: Record<Kind, BuildingDef> = {
   solar: { kind: 'solar', name: 'Solar farm', size: 3, cost: 2600, upkeep: 12, capacity: 160, maxSpread: 9, blurb: '160 MW of quiet power.' },
 };
 
+/** Something a city with money to spare can make of a landmark. */
+export interface Upgrade {
+  name: string;
+  cost: number;
+  /** Monthly upkeep on top of the landmark's own and earlier upgrades'. */
+  upkeep: number;
+}
+
+/** Each landmark can be upgraded twice. Every upgrade raises land value across the whole city. */
+export const UPGRADES: Partial<Record<Kind, Upgrade[]>> = {
+  stadium: [{ name: 'Big-league stadium', cost: 15000, upkeep: 60 }, { name: 'Domed stadium', cost: 40000, upkeep: 120 }],
+  seaport: [{ name: 'Container port', cost: 20000, upkeep: 75 }, { name: 'Deep-water port', cost: 45000, upkeep: 150 }],
+  airport: [{ name: 'Jet terminal', cost: 25000, upkeep: 120 }, { name: 'International airport', cost: 60000, upkeep: 240 }],
+};
+
+/** Land value (0-255) that each upgrade adds to every tile, counting the most upgraded landmark of each kind. */
+export const UPGRADE_LV = 3;
+
+/** A building's level is 1 as built; each upgrade adds one. The highest level a building can have. */
+export function topLevel(kind: Kind): number {
+  return 1 + (UPGRADES[kind]?.length ?? 0);
+}
+
+/** The upgrade a building can have next, if any. */
+export function nextUpgrade(b: { kind: Kind; level: number }): Upgrade | undefined {
+  return UPGRADES[b.kind]?.[b.level - 1];
+}
+
+/** What a building is called: an upgraded landmark goes by its upgrade's name. */
+export function buildingName(b: { kind: Kind; level: number }): string {
+  return (b.level > 1 && UPGRADES[b.kind]?.[b.level - 2]?.name) || BUILDINGS[b.kind].name;
+}
+
+/** Monthly upkeep at full funding, with any upgrades. */
+export function upkeepOf(b: { kind: Kind; level: number }): number {
+  let u = BUILDINGS[b.kind].upkeep;
+  const ups = UPGRADES[b.kind] ?? [];
+  for (let k = 0; k < Math.min(b.level - 1, ups.length); k++) u += ups[k].upkeep;
+  return u;
+}
+
 export const ZONES: Kind[] = ['res', 'com', 'ind'];
 export function isZone(k: Kind): boolean {
   return k === 'res' || k === 'com' || k === 'ind';

@@ -1,7 +1,8 @@
 // Game controller: modes, the tool state machine, money, undo, the clock.
 import { Audio } from './audio';
 import {
-  BUILDINGS, CITY_CLASSES, CITY_TOOLS, DIFFICULTIES, Difficulty, EDITOR_TOOLS, GRADE_COST, Kind, MAP_SIZES, ToolDef, cityClass,
+  BUILDINGS, CITY_CLASSES, CITY_TOOLS, DIFFICULTIES, Difficulty, EDITOR_TOOLS, GRADE_COST, Kind, MAP_SIZES, ToolDef, Upgrade, cityClass,
+  nextUpgrade,
 } from './defs';
 import { Minimap } from './render/minimap';
 import { Renderer, SLOPE_CLASSES } from './render/renderer';
@@ -19,7 +20,7 @@ import {
   planTrees, planZones, rectTiles,
 } from './tools';
 import type { UI } from './ui/ui';
-import { AreaSnapshot, Box, World, WorldSnapshot, newCityState } from './world';
+import { AreaSnapshot, Box, Building, World, WorldSnapshot, newCityState } from './world';
 
 export type Mode = 'title' | 'editor' | 'city';
 
@@ -33,6 +34,8 @@ interface UndoEntry {
   open?: boolean;
   /** For a brush stroke: the area it has touched so far (null for none yet). */
   within?: Box | null;
+  /** A landmark upgrade, which changes land value across the city. */
+  upgrade?: boolean;
 }
 
 /** Undo refunds an action's cost for this many game months after it (always while paused). */
@@ -844,12 +847,7 @@ export class Game {
       return;
     }
     const city = this.world.city;
-    if (!this.affordable(plan)) {
-      const has = Math.round(city.funds) < 0 ? `is ${fmtMoney(-city.funds)} in debt` : `has ${fmtMoney(city.funds)}`;
-      this.ui.toast(`Not enough money. That costs ${fmtMoney(plan.cost)} and the city ${has}.`, 'warn');
-      this.audio.play('error');
-      return;
-    }
+    if (!this.affordable(plan)) return this.notEnough(plan.cost);
     this.pushUndo();
     if (t.kind === 'line') applyLine(this.world, t.net!, plan);
     else if (t.id === 'bulldoze') applyBulldoze(this.world, plan);
@@ -864,6 +862,49 @@ export class Game {
     this.minimap.markDirty();
     this.audio.play(t.id === 'bulldoze' ? 'bulldoze' : t.kind === 'zone' ? 'zone' : 'build');
     this.ui.onFunds();
+  }
+
+  private notEnough(cost: number): void {
+    const funds = this.world.city.funds;
+    const has = Math.round(funds) < 0 ? `is ${fmtMoney(-funds)} in debt` : `has ${fmtMoney(funds)}`;
+    this.ui.toast(`Not enough money. That costs ${fmtMoney(cost)} and the city ${has}.`, 'warn');
+    this.audio.play('error');
+  }
+
+  // ---- landmark upgrades -----------------------------------------------------
+
+  /** A landmark's next upgrade, offered on the city's most upgraded one of its kind (the only one that counts). */
+  upgradeFor(b: Building): Upgrade | undefined {
+    const up = this.mode === 'city' ? nextUpgrade(b) : undefined;
+    if (!up || !this.world.buildings.has(b.id)) return undefined;
+    for (const o of this.world.buildings.values()) if (o.kind === b.kind && o.level > b.level) return undefined;
+    return up;
+  }
+
+  /** Pay for a landmark's next upgrade. It can be undone like any action, refunded within three months. */
+  upgrade(b: Building): boolean {
+    const up = this.upgradeFor(b);
+    if (!up) return false;
+    const city = this.world.city;
+    if (up.cost > city.funds) {
+      this.notEnough(up.cost);
+      return false;
+    }
+    this.sealUndo();
+    const area = { x0: b.x, y0: b.y, x1: b.x + b.size - 1, y1: b.y + b.size - 1, mask: new Uint8Array(b.size * b.size).fill(1) };
+    this.undoStack.push({ snap: this.world.areaSnapshot(area), cost: up.cost, month: city.month, upgrade: true });
+    if (this.undoStack.length > 25) this.undoStack.shift();
+    this.redoStack = [];
+    city.funds -= up.cost;
+    this.world.setLevel(b, b.level + 1);
+    // Land value rises at once rather than at the month's end.
+    this.sim?.computeMaps();
+    this.renderer.refreshOverlay();
+    this.minimap.markDirty();
+    this.audio.play('fanfare');
+    this.ui.syncUndo();
+    this.ui.onFunds();
+    return true;
   }
 
   private brushTick(dt: number): void {
@@ -978,7 +1019,8 @@ export class Game {
     const refund = city && this.refundable(e) ? e.cost : 0;
     const back = this.copyLike(e.snap);
     if (!this.restore(e.snap)) return;
-    this.redoStack.push({ snap: back, cost: refund, month: this.world.city.month });
+    this.redoStack.push({ snap: back, cost: refund, month: this.world.city.month, upgrade: e.upgrade });
+    if (e.upgrade) this.sim?.computeMaps();
     this.ui.syncUndo();
     if (city) {
       this.world.city.funds += refund;
@@ -997,7 +1039,8 @@ export class Game {
     }
     const back = this.copyLike(e.snap);
     if (!this.restore(e.snap)) return;
-    this.undoStack.push({ snap: back, cost: e.cost, month: this.world.city.month });
+    this.undoStack.push({ snap: back, cost: e.cost, month: this.world.city.month, upgrade: e.upgrade });
+    if (e.upgrade) this.sim?.computeMaps();
     this.ui.syncUndo();
     if (this.mode === 'city') this.world.city.funds -= e.cost;
     this.ui.onFunds();

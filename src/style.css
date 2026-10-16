@@ -412,6 +412,8 @@ input[type="range"] { width: 100%; accent-color: var(--sign-hi); margin: 0; }
 #inspect dt { color: var(--muted); }
 #inspect dd { margin: 0; text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
 #inspect .close { position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; }
+#inspect .upgrade { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+#inspect .upgrade .btn { align-self: flex-start; }
 
 /* ---- editor panel -------------------------------------------------------- */
 #editorPanel {

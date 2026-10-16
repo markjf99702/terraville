@@ -394,6 +394,36 @@ try {
     await ctx.close();
   });
 
+  await test('a landmark is upgraded from its Inspect card with a second tap, and undo refunds it', async () => {
+    const ctx = await profile(DESK);
+    const { page, problems } = await open(ctx);
+    await found(page);
+    const at = await page.evaluate(() => {
+      const g = window.__terraville;
+      const w = g.world;
+      for (let y = 2; y < w.h - 6; y++) for (let x = 2; x < w.w - 6; x++) {
+        if (!w.canPlace('stadium', x, y).ok) continue;
+        w.place('stadium', x, y);
+        w.city.funds = 50000;
+        g.ui.inspect(x, y);
+        return { x, y };
+      }
+    });
+    const stadium = () => page.evaluate(({ x, y }) => [window.__terraville.world.buildingAt(x, y).level, window.__terraville.world.city.funds], at);
+    assert.match(await page.textContent('#inspect .upgrade'), /^\s*Upgrade to a big-league stadium: land value rises by \$120\/acre across the whole city, and upkeep by \$60\/mo\.\s*Upgrade for \$15,000\s*$/);
+    await page.click('#inUpgrade');
+    assert.deepEqual(await stadium(), [1, 50000], 'one tap paid');
+    assert.equal(await page.textContent('#inUpgrade'), 'Tap again to pay $15,000');
+    await page.click('#inUpgrade');
+    assert.deepEqual(await stadium(), [2, 35000]);
+    assert.equal(await page.textContent('#toast'), 'The stadium is now a big-league stadium. Land value is up across the city.');
+    assert.equal(await page.textContent('#inspect h3'), 'Big-league stadium');
+    await page.keyboard.press('Control+z');
+    assert.deepEqual(await stadium(), [1, 50000]);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('a city in debt can still bulldoze, though it cannot build', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);
