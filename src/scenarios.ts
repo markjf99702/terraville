@@ -246,6 +246,8 @@ export function openScenario(sim: Sim): void {
     passes();
   }
   sim.tally();
+  // Thinning the lots is how the city was laid out, not people leaving: it opens with no "Last month" loss.
+  sim.lastPop = sim.stats.residents;
   sim.evaluate();
 }
 

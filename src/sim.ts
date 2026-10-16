@@ -103,7 +103,8 @@ export class Sim {
   private distRes: Float32Array;
   private heap: MinHeap;
   private hubFields: Float32Array[] = [];
-  private lastPop = 0;
+  /** Residents at the last month end: the report's "Last month" and approval's growth term count from here. */
+  lastPop = 0;
   /** Kinds held at a landmark limit: no lot of that kind grows until the landmark is built. */
   capped = { res: false, com: false, ind: false };
 

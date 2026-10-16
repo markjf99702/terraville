@@ -541,6 +541,8 @@ await test('challenge cities open as dense as their land value holds, so they do
       const sim = new Sim(w);
       openScenario(sim);
       for (const b of w.buildings.values()) if (b.kind === 'res' || b.kind === 'com' || b.kind === 'ind') assert.ok(b.level <= sim.maxLevel(b), `${s.name}: a lot opens over its land value`);
+      // Thinning the lots as it opens isn't people leaving: the report's "Last month" starts at 0.
+      assert.equal(sim.stats.migration, 0, `${s.name} opens with ${sim.stats.migration} last month`);
       const opening = sim.stats.residents;
       for (let k = 0; k < 4 * 12; k++) sim.step();
       assert.ok(sim.stats.residents >= opening * 0.97, `${s.name} shrank from ${opening} to ${sim.stats.residents} in its first year`);
