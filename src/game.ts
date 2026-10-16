@@ -876,7 +876,8 @@ export class Game {
   /** A landmark's next upgrade, offered on the city's most upgraded one of its kind (the only one that counts). */
   upgradeFor(b: Building): Upgrade | undefined {
     const up = this.mode === 'city' ? nextUpgrade(b) : undefined;
-    if (!up || !this.world.buildings.has(b.id)) return undefined;
+    // Undo and redo put back a copy of the building, so one held from before them is no longer the one on the map.
+    if (!up || this.world.buildings.get(b.id) !== b) return undefined;
     for (const o of this.world.buildings.values()) if (o.kind === b.kind && o.level > b.level) return undefined;
     return up;
   }
@@ -1027,6 +1028,7 @@ export class Game {
       if (e.cost >= 1 && !refund) this.ui.toast(`Undone. It cost ${fmtMoney(e.cost)}, which is only refunded within ${REFUND_MONTHS} months.`);
     }
     this.ui.onFunds();
+    this.ui.refreshInspect();
   }
 
   redo(): void {
@@ -1044,6 +1046,7 @@ export class Game {
     this.ui.syncUndo();
     if (this.mode === 'city') this.world.city.funds -= e.cost;
     this.ui.onFunds();
+    this.ui.refreshInspect();
   }
 
   private restore(s: WorldSnapshot | AreaSnapshot): boolean {

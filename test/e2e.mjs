@@ -420,6 +420,12 @@ try {
     assert.equal(await page.textContent('#inspect h3'), 'Big-league stadium');
     await page.keyboard.press('Control+z');
     assert.deepEqual(await stadium(), [1, 50000]);
+    // The card shows the stadium undo put back, and buying from it upgrades that stadium.
+    assert.equal(await page.textContent('#inspect h3'), 'Stadium');
+    assert.equal(await page.textContent('#inUpgrade'), 'Upgrade for $15,000');
+    await page.click('#inUpgrade');
+    await page.click('#inUpgrade');
+    assert.deepEqual(await stadium(), [2, 35000]);
     assert.deepEqual(problems, []);
     await ctx.close();
   });

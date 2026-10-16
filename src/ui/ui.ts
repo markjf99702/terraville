@@ -493,7 +493,7 @@ export class UI {
   }
 
   onMonth(): void {
-    if (this.inspectAt) this.inspect(this.inspectAt.x, this.inspectAt.y, true);
+    this.refreshInspect();
   }
 
   // ---- toolbox -------------------------------------------------------------------
@@ -950,6 +950,8 @@ export class UI {
     const ub = card.querySelector<HTMLButtonElement>('#inUpgrade');
     if (ub && b && up) {
       ub.onclick = () => {
+        // Undo or a disaster may have changed the landmark since the card was drawn: show it as it is now instead.
+        if (this.game.upgradeFor(b) !== up) return this.inspect(x, y, true);
         // A big purchase: the second tap pays.
         if (!ub.dataset.sure) {
           ub.dataset.sure = '1';
@@ -973,6 +975,11 @@ export class UI {
     }
     this.inspectAt = { x, y };
     if (!refresh) this.game.renderer.hover = { x, y };
+  }
+
+  /** Draw the open Inspect card again for what is on its tile now, after undo or redo say. */
+  refreshInspect(): void {
+    if (this.inspectAt) this.inspect(this.inspectAt.x, this.inspectAt.y, true);
   }
 
   hideInspect(): void {
