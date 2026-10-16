@@ -187,6 +187,15 @@ export class Disasters {
     }
   }
 
+  /** Set the rubble on a tile alight. It burns out by itself, and spreads to anything flammable next to it. */
+  private burnRubble(x: number, y: number): void {
+    const world = this.world;
+    const i = y * world.w + x;
+    if (world.water[i] || world.occ[i] || world.fire[i]) return;
+    world.fire[i] = 5 + Math.floor(Math.random() * (FIRE_WEEKS - 4));
+    world.dirty(x, y, x, y);
+  }
+
   /** Wreck a building. Nuclear plants take the neighbourhood with them. */
   destroy(b: Building, cause: string): void {
     const world = this.world;
@@ -408,7 +417,9 @@ export class Disasters {
         const b = world.buildingAt(x, y);
         if (b && Math.random() < (r.kind === 'tornado' ? 0.55 : 0.7)) {
           this.destroy(b, r.kind);
-          if (r.kind === 'monster' && Math.random() < 0.3) this.ignite(x, y);
+          // The monster leaves the wreck burning, and it can spread from there. Setting the building alight first
+          // would come to nothing, since destroy() puts out its whole footprint.
+          if (r.kind === 'monster' && Math.random() < 0.3) this.burnRubble(x, y);
         }
         if (world.net[i] & (ROAD | RAIL) && !world.water[i] && Math.random() < 0.3) {
           world.clearNet(x, y);

@@ -419,6 +419,23 @@ await test('a building spreads fire from all four sides in the week it comes dow
   }
 });
 
+await test('the monster leaves fires burning in what it wrecks', () => {
+  const w = flat();
+  for (let y = 6; y < 18; y += 3) for (let x = 6; x < 30; x += 3) w.setLevel(w.place('res', x, y), 2);
+  const sim = new Sim(w);
+  sim.disasters.roamers.push({ kind: 'monster', x: 15, y: 10, px: 15, py: 10, vx: 0, vy: 0, weeks: 30, heading: 0 });
+  const random = Math.random;
+  Math.random = () => 0; // everything it reaches comes down, and every wreck catches
+  try {
+    sim.disasters.week();
+  } finally {
+    Math.random = random;
+  }
+  const burning = [...w.fire.keys()].filter((i) => w.fire[i]);
+  assert.ok(burning.length > 0, 'nothing is burning');
+  for (const i of burning) assert.ok(w.rubble[i] && !w.occ[i], `tile ${i} is not burning rubble`);
+});
+
 await test('a save with rubble left burning for years opens with it put out', () => {
   const w = flat();
   w.fire[5 * w.w + 5] = 250; // burnt-down rubble from before the fix

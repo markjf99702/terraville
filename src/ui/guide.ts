@@ -200,7 +200,7 @@ function sections(): Section[] {
           ['Flood', 'Starts on low shoreline and spreads over land a few metres above the water. Keep valuable buildings on higher ground.'],
           ['Tornado', 'Wanders near the town centre. You cannot stop it, so keep money in reserve to rebuild.'],
           ['Earthquake', 'Wrecks buildings and roads within about 16 tiles and starts fires. Good fire cover limits the damage.'],
-          ['Monster', 'Appears only when pollution is high, comes out of the water, and heads for the most polluted spot. Clean air keeps it away.'],
+          ['Monster', 'Appears only when pollution is high, comes out of the water, and heads for the most polluted spot, leaving fires in what it wrecks. Clean air keeps it away.'],
           ['Meltdown', 'Only with a nuclear plant: a small chance each month, or if the plant is destroyed. It contaminates the area for years.'],
         ])}
         ${tip('Every message in the news ticker with a location has a Go there button.')}`,
