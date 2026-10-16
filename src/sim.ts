@@ -880,7 +880,11 @@ export class Sim {
 
   // ---- how are we doing -------------------------------------------------------
 
-  evaluate(): void {
+  /**
+   * The city's worries, the mayor's approval and the score. At a month end approval moves 30% of the way to the
+   * city's mood; for a city just opened from a save (`monthEnd` false) it stays as it was saved.
+   */
+  evaluate(monthEnd = true): void {
     const s = this.stats;
     const city = this.world.city;
     const probs: Problem[] = [
@@ -901,7 +905,7 @@ export class Sim {
     const growth = s.residents - this.lastPop;
     s.migration = growth;
     const mood = clamp(88 - pain * 1.15 + clamp(growth / 60, -8, 8), 0, 100);
-    s.approval = s.residents > 0 ? s.approval * 0.7 + mood * 0.3 : 50;
+    if (monthEnd) s.approval = s.residents > 0 ? s.approval * 0.7 + mood * 0.3 : 50;
     // Kept with the city, so a saved city opens with the mood it had.
     city.approval = s.approval;
     const classIdx = CITY_CLASSES.findIndex((c) => c.name === s.cityClass);

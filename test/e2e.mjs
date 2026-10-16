@@ -213,9 +213,10 @@ try {
     await page.click('[data-act="continue"]');
     await page.waitForFunction(() => window.__terraville.mode === 'city');
     await page.evaluate(() => window.__terraville.setSpeed(0));
-    assert.match((await page.textContent('#goal')).replace(/\s+/g, ' ').trim(), /^Monster Bay \d+y \d+m left Approval \d+% \(goal over 60%\)/);
+    // Approval is just as it was saved: opening a city doesn't move it, so reloading can't nudge it either way.
+    assert.match((await page.textContent('#goal')).replace(/\s+/g, ' ').trim(), /^Monster Bay \d+y \d+m left Approval 95% \(goal over 60%\)/);
     await page.click('#citySign');
-    assert.ok(Number((await page.textContent('.modal .big')).replace('%', '')) > 60, 'approval went back to 50%');
+    assert.equal(await page.textContent('.modal .big'), '95%');
     assert.equal(await page.locator('.modal .bars .barrow').count(), 8, 'no worries listed');
     assert.deepEqual(problems, []);
     await ctx.close();

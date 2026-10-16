@@ -384,8 +384,9 @@ export class Game {
     if (file.mode === 'city' && this.world.city.founded) {
       this.mode = 'city';
       this.startSim();
-      // The report's worries and the goal tracker are otherwise blank until the first month end.
-      this.sim!.evaluate();
+      // The report's worries and the goal tracker are otherwise blank until the first month end. Approval stays as
+      // saved: moving it toward the mood here would let each reload nudge it.
+      this.sim!.evaluate(false);
       this.speed = 2;
       this.setTool('query');
       this.applySettings();
