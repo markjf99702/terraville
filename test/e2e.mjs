@@ -379,6 +379,23 @@ try {
     await ctx.close();
   });
 
+  await test('on a phone, Inspect takes the bottom slot from the map layer card and the news log', async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await found(page);
+    const shown = () => page.evaluate(() => ['#inspect', '#minimapCard', '#log'].map((s) => getComputedStyle(document.querySelector(s)).display !== 'none'));
+    await page.evaluate(() => window.__terraville.ui.setOverlay('pollution'));
+    await page.click('#tkLog');
+    assert.deepEqual(await shown(), [false, true, true]);
+    await page.tap('#map', { position: { x: 195, y: 560 } });
+    assert.deepEqual(await shown(), [true, false, false], 'Inspect shares the slot');
+    assert.equal(await page.getAttribute('#tkLog', 'aria-expanded'), 'false');
+    await page.click('#tkLog');
+    assert.deepEqual(await shown(), [false, true, true], 'the log shares the slot');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('a city in debt can still bulldoze, though it cannot build', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

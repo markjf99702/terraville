@@ -815,6 +815,7 @@ footer.jd-foot { display: block; margin: 0; padding: 4px 0 0; border: 0; font-si
   #minimapCard.show { display: flex; right: 8px; bottom: calc(var(--bottom) + 128px); width: 180px; }
   #minimapCard.show #minimap { height: 120px; }
   #inspect { right: 8px; left: 8px; width: auto; bottom: calc(var(--bottom) + 128px); }
+  .inspecting #minimapCard.show { display: none; } /* the Inspect card has the slot while it is open */
   #editorPanel { right: 8px; left: 8px; top: auto; bottom: calc(var(--bottom) + 80px); width: auto; max-height: 38vh; }
   #editorPanel.collapsed { max-height: 46px; overflow: hidden; }
   #log { left: 8px; bottom: calc(var(--bottom) + 124px); width: calc(100vw - 16px); }

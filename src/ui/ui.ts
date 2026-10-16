@@ -896,7 +896,10 @@ export class UI {
     $(t, '#tkLog').onclick = () => {
       const log = $(this.root, '#log');
       log.hidden = !log.hidden;
-      if (!log.hidden) this.renderLog();
+      if (!log.hidden) {
+        this.renderLog();
+        if (this.narrow()) this.hideInspect();
+      }
       this.renderTicker();
     };
   }
@@ -925,20 +928,33 @@ export class UI {
     const sim = this.game.sim;
     const card = $(this.root, '#inspect');
     if (!sim) {
-      card.hidden = true;
+      this.hideInspect();
       return;
     }
     const d = sim.describe(x, y);
     card.innerHTML = `<button class="iconbtn close" aria-label="Close">${ICONS.close}</button><h3>${esc(d.title)}</h3><dl>${d.rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`;
     $(card, '.close').onclick = () => this.hideInspect();
     card.hidden = false;
+    // On a phone the card takes the bottom slot that the map layer card and the news log also use.
+    this.root.classList.add('inspecting');
+    const log = $(this.root, '#log');
+    if (!refresh && this.narrow() && !log.hidden) {
+      log.hidden = true;
+      this.renderTicker();
+    }
     this.inspectAt = { x, y };
     if (!refresh) this.game.renderer.hover = { x, y };
   }
 
   hideInspect(): void {
     $(this.root, '#inspect').hidden = true;
+    this.root.classList.remove('inspecting');
     this.inspectAt = null;
+  }
+
+  /** A phone-sized window, where the panels stack in one column (the style sheet's breakpoint). */
+  private narrow(): boolean {
+    return window.innerWidth <= 820;
   }
 
   // ---- starter checklist ------------------------------------------------------------
