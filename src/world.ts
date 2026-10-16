@@ -49,6 +49,8 @@ export interface CityState {
   history: History;
   classReached: number;
   loan: number;
+  /** The mayor's approval, 0 to 100, as of the last month end. */
+  approval: number;
   /** Set when the city is a challenge: which one, the deadline month, and the outcome once decided. */
   scenario?: { id: string; end: number; done: '' | 'won' | 'lost' };
 }
@@ -72,6 +74,7 @@ export function newCityState(): CityState {
     history: emptyHistory(),
     classReached: 0,
     loan: 0,
+    approval: 50,
   };
 }
 
@@ -103,6 +106,8 @@ function cleanCity(raw: unknown): CityState {
     history: { ...history, ...Object.fromEntries(Object.keys(d.history).map((k) => [k, series(history[k])])) } as unknown as History,
     classReached: num(s.classReached, 0),
     loan: num(s.loan, 0, 0),
+    // Saves from before approval was kept open at 50%, as every city used to.
+    approval: num(s.approval, 50, 0, 100),
   };
   // Only the plain ids Terraville makes; a city without one gets a new id when it opens.
   if (typeof s.id !== 'string' || !/^[a-z0-9]{1,24}$/.test(s.id)) delete city.id;

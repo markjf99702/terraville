@@ -114,6 +114,7 @@ export class Sim {
     this.heap = new MinHeap(4096);
     this.terrainAppeal = new Float32Array(world.n);
     this.stats = this.blankStats();
+    this.stats.approval = world.city.approval ?? 50;
     this.disasters = new Disasters(this);
     this.refreshTerrainAppeal();
     this.unsubscribe = world.onDirty((_x0, _y0, _x1, _y1, terrain) => {
@@ -882,6 +883,8 @@ export class Sim {
     s.migration = growth;
     const mood = clamp(88 - pain * 1.15 + clamp(growth / 60, -8, 8), 0, 100);
     s.approval = s.residents > 0 ? s.approval * 0.7 + mood * 0.3 : 50;
+    // Kept with the city, so a saved city opens with the mood it had.
+    city.approval = s.approval;
     const classIdx = CITY_CLASSES.findIndex((c) => c.name === s.cityClass);
     s.score = Math.round(clamp(s.approval * 7 + classIdx * 50 + Math.min(50, s.avgLandValue / 3), 0, 1000));
     this.lastPop = s.residents;

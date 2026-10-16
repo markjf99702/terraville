@@ -368,6 +368,14 @@ export class Game {
     }
   }
 
+  /** Fill in the goal tracker of a challenge opened from a save, without its month's events or the deadline check. */
+  private showGoal(): void {
+    const sc = this.world.city.scenario;
+    const s = sc && SCENARIOS.find((x) => x.id === sc.id);
+    if (!sc || !s || !this.sim) return;
+    this.ui.updateGoal(s, s.check(this.sim), sc.end - this.world.city.month, sc.done);
+  }
+
   loadFile(file: SaveFile, slotId: string | null = null): void {
     this.world = worldFrom(file);
     // Cities saved before ids existed get one now; their saves follow it from here on.
@@ -378,10 +386,13 @@ export class Game {
     if (file.mode === 'city' && this.world.city.founded) {
       this.mode = 'city';
       this.startSim();
+      // The report's worries and the goal tracker are otherwise blank until the first month end.
+      this.sim!.evaluate();
       this.speed = 2;
       this.setTool('query');
       this.applySettings();
       this.ui.enterCity();
+      this.showGoal();
     } else {
       this.mode = 'editor';
       this.setSim(null);

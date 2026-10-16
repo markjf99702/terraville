@@ -187,6 +187,32 @@ try {
     await ctx.close();
   });
 
+  await test('a challenge opened from its save shows its approval, worries and goal straight away', async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await page.click('[data-act="challenges"]');
+    await page.click('.slot:has-text("Monster Bay") .btn.primary');
+    await page.click('.modal footer .btn.primary');
+    await page.waitForFunction(() => window.__terraville.mode === 'city');
+    await page.evaluate(() => {
+      const g = window.__terraville;
+      g.setSpeed(0);
+      g.world.city.approval = 95; // as a month end of good news leaves it
+      return g.saveCity();
+    });
+    await page.reload();
+    await titleUp(page);
+    await page.click('[data-act="continue"]');
+    await page.waitForFunction(() => window.__terraville.mode === 'city');
+    await page.evaluate(() => window.__terraville.setSpeed(0));
+    assert.match((await page.textContent('#goal')).replace(/\s+/g, ' ').trim(), /^Monster Bay \d+y \d+m left Approval \d+% \(goal over 60%\)/);
+    await page.click('#citySign');
+    assert.ok(Number((await page.textContent('.modal .big')).replace('%', '')) > 60, 'approval went back to 50%');
+    assert.equal(await page.locator('.modal .bars .barrow').count(), 8, 'no worries listed');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('a city in debt can still bulldoze, though it cannot build', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

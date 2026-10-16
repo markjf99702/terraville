@@ -516,6 +516,23 @@ await test('a city code is read field by field, so what someone typed into it st
   assert.deepEqual(World.deserialize(JSON.parse(JSON.stringify(w.serialize()))).city, w.city);
 });
 
+await test("the mayor's approval is saved with the city, and older saves open at 50%", () => {
+  const w = flat();
+  w.setLevel(w.place('res', 2, 2), 4);
+  const sim = new Sim(w);
+  sim.stats.approval = 83;
+  sim.evaluate();
+  assert.ok(sim.stats.approval > 60);
+  assert.equal(w.city.approval, sim.stats.approval);
+  const saved = JSON.parse(JSON.stringify(w.serialize()));
+  assert.equal(new Sim(World.deserialize(saved)).stats.approval, sim.stats.approval);
+  delete saved.city.approval; // saved before approval was kept
+  assert.equal(new Sim(World.deserialize(saved)).stats.approval, 50);
+  for (const [v, want] of [['<b>', 50], [150, 100], [-3, 0]] as [unknown, number][]) {
+    assert.equal(World.deserialize({ ...saved, city: { ...saved.city, approval: v } }).city.approval, want);
+  }
+});
+
 await test('terrain settings from a code are numbers in their sliders\' range', () => {
   const base = { ...DEFAULT_TERRAIN, seed: 'harbor-pine-42', w: 120, h: 100 };
   const t = cleanTerrain({ water: '<img src=x onerror="alert(1)">', hills: 250, rivers: '3', style: 'volcano', seed: 7, forest: 12 }, base);
