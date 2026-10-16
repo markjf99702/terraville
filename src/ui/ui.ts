@@ -35,6 +35,9 @@ const JD_FOOT = `<footer class="jd-foot">
   <a href="https://terraville.junkdrawer.works/privacy.html">Privacy</a>
 </footer>`;
 
+/** A middle dot between two pieces of text, drawn by the style sheet (see .sep there). */
+const SEP = ' <span class="sep" aria-hidden="true">·</span> ';
+
 /** Text made safe to put in HTML. Not-quite-text from a damaged save is shown as text rather than stopping the page. */
 function esc(s: unknown): string {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -288,7 +291,7 @@ export class UI {
   private buildTopbarCity(): void {
     const top = $(this.root, '#topbar');
     top.innerHTML = `
-      <button class="sign" id="citySign" aria-label="City report"><b id="signName"></b><small id="signSub"></small></button>
+      <button class="sign" id="citySign" aria-label="City report"><b id="signName"></b><small id="signSub"><span id="signPop"></span>${SEP}<span id="signClass"></span></small></button>
       <div class="panel stat-strip">
         <div class="stat" id="stDateBox"><span class="label" id="stDateLabel">Date</span><span class="value" id="stDate"></span></div>
         <div class="stat" id="stFundsBox"><span class="label">Funds</span><span class="value" id="stFunds"></span><span class="delta" id="stDelta"></span></div>
@@ -441,7 +444,8 @@ export class UI {
       if (e && e.textContent !== v) e.textContent = v;
     };
     set('signName', city.name);
-    set('signSub', `Pop ${s.residents.toLocaleString()} · ${cityClass(s.residents)}`);
+    set('signPop', `Pop ${s.residents.toLocaleString()}`);
+    set('signClass', cityClass(s.residents));
     set('stDate', dateLabel(city.month));
     set('stFunds', money(city.funds));
     const b = s.lastBudget;
@@ -1290,7 +1294,7 @@ export class UI {
     box.innerHTML = `<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline">
         <b style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">${esc(s.name)}</b>
         <span class="num" style="font-size:12px;color:${done === 'lost' ? 'var(--critical-ink)' : 'var(--text)'}">${time}</span></div>
-      <div style="font-size:13px">${esc(st.status)}</div>
+      <div style="font-size:13px">${st.status.split(' · ').map(esc).join(SEP)}</div>
       <div class="barrow" style="grid-template-columns:1fr"><div class="track" role="img" aria-label="Progress ${Math.round(st.progress * 100)}%"><i style="width:${Math.max(2, st.progress * 100)}%;background:${col}"></i></div></div>`;
   }
 
@@ -1402,7 +1406,7 @@ export class UI {
       };
     }
     render();
-    this.openModal({ title: 'Budget', sub: `${dateLabel(city.month)} · the clock stops while this is open`, body, foot: [this.btn('Done', 'primary', () => this.closeModal())] });
+    this.openModal({ title: 'Budget', sub: `${dateLabel(city.month)}${SEP}the clock stops while this is open`, body, foot: [this.btn('Done', 'primary', () => this.closeModal())] });
   }
 
   // History charts -------------------------------------------------------------------------
