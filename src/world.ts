@@ -51,8 +51,11 @@ export interface CityState {
   loan: number;
   /** The mayor's approval, 0 to 100, as of the last month end. */
   approval: number;
-  /** Set when the city is a challenge: which one, the deadline month, and the outcome once decided. */
-  scenario?: { id: string; end: number; done: '' | 'won' | 'lost' };
+  /**
+   * Set when the city is a challenge: which one, the deadline month, and the outcome once decided. For a goal that
+   * must hold to the end, also how many month-ends in a row it has been met.
+   */
+  scenario?: { id: string; end: number; done: '' | 'won' | 'lost'; held?: number };
 }
 
 export function emptyHistory(): History {
@@ -112,8 +115,10 @@ function cleanCity(raw: unknown): CityState {
   // Only the plain ids Terraville makes; a city without one gets a new id when it opens.
   if (typeof s.id !== 'string' || !/^[a-z0-9]{1,24}$/.test(s.id)) delete city.id;
   const sc = record(s.scenario);
-  if (typeof sc.id === 'string') city.scenario = { id: sc.id, end: num(sc.end, 0), done: sc.done === 'won' || sc.done === 'lost' ? sc.done : '' };
-  else delete city.scenario;
+  if (typeof sc.id === 'string') {
+    city.scenario = { id: sc.id, end: num(sc.end, 0), done: sc.done === 'won' || sc.done === 'lost' ? sc.done : '' };
+    if (sc.held !== undefined) city.scenario.held = Math.floor(num(sc.held, 0, 0));
+  } else delete city.scenario;
   return city;
 }
 

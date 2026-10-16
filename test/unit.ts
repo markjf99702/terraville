@@ -8,7 +8,7 @@ import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST } from '../src/defs';
 import { encode, decode, listSlots, saveCode, SlotMeta } from '../src/save';
 import { Drive, GisOAuth2 } from '../src/drive';
 import { makeRng } from '../src/rng';
-import { SCENARIOS, buildScenario, openScenario } from '../src/scenarios';
+import { SCENARIOS, buildScenario, openScenario, scenarioMonth } from '../src/scenarios';
 
 let passed = 0;
 async function test(name: string, fn: () => void | Promise<void>) {
@@ -533,6 +533,24 @@ await test('Gridlock and Smog Valley are not won by bulldozing every job before 
   Object.assign(sim.stats, { comJobs: 6000, indJobs: 4000 });
   assert.equal(goal('gridlock').met, true);
   assert.equal(goal('smog').met, true);
+});
+
+await test('Smog Valley is won by holding its goal for the last 12 month ends, and the count is saved', () => {
+  const w = flat();
+  w.city.scenario = { id: 'smog', end: 100, done: '' };
+  const sim = new Sim(w);
+  const smog = SCENARIOS.find((x) => x.id === 'smog')!;
+  const air = (index: number) => Object.assign(sim.stats, { avgPollution: index * 2.55, residents: 21000, comJobs: 5000, indJobs: 4500 });
+  air(10);
+  for (let k = 1; k < 12; k++) assert.equal(scenarioMonth(smog, sim).met, false, `met after ${k} months`);
+  const st = scenarioMonth(smog, sim);
+  assert.equal(st.met, true);
+  assert.match(st.status, /^Pollution 10 \(goal under 12\) · 21,000 of 20,000 residents · 9,500 of 9,000 jobs · held 12 of 12 months$/);
+  const back = World.deserialize(JSON.parse(JSON.stringify(w.serialize())));
+  assert.deepEqual(back.city.scenario, { id: 'smog', end: 100, done: '', held: 12 });
+  air(12); // one month over the line starts the count again
+  assert.equal(scenarioMonth(smog, sim).met, false);
+  assert.equal(w.city.scenario.held, 0);
 });
 
 await test('undo snapshots restore the map but never money, and only onto the same map', () => {

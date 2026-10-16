@@ -11,7 +11,7 @@ import {
   SaveFile, SlotMeta, citySlot, decode, deleteSlot, encode, encodeNow, listSlots, loadSlot, newCityId, readCode, saveCode, saveSlot, thisDevice,
   worldFrom,
 } from './save';
-import { SCENARIOS, buildScenario, openScenario } from './scenarios';
+import { SCENARIOS, buildScenario, goalState, openScenario, scenarioMonth } from './scenarios';
 import { Sim } from './sim';
 import { DEFAULT_TERRAIN, TerrainParams, TerrainStyle, addSpring, applyBrush, cleanTerrain, generateTerrain } from './terrain';
 import {
@@ -342,7 +342,7 @@ export class Game {
     this.renderer.centerOn(n ? cx / n : this.world.w / 2, n ? cy / n : this.world.h / 2);
     s.start?.(sim);
     this.minimap.markDirty();
-    this.checkScenario();
+    this.showGoal();
     this.ui.scenarioIntro(s);
   }
 
@@ -352,8 +352,7 @@ export class Game {
     const s = SCENARIOS.find((x) => x.id === sc.id);
     if (!s) return;
     const month = this.world.city.month;
-    if (!sc.done) s.monthly?.(this.sim);
-    const st = s.check(this.sim);
+    const st = scenarioMonth(s, this.sim);
     this.ui.updateGoal(s, st, sc.end - month, sc.done);
     if (sc.done) return;
     if ((s.kind === 'reach' && st.met) || month >= sc.end) {
@@ -364,12 +363,12 @@ export class Game {
     }
   }
 
-  /** Fill in the goal tracker of a challenge opened from a save, without its month's events or the deadline check. */
+  /** Fill in the goal tracker as a challenge starts or opens from a save, without a month's events or judging. */
   private showGoal(): void {
     const sc = this.world.city.scenario;
     const s = sc && SCENARIOS.find((x) => x.id === sc.id);
     if (!sc || !s || !this.sim) return;
-    this.ui.updateGoal(s, s.check(this.sim), sc.end - this.world.city.month, sc.done);
+    this.ui.updateGoal(s, goalState(s, this.sim), sc.end - this.world.city.month, sc.done);
   }
 
   loadFile(file: SaveFile, slotId: string | null = null): void {

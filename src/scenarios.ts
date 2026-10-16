@@ -24,8 +24,11 @@ export interface Scenario {
   goal: string;
   /** Win as soon as the goal is met, or only judge at the deadline. */
   kind: 'reach' | 'hold';
+  /** For a 'hold' goal: the month-ends in a row, up to the deadline, that it must be met. */
+  holdMonths?: number;
   terrain: Partial<TerrainParams>;
   city?: CityPlan;
+  /** The goal as things stand right now. */
   check(sim: Sim): GoalState;
   start?(sim: Sim): void;
   monthly?(sim: Sim): void;
@@ -105,8 +108,9 @@ export const SCENARIOS: Scenario[] = [
     years: 8,
     funds: 30000,
     blurb: 'Factories line the river and coal smoke fills the valley. People are leaving. Clean the air without killing the jobs.',
-    goal: 'Get the pollution index below 8 with at least 20,000 residents and 9,000 jobs.',
+    goal: 'Keep the pollution index under 12, with at least 20,000 residents and 9,000 jobs, for the last 12 months.',
     kind: 'hold',
+    holdMonths: 12,
     terrain: { seed: 'smog-valley-5', style: 'valley', hills: 40, rivers: 1, forest: 30 },
     city: {
       radius: 6,
@@ -123,9 +127,9 @@ export const SCENARIOS: Scenario[] = [
       const j = sim.stats.comJobs + sim.stats.indJobs;
       const size = r >= 20000 && j >= 9000;
       return {
-        progress: Math.max(0, Math.min(1, (30 - p) / 22)) * (size ? 1 : 0.5),
-        status: `Pollution ${p} (goal under 8) · ${r.toLocaleString()} of 20,000 residents · ${j.toLocaleString()} of 9,000 jobs`,
-        met: p < 8 && size,
+        progress: Math.max(0, Math.min(1, (30 - p) / 18)) * (size ? 1 : 0.5),
+        status: `Pollution ${p} (goal under 12) · ${r.toLocaleString()} of 20,000 residents · ${j.toLocaleString()} of 9,000 jobs`,
+        met: p < 12 && size,
       };
     },
   },
@@ -190,6 +194,30 @@ export const SCENARIOS: Scenario[] = [
     },
   },
 ];
+
+/**
+ * A challenge's month end: its events for the month, then its goal. A goal that must hold to the end counts the
+ * month-ends in a row it has been met, on the city, so the count survives a save.
+ */
+export function scenarioMonth(s: Scenario, sim: Sim): GoalState {
+  const sc = sim.world.city.scenario;
+  if (sc && !sc.done) s.monthly?.(sim);
+  const now = s.check(sim);
+  if (sc && !sc.done && s.holdMonths) sc.held = now.met ? (sc.held ?? 0) + 1 : 0;
+  return goalState(s, sim, now);
+}
+
+/** The goal as the tracker shows it: one that must hold is met once it has held long enough. */
+export function goalState(s: Scenario, sim: Sim, now = s.check(sim)): GoalState {
+  if (!s.holdMonths) return now;
+  const need = s.holdMonths;
+  const held = Math.min(need, sim.world.city.scenario?.held ?? 0);
+  return {
+    met: now.met && held >= need,
+    progress: now.met ? 0.5 + (0.5 * held) / need : now.progress * 0.5,
+    status: `${now.status} · held ${held} of ${need} months`,
+  };
+}
 
 /**
  * Settle a challenge city as it opens: the month-end maps worked out, and every lot brought down to the density its
