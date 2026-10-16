@@ -472,6 +472,7 @@ input[type="range"] { width: 100%; accent-color: var(--sign-hi); margin: 0; }
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
   overflow: hidden;
 }
+.modal:focus { outline: none; } /* it takes focus as it opens; its controls show focus as usual */
 .modal header { display: flex; align-items: center; gap: 12px; padding: 14px 16px 12px; border-bottom: 1px solid var(--line); }
 .modal header h2 { margin: 0; font-size: 18px; font-weight: 800; flex: 1; text-wrap: balance; }
 .modal header .sub { color: var(--muted); font-size: 13px; }

@@ -12,11 +12,15 @@ import type { Message } from '../sim';
 import { STYLE_NAMES, TerrainStyle, hasSea } from '../terrain';
 import { GoalState, SCENARIOS, Scenario } from '../scenarios';
 import { World } from '../world';
+import { hasKeyboardFocus, watchFocus } from '../focus';
 import { lineChart } from './charts';
 import { buildGuide, trackGuide } from './guide';
 import { ICONS } from './icons';
 
 const $ = <T extends HTMLElement = HTMLElement>(root: ParentNode, sel: string): T => root.querySelector(sel) as T;
+
+/** What Tab can reach inside a dialog. */
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 function el<T extends HTMLElement = HTMLElement>(html: string): T {
   const t = document.createElement('template');
@@ -101,6 +105,8 @@ export class UI {
   private toastTimer = 0;
   private inspectAt: { x: number; y: number } | null = null;
   private modalClose: (() => void) | null = null;
+  /** Where focus goes back to when the dialog closes: what opened it, if the keyboard had put focus there. */
+  private modalOpener: HTMLElement | null = null;
   private dropdownEl: HTMLElement | null = null;
   private dropdownBtn: HTMLElement | null = null;
   private lastMessage: Message | null = null;
@@ -121,6 +127,14 @@ export class UI {
       this.closeDropdown();
     });
     window.addEventListener('resize', () => this.closeDropdown());
+    watchFocus();
+    document.addEventListener('keydown', (e) => {
+      if (!this.modalOpen) return;
+      if (e.key === 'Tab') this.keepTabInside(e);
+      // Elsewhere Escape is the game's (it ignores keys typed into a field), so here it only needs to close the dialog
+      // from a slider, a switch or a text box in it.
+      else if (e.key === 'Escape' && (e.target as HTMLElement).matches?.('input, textarea, select') && $(this.root, '#modalRoot').contains(e.target as Node)) this.closeModal();
+    });
     game.drive.onChange(() => {
       this.syncDrive();
       this.filesRefresh?.();
@@ -747,6 +761,29 @@ export class UI {
     btn.setAttribute('aria-expanded', 'true');
     this.dropdownEl = d;
     this.dropdownBtn = btn;
+    d.addEventListener('keydown', (e) => this.menuKey(e));
+    d.querySelector<HTMLElement>('button')?.focus({ preventScroll: true });
+  }
+
+  /** Arrow keys, Home and End move through an open menu; Tab leaves it. */
+  private menuKey(e: KeyboardEvent): void {
+    const items = [...(this.dropdownEl?.querySelectorAll<HTMLElement>('button') ?? [])];
+    if (!items.length) return;
+    const at = items.indexOf(document.activeElement as HTMLElement);
+    const last = items.length - 1;
+    let next: number;
+    if (e.key === 'ArrowDown') next = at < 0 || at === last ? 0 : at + 1;
+    else if (e.key === 'ArrowUp') next = at <= 0 ? last : at - 1;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = last;
+    else {
+      // Tab goes on from the menu's button, as if the menu had never opened.
+      if (e.key === 'Tab') this.closeDropdown();
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation(); // the arrow keys would also move the map
+    items[next].focus();
   }
 
   closeDropdownIfOpen(): boolean {
@@ -756,10 +793,13 @@ export class UI {
   }
 
   private closeDropdown(): void {
+    // Focus goes back to the menu's button if the keyboard was in the menu.
+    const back = this.dropdownEl?.contains(document.activeElement) && hasKeyboardFocus(document.activeElement) ? this.dropdownBtn : null;
     this.dropdownEl?.remove();
     this.dropdownBtn?.setAttribute('aria-expanded', 'false');
     this.dropdownEl = null;
     this.dropdownBtn = null;
+    back?.focus({ preventScroll: true });
   }
 
   private layersMenu(): HTMLElement {
@@ -1003,12 +1043,16 @@ export class UI {
   // ---- modals -------------------------------------------------------------------------
 
   private openModal(spec: ModalSpec): HTMLElement {
+    // A dialog that takes over from another hands focus back where the first one would have.
+    const active = document.activeElement;
+    const opener = this.modalOpen ? this.modalOpener : hasKeyboardFocus(active) ? active : null;
+    this.modalOpener = null;
     this.closeModal();
     this.closeDropdown();
     const root = $(this.root, '#modalRoot');
     const width = spec.width ?? (spec.wide ? 860 : 0);
-    const m = el(`<div class="modal" role="dialog" aria-modal="true" ${width ? `style="width:min(${width}px,100%)"` : ''}>
-      <header><div style="flex:1"><h2>${esc(spec.title)}</h2>${spec.sub ? `<div class="sub">${spec.sub}</div>` : ''}</div>
+    const m = el(`<div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" tabindex="-1" ${width ? `style="width:min(${width}px,100%)"` : ''}>
+      <header><div style="flex:1"><h2 id="modalTitle">${esc(spec.title)}</h2>${spec.sub ? `<div class="sub">${spec.sub}</div>` : ''}</div>
       <button class="iconbtn" data-close aria-label="Close">${ICONS.close}</button></header>
       <div class="body"></div></div>`);
     $(m, '.body').appendChild(spec.body);
@@ -1023,8 +1067,11 @@ export class UI {
     root.hidden = false;
     this.modalOpen = true;
     this.modalClose = spec.onClose ?? null;
+    this.modalOpener = opener;
     this.game.renderer.preview = null;
     this.cursorTip(0, 0, null);
+    // The dialog itself takes focus, never a text box in it, which would bring up a phone's keyboard.
+    m.focus({ preventScroll: true });
     return m;
   }
 
@@ -1034,9 +1081,31 @@ export class UI {
     root.hidden = true;
     root.innerHTML = '';
     this.modalOpen = false;
+    const back = this.modalOpener;
+    this.modalOpener = null;
     const f = this.modalClose;
     this.modalClose = null;
     f?.();
+    if (back?.isConnected && !this.modalOpen) back.focus({ preventScroll: true });
+  }
+
+  /** Tab and Shift+Tab go round the open dialog's controls instead of out to the map behind it. */
+  private keepTabInside(e: KeyboardEvent): void {
+    const m = this.root.querySelector<HTMLElement>('#modalRoot .modal');
+    if (!m) return;
+    const items = [...m.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((x) => x.getClientRects().length > 0);
+    const at = document.activeElement;
+    if (!items.length) {
+      e.preventDefault();
+      m.focus();
+      return;
+    }
+    const first = items[0];
+    const last = items[items.length - 1];
+    if (!m.contains(at) || (e.shiftKey ? at === first || at === m : at === last)) {
+      e.preventDefault();
+      (e.shiftKey ? last : first).focus();
+    }
   }
 
   /** Close whatever is on top (dropdown, dialog, log, inspect). Returns true if something closed. */

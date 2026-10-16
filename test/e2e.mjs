@@ -330,6 +330,55 @@ try {
     await ctx.close();
   });
 
+  await test('dialogs and menus take focus, keep Tab inside, and hand it back to the keyboard', async () => {
+    const ctx = await profile(DESK);
+    const { page, problems } = await open(ctx);
+    await found(page);
+    const inModal = () => page.evaluate(() => !!document.activeElement?.closest('.modal'));
+    const focused = () => page.evaluate(() => document.activeElement?.dataset.act ?? document.activeElement?.textContent);
+    // A dialog opened from the keyboard keeps Tab inside, and Escape hands focus back, even from a slider.
+    await tabTo(page, '#topbar [data-act="budget"]');
+    await page.keyboard.press('Enter');
+    assert.equal(await inModal(), true, 'the Budget dialog did not take focus');
+    for (let i = 1; i <= 12; i++) {
+      await page.keyboard.press(i > 9 ? 'Shift+Tab' : 'Tab');
+      assert.equal(await inModal(), true, `Tab ${i} left the dialog`);
+    }
+    await page.focus('#bTax');
+    await page.keyboard.press('Escape');
+    assert.equal(await page.isVisible('.modal'), false);
+    assert.equal(await focused(), 'budget');
+    // A menu: the first item takes focus, the arrow keys go round it without moving the map, Escape hands focus back.
+    await tabTo(page, '#topbar [data-act="menu"]');
+    await page.keyboard.press('Enter');
+    const cam = await page.evaluate(() => ({ ...window.__terraville.renderer.cam }));
+    assert.equal(await focused(), 'Save, open and share');
+    await page.keyboard.press('ArrowDown');
+    assert.equal(await focused(), 'Strategy guide');
+    await page.keyboard.press('ArrowUp');
+    await page.keyboard.press('ArrowUp');
+    assert.equal(await focused(), 'Back to the title screen');
+    assert.deepEqual(await page.evaluate(() => ({ ...window.__terraville.renderer.cam })), cam, 'the arrow keys moved the map');
+    await page.keyboard.press('Escape');
+    assert.equal(await focused(), 'menu');
+    // From a menu item to a dialog, and back to the menu's button.
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('Enter');
+    assert.equal(await page.textContent('.modal h2'), 'Settings');
+    assert.equal(await inModal(), true);
+    await page.keyboard.press('Escape');
+    assert.equal(await focused(), 'menu');
+    // A dialog opened and closed with the mouse leaves focus where the mouse put it.
+    await page.click('#topbar [data-act="charts"]');
+    assert.equal(await inModal(), true);
+    await page.click('.modal [data-close]');
+    assert.equal(await page.evaluate(() => document.activeElement === document.body), true);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('a city in debt can still bulldoze, though it cannot build', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);
