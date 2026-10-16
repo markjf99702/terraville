@@ -988,6 +988,11 @@ export class UI {
     this.root.appendChild(bar);
   }
 
+  /** What to say when a save didn't work: this browser is blocking storage, or storage is probably full. */
+  saveFailedText(): string {
+    return storageAvailable() ? 'Saving failed. Storage may be full.' : 'Saving failed. This browser is blocking storage.';
+  }
+
   toast(text: string, _kind: 'info' | 'warn' = 'info'): void {
     const t = $(this.root, '#toast');
     t.textContent = text;
@@ -1620,14 +1625,14 @@ export class UI {
       if (g.mode === 'city') {
         saveBtns.appendChild(this.btn('Save now', 'primary', async () => {
           const ok = await g.saveCity();
-          this.toast(ok ? `Saved${drive.connected ? ', and on its way to Google Drive' : ''}.` : 'Saving failed. Storage may be full.', ok ? 'info' : 'warn');
+          this.toast(ok ? `Saved${drive.connected ? ', and on its way to Google Drive' : ''}.` : this.saveFailedText(), ok ? 'info' : 'warn');
           renderCities();
         }));
       }
       saveBtns.appendChild(this.btn(g.mode === 'city' ? 'Save a snapshot' : 'Save this terrain', g.mode === 'city' ? '' : 'primary', async () => {
         const id = 's' + Date.now().toString(36);
         const ok = await g.saveTo(id);
-        this.toast(ok ? (g.mode === 'city' ? 'Snapshot saved on this device.' : 'Saved.') : 'Saving failed. Storage may be full.', ok ? 'info' : 'warn');
+        this.toast(ok ? (g.mode === 'city' ? 'Snapshot saved on this device.' : 'Saved.') : this.saveFailedText(), ok ? 'info' : 'warn');
         renderOther();
       }));
     }

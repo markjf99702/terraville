@@ -256,6 +256,49 @@ try {
     await full.close();
   });
 
+  await test('an autosave that fails says so once, until saving works again', async () => {
+    const watch = (page) => page.evaluate(() => {
+      const ui = window.__terraville.ui;
+      const show = ui.toast.bind(ui);
+      window.saidSaving = [];
+      ui.toast = (text, kind) => {
+        if (text.startsWith('Saving')) window.saidSaving.push(text);
+        show(text, kind);
+      };
+    });
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await found(page);
+    await watch(page);
+    const fullStorage = (on) => page.evaluate((on) => {
+      window.realSetItem ??= Storage.prototype.setItem;
+      Storage.prototype.setItem = on
+        ? function (k, v) { if (k.startsWith('terraville.slot')) throw new DOMException('The quota has been exceeded.', 'QuotaExceededError'); return window.realSetItem.call(this, k, v); }
+        : window.realSetItem;
+    }, on);
+    const autosave = () => page.evaluate(() => window.__terraville.autosave());
+    await fullStorage(true);
+    assert.deepEqual([await autosave(), await autosave(), await autosave()], [false, false, false]);
+    assert.deepEqual(await page.evaluate(() => window.saidSaving), ['Saving failed. Storage may be full.']);
+    await fullStorage(false);
+    assert.equal(await autosave(), true);
+    await fullStorage(true);
+    assert.equal(await autosave(), false);
+    assert.equal(await page.evaluate(() => window.saidSaving.length), 2);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+
+    const blocked = await profile();
+    await blocked.addInitScript(() => Object.defineProperty(window, 'localStorage', { get() { throw new DOMException('The operation is insecure.', 'SecurityError'); } }));
+    const { page: p2, problems: more } = await open(blocked);
+    await found(p2);
+    await watch(p2);
+    assert.equal(await p2.evaluate(() => window.__terraville.autosave()), false);
+    assert.deepEqual(await p2.evaluate(() => window.saidSaving), ['Saving failed. This browser is blocking storage.']);
+    assert.deepEqual(more, []);
+    await blocked.close();
+  });
+
   await test('a city in debt can still bulldoze, though it cannot build', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

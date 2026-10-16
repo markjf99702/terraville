@@ -283,6 +283,7 @@ export class Game {
   private startSim(): void {
     const sim = new Sim(this.world);
     this.setSim(sim);
+    this.autosaveFailing = false;
     this.renderer.setWorld(this.world, sim);
     this.minimap.markDirty();
     sim.on((e) => {
@@ -420,9 +421,14 @@ export class Game {
     };
   }
 
+  /** The 90-second and year-end save. When it fails it says so once, and again only after a save has worked. */
   async autosave(): Promise<boolean> {
-    return this.saveCity();
+    const ok = await this.saveCity();
+    if (!ok && !this.autosaveFailing) this.ui.toast(this.ui.saveFailedText(), 'warn');
+    this.autosaveFailing = !ok;
+    return ok;
   }
+  private autosaveFailing = false;
 
   /** Save the city to its own slot here, and to Google Drive when connected. */
   async saveCity(): Promise<boolean> {
