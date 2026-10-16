@@ -1,11 +1,13 @@
 // Headless balance run: a tidy grid city, simulated for decades.
-// Usage: node run-test.mjs test/balance.ts [years] [tax]
+// Usage: node run-test.mjs test/balance.ts [years] [tax] [upgrades]
+//   upgrades: buy each landmark upgrade as soon as the city can afford it and keep $10,000 back.
 import { World } from '../src/world';
 import { Sim } from '../src/sim';
-import { ROAD, POWER } from '../src/defs';
+import { ROAD, POWER, nextUpgrade } from '../src/defs';
 
 const years = Number(process.argv[2] ?? 30);
 const tax = Number(process.argv[3] ?? 7);
+const upgrades = process.argv[4] === 'upgrades';
 const W = 120, H = 100;
 const world = new World(W, H);
 world.height.fill(5);
@@ -38,6 +40,16 @@ let msgs = 0;
 sim.on((e) => { if (e.type === 'message') msgs++; });
 for (let m = 0; m < years * 12; m++) {
   for (let wk = 0; wk < 4; wk++) sim.step();
+  if (upgrades) {
+    const landmarks = [...world.buildings.values()].filter((b) => nextUpgrade(b)).sort((a, b) => nextUpgrade(a)!.cost - nextUpgrade(b)!.cost);
+    const b = landmarks[0];
+    if (b && world.city.funds >= nextUpgrade(b)!.cost + 10000) {
+      const up = nextUpgrade(b)!;
+      world.city.funds -= up.cost;
+      world.setLevel(b, b.level + 1);
+      console.log(`y${((m + 1) / 12).toFixed(1)} bought ${up.name} for $${up.cost.toLocaleString()}`);
+    }
+  }
   if ((m + 1) % 24 === 0) {
     const s = sim.stats, d = world.city.demand, b = s.lastBudget;
     const exp = b.transport + b.police + b.fire + b.services + b.power + b.interest;
