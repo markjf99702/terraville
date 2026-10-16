@@ -19,6 +19,8 @@ export class Input {
   /** Space was used to drag the map, so releasing it should not toggle pause. */
   private spacePanned = false;
   private keys = new Set<string>();
+  /** The control that last took focus from the keyboard, such as by Tab, rather than from a click or tap. */
+  private keyboardFocus: Element | null = null;
 
   constructor(private game: Game, private canvas: HTMLCanvasElement) {
     canvas.addEventListener('pointerdown', (e) => this.down(e));
@@ -35,6 +37,12 @@ export class Input {
     canvas.addEventListener('wheel', (e) => this.wheel(e), { passive: false });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     window.addEventListener('keydown', (e) => this.keydown(e));
+    // Read as focus arrives: Chromium makes whatever has focus match :focus-visible as soon as any key goes down,
+    // even a button that a click put there.
+    document.addEventListener('focusin', (e) => {
+      const t = e.target as Element;
+      this.keyboardFocus = focusVisible(t) ? t : null;
+    });
     window.addEventListener('keyup', (e) => {
       this.keys.delete(e.key);
       if (e.key === ' ') {
@@ -205,6 +213,9 @@ export class Input {
     const g = this.game;
     const target = e.target as HTMLElement | null;
     if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')) return;
+    // Space and Enter press a button that has keyboard focus. After a click, Space still pauses rather than pressing
+    // the clicked tool again, and letter keys are hotkeys wherever focus is.
+    if ((e.key === ' ' || e.key === 'Enter') && target && target === this.keyboardFocus && target.closest('button, a')) return;
     // Dialogs opened from the title screen close with Escape too.
     if (g.mode === 'title') {
       if (e.key === 'Escape') g.ui.closeTop();
@@ -268,5 +279,14 @@ export class Input {
     if (this.keys.has('ArrowUp')) g.renderer.cam.y -= speed;
     if (this.keys.has('ArrowDown')) g.renderer.cam.y += speed;
     g.renderer.clampCamera();
+  }
+}
+
+/** Whether an element shows keyboard focus. Browsers too old for :focus-visible say no, as they always did here. */
+function focusVisible(el: Element): boolean {
+  try {
+    return el.matches(':focus-visible');
+  } catch {
+    return false;
   }
 }

@@ -23,6 +23,7 @@ const server = createServer(async (req, res) => {
 await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
 const base = `http://127.0.0.1:${server.address().port}/`;
 const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true };
+const DESK = { viewport: { width: 1280, height: 800 } };
 
 let passed = 0;
 async function test(name, fn) {
@@ -76,6 +77,15 @@ function codeOf(page, change) {
     for (const b of new TextEncoder().encode(JSON.stringify(file))) bin += String.fromCharCode(b);
     return 'TV1j:' + btoa(bin);
   }, change);
+}
+
+/** Press Tab until `selector` has focus. */
+async function tabTo(page, selector) {
+  for (let i = 0; i < 40; i++) {
+    if (await page.evaluate((s) => document.activeElement?.matches(s), selector)) return;
+    await page.keyboard.press('Tab');
+  }
+  throw new Error(`Tab never reached ${selector}`);
 }
 
 /** Open a city code the way a person would: Open a saved city, paste, Open code. */
@@ -297,6 +307,27 @@ try {
     assert.deepEqual(await p2.evaluate(() => window.saidSaving), ['Saving failed. This browser is blocking storage.']);
     assert.deepEqual(more, []);
     await blocked.close();
+  });
+
+  await test('Space presses a button reached with Tab, and still pauses after a click', async () => {
+    const ctx = await profile(DESK);
+    const { page, problems } = await open(ctx);
+    await found(page);
+    const speed = () => page.evaluate(() => window.__terraville.speed);
+    await page.evaluate(() => window.__terraville.setSpeed(2));
+    // A click focuses the tool too, but Space pauses rather than pressing it again.
+    await page.click('[data-tool="road"]');
+    await page.keyboard.press('Space');
+    assert.equal(await speed(), 0);
+    await page.keyboard.press('Space');
+    assert.equal(await speed(), 2);
+    await tabTo(page, '#topbar [data-act="budget"]');
+    await page.keyboard.press('Space');
+    assert.equal(await page.textContent('.modal h2'), 'Budget');
+    await page.keyboard.press('Escape');
+    assert.equal(await speed(), 2);
+    assert.deepEqual(problems, []);
+    await ctx.close();
   });
 
   await test('a city in debt can still bulldoze, though it cannot build', async () => {
