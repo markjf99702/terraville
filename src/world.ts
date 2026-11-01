@@ -486,25 +486,42 @@ export class World {
       }
     }
     w.run = cleanRun(s.run, s.w, s.h);
-    for (const [id, kind, x, y, level, seed, age] of s.buildings) {
+    // Each row read as whole numbers in range, as cleanCity reads the city: a code is text anyone can edit, and a
+    // level typed as text, a kind the game doesn't have or two lots with one id would otherwise reach the treasury
+    // as NaN, or leave one lot's tiles pointing at another.
+    const int = (v: unknown) => Math.floor(Number(v));
+    for (const row of Array.isArray(s.buildings) ? s.buildings : []) {
+      if (!Array.isArray(row)) continue;
+      const kind = row[1];
+      if (typeof kind !== 'string' || !Object.hasOwn(BUILDINGS, kind)) continue;
       const def = BUILDINGS[kind as Kind];
-      if (!def || !(id > 0) || x < 0 || y < 0 || x + def.size > s.w || y + def.size > s.h) continue;
+      const id = int(row[0]), x = int(row[2]), y = int(row[3]);
+      if (![id, x, y].every(Number.isFinite) || id < 1 || w.buildings.has(id)) continue;
+      if (x < 0 || y < 0 || x + def.size > s.w || y + def.size > s.h) continue;
       let clash = false;
       for (let dy = 0; dy < def.size && !clash; dy++) for (let dx = 0; dx < def.size; dx++) if (w.occ[(y + dy) * s.w + x + dx]) clash = true;
       if (clash) continue;
+      const level = int(row[4]), seed = int(row[5]), age = int(row[6]);
       const b: Building = {
-        id, kind: kind as Kind, x, y, size: def.size, level, pop: 0,
-        powered: false, seed, age, road: true, trip: true,
+        id, kind: kind as Kind, x, y, size: def.size, level: 0, pop: 0,
+        powered: false, seed: Number.isFinite(seed) ? seed & 0x7fffffff : 0, age: Number.isFinite(age) ? Math.max(0, age) : 0, road: true, trip: true,
       };
-      // Anything but a zone is built at level 1 and goes up by its upgrades, if it has any.
-      if (!isZone(b.kind)) b.level = Math.min(topLevel(b.kind), Math.max(1, Math.floor(Number(level)) || 1));
-      if (isZone(b.kind)) b.pop = ZONE_POP[b.kind as 'res' | 'com' | 'ind'][level] ?? 0;
+      if (isZone(b.kind)) {
+        const pops = ZONE_POP[b.kind as 'res' | 'com' | 'ind'];
+        b.level = Number.isFinite(level) ? Math.min(pops.length - 1, Math.max(0, level)) : 0;
+        b.pop = pops[b.level];
+      } else {
+        // Anything but a zone is built at level 1 and goes up by its upgrades, if it has any.
+        b.level = Number.isFinite(level) ? Math.min(topLevel(b.kind), Math.max(1, level)) : 1;
+      }
       w.buildings.set(id, b);
       for (let dy = 0; dy < def.size; dy++) {
         for (let dx = 0; dx < def.size; dx++) w.occ[(y + dy) * w.w + x + dx] = id;
       }
     }
-    w.nextId = Math.max(s.nextId, ...[...w.buildings.keys()].map((k) => k + 1), 1);
+    let next = Number.isFinite(int(s.nextId)) ? int(s.nextId) : 1;
+    for (const k of w.buildings.keys()) next = Math.max(next, k + 1);
+    w.nextId = Math.max(1, next);
     w.city = cleanCity(s.city);
     return w;
   }

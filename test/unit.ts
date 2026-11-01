@@ -368,6 +368,46 @@ await test('an upgraded landmark is saved, and a city code cannot claim upgrades
   assert.deepEqual([with_('stadium', 9), with_('stadium', 'x'), with_('stadium', 0), with_('police', 4)], [3, 1, 1, 1]);
 });
 
+await test("a city code's building rows are read as whole numbers in range, so an edited code can't put NaN in the treasury", () => {
+  const w = flat(40, 30);
+  w.place('coal', 5, 1);
+  applyLine(w, POWER, planLine(w, POWER, linePath(9, 3, 9, 6)));
+  applyLine(w, ROAD, planLine(w, ROAD, linePath(6, 6, 38, 6)));
+  applyLine(w, POWER, planLine(w, POWER, linePath(9, 6, 38, 6)));
+  const s = JSON.parse(JSON.stringify(w.serialize()));
+  s.nextId = 'lots';
+  s.buildings.push(
+    [50, 'com', 10, 7, 7, 1, 0], // past the top level for shops
+    [51, 'res', 14, 7, '4', 1, 0], // a level typed as text, which grew to '41' by adding 1
+    [52, 'constructor', 18, 7, 1, 1, 0], // not a kind of building: something every object has
+    [53, 'res', 22, 7, 2, 1, 0],
+    [53, 'ind', 26, 7, 2, 1, 0], // the same id again
+    ['x', 'res', 30, 7, 1, 1, 0],
+    [54, 'res', 34, 'y', 1, 1, 0],
+    [55.7, 'res', 34.2, 7, 2.9, 'seed', -3],
+    'not a row',
+  );
+  const back = World.deserialize(s);
+  const at = (x: number) => back.buildingAt(x, 7);
+  assert.deepEqual([at(10)?.level, at(14)?.level, at(18), at(22)?.id, at(26), at(30)], [5, 4, undefined, 53, undefined, undefined]);
+  assert.deepEqual({ ...at(34)!, powered: false }, { ...at(34)!, id: 55, x: 34, level: 2, seed: 0, age: 0, powered: false });
+  // Every lot's tiles point at that lot, and new buildings get ids of their own.
+  for (const b of back.buildings.values()) {
+    for (let dy = 0; dy < b.size; dy++) for (let dx = 0; dx < b.size; dx++) assert.equal(back.occ[(b.y + dy) * back.w + b.x + dx], b.id);
+  }
+  assert.equal(back.nextId, 56);
+  const sim = new Sim(back);
+  const random = Math.random;
+  Math.random = makeRng(4);
+  try {
+    for (let k = 0; k < 60; k++) sim.step();
+  } finally {
+    Math.random = random;
+  }
+  assert.ok(Number.isFinite(back.city.funds) && Number.isFinite(sim.stats.residents) && Number.isFinite(sim.stats.comJobs), `funds ${back.city.funds}, residents ${sim.stats.residents}`);
+  for (const b of back.buildings.values()) assert.ok(Number.isInteger(b.level) && Number.isFinite(b.pop), `${b.kind} ${b.id} at level ${b.level}`);
+});
+
 await test('a connected, powered city grows and pays taxes', () => {
   const w = flat(60, 40);
   w.city.funds = 20000;
