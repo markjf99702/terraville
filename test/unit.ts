@@ -280,9 +280,46 @@ await test('homes with no road to any job stay empty, however strong demand is',
   assert.ok(linked.some((b) => b.level > 0), 'the homes that can reach the jobs never grew');
   for (const b of cutOff) {
     assert.equal(b.level, 0);
-    assert.deepEqual(sim.describe(b.x, b.y).rows.find((r) => r[0] === 'Problem'), ['Problem', 'Commute too long']);
+    assert.deepEqual(sim.describe(b.x, b.y).rows.find((r) => r[0] === 'Problem'), ['Problem', 'No road to any shops or factories']);
   }
 });
+
+await test('a home 40 road tiles from work keeps its commute when the road between is jammed', () => {
+  const w = flat(60, 20);
+  const home = w.place('res', 2, 2);
+  const shops = w.place('com', 44, 2);
+  applyLine(w, ROAD, planLine(w, ROAD, linePath(2, 5, 46, 5)));
+  w.setLevel(home, 2);
+  w.setLevel(shops, 2);
+  const sim = new Sim(w);
+  for (let x = 2; x <= 46; x++) w.traffic[5 * w.w + x] = 255; // solid red on the Traffic layer
+  sim.computeTraffic(false);
+  assert.deepEqual([home.trip, shops.trip], [true, true]);
+});
+
+await test('Inspect tells a lot with no road to the other side of town from one too far from it, and the news says where', () => seeded(5, () => {
+  const w = flat(140, 40);
+  // Two road pieces 8 tiles apart that never meet: homes on one, a factory on the other.
+  applyLine(w, ROAD, planLine(w, ROAD, linePath(2, 5, 12, 5)));
+  applyLine(w, ROAD, planLine(w, ROAD, linePath(2, 13, 12, 13)));
+  const home = w.place('res', 2, 2);
+  const works = w.place('ind', 2, 14);
+  // One long road with homes at one end and a factory 124 tiles along.
+  applyLine(w, ROAD, planLine(w, ROAD, linePath(2, 25, 132, 25)));
+  const farHome = w.place('res', 2, 22);
+  const farWorks = w.place('ind', 128, 22);
+  const lonely = w.place('res', 60, 32); // no road at all
+  w.city.month = 6;
+  const sim = new Sim(w);
+  const problem = (b: { x: number; y: number }) => sim.describe(b.x, b.y).rows.find((r) => r[0] === 'Problem')?.[1];
+  assert.deepEqual([home, works, farHome, farWorks, lonely].map(problem), [
+    'No road to any shops or factories', 'No road to any homes', 'Commute too long', 'Homes are too far away', 'No road access',
+  ]);
+  for (let k = 0; k < 4; k++) sim.step();
+  const at = (key: string) => sim.messages.filter((m) => m.text.startsWith(key)).map((m) => [m.x, m.y]);
+  assert.deepEqual(at('Commuters cannot reach work'), [[home.x + 1, home.y + 1]]);
+  assert.deepEqual(at('Some zones have no road access'), [[lonely.x + 1, lonely.y + 1]]);
+}));
 
 await test('the landmark limits: 18,000 residents, 5,000 shop jobs, 4,000 factory jobs', () => {
   const w = flat(60, 40);

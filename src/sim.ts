@@ -379,7 +379,12 @@ export class Sim {
 
   // ---- traffic ------------------------------------------------------------
 
-  private dijkstra(sources: number[], dist: Float32Array): void {
+  /**
+   * Trip lengths from `sources` over road and rail. With `jams` a road tile costs more the busier it is, which steers
+   * the routes commuters take, and the search stops a little past the longest trip. Without, every road tile costs
+   * the same and the search covers the whole network, so a tile left at Infinity has no route at all.
+   */
+  private dijkstra(sources: number[], dist: Float32Array, jams = true): void {
     const world = this.world;
     const { w, h } = world;
     dist.fill(Infinity);
@@ -395,7 +400,7 @@ export class Sim {
       const d = heap.peekKey();
       const i = heap.pop();
       if (d > dist[i]) continue;
-      if (d > MAX_TRIP * 1.5) break;
+      if (jams && d > MAX_TRIP * 1.5) break;
       const x = i % w;
       const y = (i / w) | 0;
       for (let k = 0; k < 4; k++) {
@@ -405,7 +410,7 @@ export class Sim {
         const j = ny * w + nx;
         const v = net[j];
         if (!(v & (ROAD | RAIL))) continue;
-        const cost = v & RAIL && !(v & ROAD) ? 0.45 : 1 + traffic[j] / 90;
+        const cost = v & RAIL && !(v & ROAD) ? 0.45 : jams ? 1 + traffic[j] / 90 : 1;
         const nd = d + cost;
         if (nd < dist[j]) {
           dist[j] = nd;
@@ -478,8 +483,10 @@ export class Sim {
         if (b.pop > 0) jobZones.push(b);
       }
     }
-    this.dijkstra(jobSrc, this.distJob);
-    this.dijkstra(resSrc, this.distRes);
+    // Whether a lot has a commute at all depends on distance alone, as the guide says ('within about 80 road
+    // tiles'); jams only steer the routes to the job centres below.
+    this.dijkstra(jobSrc, this.distJob, false);
+    this.dijkstra(resSrc, this.distRes, false);
 
     // Job centres: the biggest employers, with nearby ones folded in.
     jobZones.sort((a, b) => b.pop - a.pop);
@@ -968,8 +975,10 @@ export class Sim {
     } else if (s.unpowered > 0 && month > 2) {
       this.say('unconnected', `${s.unpowered} zone${s.unpowered > 1 ? 's are' : ' is'} not connected to a power plant.`, 'warn', this.findUnpowered(false), 8);
     }
-    if (s.noRoad > 0 && month > 1) this.say('noroad', 'Some zones have no road access and cannot develop.', 'warn', undefined, 10);
-    if (s.noTrip > 2 && month > 3) this.say('notrip', 'Commuters cannot reach work. Connect residential zones to commercial and industrial ones by road.', 'warn', undefined, 10);
+    if (s.noRoad > 0 && month > 1) this.say('noroad', 'Some zones have no road access and cannot develop.', 'warn', this.findZone((b) => !b.road), 10);
+    if (s.noTrip > 2 && month > 3) {
+      this.say('notrip', 'Commuters cannot reach work. Connect residential zones to commercial and industrial ones by road.', 'warn', this.findZone((b) => b.road && !b.trip), 10);
+    }
     const d = city.demand;
     if (zones === 0) {
       if (month >= 2) this.say('nozones', 'Nothing is zoned yet. Pick Residential, Commercial or Industrial from the toolbox and drag across open land next to a road.', 'info', undefined, 12);
@@ -1004,6 +1013,24 @@ export class Sim {
       city.classReached = idx;
       this.say('class' + idx, `${city.name} has ${CITY_CLASSES[idx].min.toLocaleString()} residents and is now a ${CITY_CLASSES[idx].name.toLowerCase()}.`, 'good', undefined, 0);
     }
+  }
+
+  /** The middle of the first zone `is` picks out, for Go there. */
+  private findZone(is: (b: Building) => boolean): { x: number; y: number } | undefined {
+    for (const b of this.world.buildings.values()) if (isZone(b.kind) && is(b)) return { x: b.x + 1, y: b.y + 1 };
+    return undefined;
+  }
+
+  /** Why a lot with a road has no commute: no route at all to the other side of town, or one too long. */
+  private noCommute(b: Building): string {
+    const home = b.kind === 'res';
+    const field = home ? this.distJob : this.distRes;
+    const ring: number[] = [];
+    this.perimeter(b, ring);
+    let best = Infinity;
+    for (const i of ring) best = Math.min(best, field[i]);
+    if (best === Infinity) return home ? 'No road to any shops or factories' : 'No road to any homes';
+    return home ? 'Commute too long' : 'Homes are too far away';
   }
 
   private findUnpowered(short: boolean): { x: number; y: number } | undefined {
@@ -1050,7 +1077,7 @@ export class Sim {
         rows.push([k === 'res' ? 'Residents' : 'Jobs', b.pop.toLocaleString()]);
         rows.push(['Density', `${b.level} of ${ZONE_POP[k].length - 1}`]);
         if (!b.road) rows.push(['Problem', 'No road access']);
-        else if (!b.trip) rows.push(['Problem', 'Commute too long']);
+        else if (!b.trip) rows.push(['Problem', this.noCommute(b)]);
       }
       if (def.capacity) rows.push(['Output', `${def.capacity} MW`]);
       const grid = this.gridAt(b.y * world.w + b.x);
