@@ -1,7 +1,7 @@
 // Fires, floods, tornadoes, earthquakes, the monster, and meltdowns.
 import { BUILDINGS, DIFFICULTIES, DISASTER_POP, FIRE_WEEKS, RAIL, ROAD } from './defs';
 import type { Sim } from './sim';
-import type { Building } from './world';
+import type { Building, SavedRun } from './world';
 
 export type DisasterKind = 'fire' | 'flood' | 'tornado' | 'earthquake' | 'monster' | 'meltdown';
 
@@ -38,6 +38,21 @@ export class Disasters {
 
   private get world() {
     return this.sim.world;
+  }
+
+  /** A tornado or monster under way and a flood still rising, for a save. */
+  saveRun(): Pick<SavedRun, 'roamers' | 'floodLevel' | 'floodAge'> {
+    return {
+      roamers: this.roamers.map(({ kind, x, y, vx, vy, weeks, heading }) => ({ kind, x, y, vx, vy, weeks, heading })),
+      floodLevel: this.floodLevel,
+      floodAge: this.floodAge,
+    };
+  }
+
+  resume(run: Pick<SavedRun, 'roamers' | 'floodLevel' | 'floodAge'>): void {
+    this.roamers = run.roamers.map((r) => ({ ...r, px: r.x, py: r.y }));
+    this.floodLevel = run.floodLevel;
+    this.floodAge = run.floodAge;
   }
 
   week(): void {

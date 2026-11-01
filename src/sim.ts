@@ -8,7 +8,7 @@ import {
 import { MinHeap } from './heap';
 import { clamp } from './rng';
 import { shoreDistance } from './terrain';
-import { Building, World } from './world';
+import { Building, SAVED_MESSAGES, SavedRun, World } from './world';
 import { Disasters } from './disasters';
 
 export type MessageKind = 'info' | 'good' | 'warn' | 'alert';
@@ -122,13 +122,45 @@ export class Sim {
       this.powerDirty = true;
       if (terrain) this.terrainDirty = true;
     });
+    // A saved city carries on where it was: its traffic map as it stood, rather than eased into from empty roads,
+    // and the rest of what the simulation was in the middle of.
+    const run = world.run;
+    const kept = world.trafficSaved;
+    world.run = null;
+    world.trafficSaved = false;
     this.computePower();
-    this.computeTraffic();
+    this.computeTraffic(!kept);
     // Twice: crime depends on land value, which is not saved.
     this.computeMaps();
     this.computeMaps();
     this.tally();
     this.lastPop = this.stats.residents;
+    if (run) this.resume(run);
+  }
+
+  /** What a save keeps of the running simulation, beyond the map and the city. */
+  saveRun(): SavedRun {
+    return {
+      week: this.week,
+      lastBudget: { ...this.stats.lastBudget },
+      yearBudget: { ...this.stats.yearBudget },
+      lastPop: this.lastPop,
+      migration: this.stats.migration,
+      messages: this.messages.slice(-SAVED_MESSAGES).map(({ text, kind, x, y, month }) => ({ text, kind, x, y, month })),
+      cooldown: [...this.cooldown],
+      ...this.disasters.saveRun(),
+    };
+  }
+
+  private resume(run: SavedRun): void {
+    this.week = run.week;
+    this.stats.lastBudget = { ...run.lastBudget };
+    this.stats.yearBudget = { ...run.yearBudget };
+    if (run.lastPop !== undefined) this.lastPop = run.lastPop;
+    if (run.migration !== undefined) this.stats.migration = run.migration;
+    this.messages = run.messages.map((m) => ({ ...m, id: this.msgId++ }));
+    this.cooldown = new Map(run.cooldown);
+    this.disasters.resume(run);
   }
 
   private terrainDirty = false;
@@ -425,7 +457,8 @@ export class Sim {
    * roads into downtown and the industrial districts rather than staying
    * next door.
    */
-  computeTraffic(): void {
+  /** With `blend` false the traffic map is left as it is: the paths and trips are worked out over it. */
+  computeTraffic(blend = true): void {
     const world = this.world;
     const jobSrc: number[] = [];
     const resSrc: number[] = [];
@@ -521,6 +554,7 @@ export class Sim {
       for (let k = 0; k < n; k++) tw += cand[k].w;
       for (let k = 0; k < n; k++) this.trace(this.hubFields[cand[k].k], cand[k].start, (vol * cand[k].w) / tw, flow);
     }
+    if (!blend) return;
     const traffic = world.traffic;
     for (let i = 0; i < world.n; i++) {
       if (!(net[i] & ROAD)) {
@@ -903,15 +937,15 @@ export class Sim {
     const weights: Record<string, number> = { crime: 0.2, pollution: 0.18, housing: 0.08, taxes: 0.14, traffic: 0.14, jobs: 0.14, fire: 0.06, power: 0.16 };
     let pain = 0;
     for (const p of probs) pain += p.value * weights[p.id];
-    const growth = s.residents - this.lastPop;
-    s.migration = growth;
-    const mood = clamp(88 - pain * 1.15 + clamp(growth / 60, -8, 8), 0, 100);
+    // Last month's growth, counted at a month end: a city just opened keeps the figure it was saved with.
+    if (monthEnd) s.migration = s.residents - this.lastPop;
+    const mood = clamp(88 - pain * 1.15 + clamp(s.migration / 60, -8, 8), 0, 100);
     if (monthEnd) s.approval = s.residents > 0 ? s.approval * 0.7 + mood * 0.3 : 50;
     // Kept with the city, so a saved city opens with the mood it had.
     city.approval = s.approval;
     const classIdx = CITY_CLASSES.findIndex((c) => c.name === s.cityClass);
     s.score = Math.round(clamp(s.approval * 7 + classIdx * 50 + Math.min(50, s.avgLandValue / 3), 0, 1000));
-    this.lastPop = s.residents;
+    if (monthEnd) this.lastPop = s.residents;
   }
 
   private advise(): void {

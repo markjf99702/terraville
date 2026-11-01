@@ -405,6 +405,135 @@ await test('world and save codes round-trip', async () => {
   await assert.rejects(decode('hello'));
 });
 
+/** A save and reload the way the game does one: through a city code, then the opening evaluation. */
+async function reopen(sim: Sim): Promise<Sim> {
+  const code = await encode({ v: 1, world: sim.world.serialize(sim.saveRun()), mode: 'city' });
+  const back = new Sim(World.deserialize((await decode(code)).world));
+  back.evaluate(false);
+  return back;
+}
+
+await test('a reloaded city carries on as if it had never closed: traffic, budgets, the week and the news', async () => {
+  const gridlock = SCENARIOS.find((x) => x.id === 'gridlock')!;
+  const traffic = (s: Sim) => gridlock.check(s).status.split(' · ')[0];
+  // The year-end news, as its year, its word and its two amounts in dollars.
+  const yearEnd = (said: string[]) => {
+    const m = said.find((t) => / closes with /.test(t))?.match(/^(\d+) closes with an? (surplus|deficit) of \$([\d,]+)\. Taxes brought in \$([\d,]+)\.$/);
+    assert.ok(m, `no year-end news in ${JSON.stringify(said)}`);
+    return { year: m[1], word: m[2], net: Number(m[3].replace(/,/g, '')), taxes: Number(m[4].replace(/,/g, '')) };
+  };
+  // Land value isn't saved (it would make codes a fifth longer), so the opened city works it out again and lands
+  // within a dollar or so of where it was: money read after a month end may differ by that much.
+  const near = (a: number, b: number, what: string) => assert.ok(Math.abs(a - b) <= Math.max(2, Math.abs(b) * 0.01), `${what}: ${a} after a reload, ${b} without`);
+  const random = Math.random;
+  try {
+    for (const seed of [1, 2, 3]) {
+      Math.random = makeRng(seed);
+      const w = buildScenario(gridlock, 120, 100);
+      w.city.disasters = false;
+      const sim = new Sim(w);
+      openScenario(sim);
+      for (let k = 0; k < 4 * 34 + 2; k++) sim.step(); // to the middle of November 1957
+      assert.equal(w.city.month % 12, 10);
+      const back = await reopen(sim);
+      // Straight away: the goal tracker, the week, the Budget dialog, the top bar's monthly figure and the news log.
+      assert.equal(traffic(back), traffic(sim), `seed ${seed}: the goal tracker as the city opens`);
+      assert.equal(back.week, 2);
+      assert.deepEqual(back.stats.lastBudget, sim.stats.lastBudget);
+      assert.deepEqual(back.stats.yearBudget, sim.stats.yearBudget);
+      assert.equal(back.stats.migration, sim.stats.migration);
+      assert.deepEqual(back.messages.map(({ text, kind, month }) => [text, kind, month]), sim.messages.slice(-40).map(({ text, kind, month }) => [text, kind, month]));
+      // Then on to the year end, on the same random numbers either way.
+      const play = (s: Sim) => {
+        const said: string[] = [];
+        s.on((e) => {
+          if (e.type === 'message') said.push(e.message.text);
+        });
+        Math.random = makeRng(seed + 100);
+        for (let k = 0; k < 2; k++) s.step();
+        const nov = { traffic: traffic(s), budget: { ...s.stats.lastBudget } };
+        for (let k = 0; k < 4; k++) s.step();
+        return { nov, dec: traffic(s), year: yearEnd(said), week: s.week };
+      };
+      const a = play(sim);
+      const b = play(back);
+      assert.equal(b.nov.traffic, a.nov.traffic, `seed ${seed}: the traffic index at the end of November`);
+      assert.equal(b.dec, a.dec, `seed ${seed}: the traffic index at the end of December`);
+      assert.equal(b.week, a.week);
+      for (const k of Object.keys(a.nov.budget) as (keyof typeof a.nov.budget)[]) near(b.nov.budget[k], a.nov.budget[k], `seed ${seed}: November's ${k}`);
+      assert.deepEqual([b.year.year, b.year.word], [a.year.year, a.year.word], `seed ${seed}: the year-end news`);
+      near(b.year.net, a.year.net, `seed ${seed}: the year's surplus`);
+      near(b.year.taxes, a.year.taxes, `seed ${seed}: the year's taxes`);
+    }
+  } finally {
+    Math.random = random;
+  }
+});
+
+await test('a monster mid-rampage is still on the map after a reload, and keeps going', async () => {
+  const random = Math.random;
+  try {
+    for (const seed of [1, 2, 3]) {
+      Math.random = makeRng(seed);
+      const w = buildScenario(SCENARIOS.find((x) => x.id === 'monster')!, 120, 100);
+      const sim = new Sim(w);
+      openScenario(sim);
+      for (let k = 0; k < 4 * 3; k++) sim.step();
+      sim.disasters.trigger('monster');
+      for (let k = 0; k < 6; k++) sim.step();
+      const before = sim.disasters.roamers.map(({ kind, x, y, weeks, heading }) => ({ kind, x, y, weeks, heading }));
+      assert.equal(before.length, 1);
+      const back = await reopen(sim);
+      assert.deepEqual(back.disasters.roamers.map(({ kind, x, y, weeks, heading }) => ({ kind, x, y, weeks, heading })), before);
+      let wrecked = 0;
+      back.on((e) => {
+        if (e.type === 'destroyed') wrecked++;
+      });
+      let weeks = 0;
+      while (back.disasters.roamers.length && weeks < 60) {
+        back.step();
+        weeks++;
+      }
+      assert.equal(weeks, before[0].weeks, `seed ${seed}: the monster left early or stayed late`);
+      assert.ok(wrecked > 0, `seed ${seed}: the monster wrecked nothing after the reload`);
+    }
+  } finally {
+    Math.random = random;
+  }
+});
+
+await test('a save keeps its news as plain text, and anything malformed in its running state is left out', () => {
+  const w = flat();
+  const sim = new Sim(w);
+  sim.say('one', 'Fire reported at a <b>home</b>.', 'alert', { x: 3, y: 4 }, 0);
+  const s = JSON.parse(JSON.stringify(w.serialize(sim.saveRun())));
+  s.run.messages.push(
+    { text: 'Off the map', kind: 'info', x: 900, y: 4, month: 0 },
+    { text: 42, kind: 'info', month: 0 },
+    { text: 'A kind the game has no colour for', kind: 'script', month: 0 },
+    { text: 'No month', kind: 'good' },
+  );
+  s.run.week = 9;
+  s.run.lastBudget = { taxIncome: '12', police: 'x', fire: null };
+  s.run.yearBudget = 'nonsense';
+  s.run.roamers = [{ kind: 'monster', x: 5, y: 5, weeks: 10, heading: 1 }, { kind: 'dragon', x: 5, y: 5, weeks: 10, heading: 1 }, { kind: 'tornado', x: 'a', y: 5, weeks: 3 }];
+  s.run.cooldown = [['fire', 3], ['bad', 'soon'], 7];
+  const back = new Sim(World.deserialize(s));
+  assert.deepEqual(back.messages.map(({ text, kind, x, y, month }) => ({ text, kind, x, y, month })), [
+    { text: 'Fire reported at a <b>home</b>.', kind: 'alert', x: 3, y: 4, month: 0 },
+    { text: 'Off the map', kind: 'info', x: undefined, y: undefined, month: 0 },
+  ]);
+  assert.equal(back.week, 3);
+  assert.deepEqual(back.stats.lastBudget, { taxIncome: 12, transport: 0, police: 0, fire: 0, services: 0, power: 0, interest: 0 });
+  assert.deepEqual(back.stats.yearBudget, { taxIncome: 0, transport: 0, police: 0, fire: 0, services: 0, power: 0, interest: 0 });
+  assert.deepEqual(back.disasters.roamers.map((r) => r.kind), ['monster']);
+  // A save from before any of this was kept opens as it always did.
+  delete s.run;
+  delete s.traffic;
+  const old = new Sim(World.deserialize(s));
+  assert.deepEqual([old.week, old.messages.length, old.stats.lastBudget.taxIncome], [0, 0, 0]);
+});
+
 await test('disasters run without breaking the map', () => {
   const w = generateTerrain({ ...DEFAULT_TERRAIN, seed: 'chaos', w: 60, h: 50 });
   w.city.founded = true;

@@ -170,6 +170,10 @@ export class World {
   buildings = new Map<number, Building>();
   nextId = 1;
   city: CityState = newCityState();
+  /** Set when a save brought its traffic map: the simulation opening it keeps the map instead of easing into it. */
+  trafficSaved = false;
+  /** What the simulation was in the middle of when the city was saved, for the Sim that opens it to take. */
+  run: SavedRun | null = null;
 
   private listeners: DirtyListener[] = [];
 
@@ -426,8 +430,9 @@ export class World {
 
   // ---- persistence -----------------------------------------------------
 
-  serialize(): SavedWorld {
-    return {
+  /** The map and the city, and with `run` (from Sim.saveRun) what the simulation was in the middle of. */
+  serialize(run?: SavedRun): SavedWorld {
+    const s: SavedWorld = {
       v: 1,
       w: this.w,
       h: this.h,
@@ -439,10 +444,13 @@ export class World {
       fire: encodeArray(this.fire),
       flood: encodeArray(this.flood),
       rad: encodeArray(this.rad),
+      traffic: encodeArray(this.traffic),
       buildings: [...this.buildings.values()].map((b) => [b.id, b.kind, b.x, b.y, b.level, b.seed, b.age]),
       nextId: this.nextId,
       city: JSON.parse(JSON.stringify(this.city)),
     };
+    if (run) s.run = JSON.parse(JSON.stringify(run));
+    return s;
   }
 
   static deserialize(s: SavedWorld): World {
@@ -464,6 +472,20 @@ export class World {
     for (let i = 0; i < n; i++) if (w.fire[i] > FIRE_WEEKS) w.fire[i] = 0;
     w.flood = bytes(decodeArray(s.flood), n, 'flood');
     w.rad = bytes(decodeArray(s.rad), n, 'radiation');
+    // Traffic smooths from month to month, so a city opened without it would read a fraction of its jams. Saves
+    // from before it was kept, or with a damaged copy of it, start from empty roads, as they always did.
+    if (typeof s.traffic === 'string') {
+      try {
+        const t = decodeArray(s.traffic);
+        if (t.length === n) {
+          w.traffic = t;
+          w.trafficSaved = true;
+        }
+      } catch {
+        /* left empty */
+      }
+    }
+    w.run = cleanRun(s.run, s.w, s.h);
     for (const [id, kind, x, y, level, seed, age] of s.buildings) {
       const def = BUILDINGS[kind as Kind];
       if (!def || !(id > 0) || x < 0 || y < 0 || x + def.size > s.w || y + def.size > s.h) continue;
@@ -703,9 +725,105 @@ export interface SavedWorld {
   fire: string;
   flood: string;
   rad: string;
+  /** Saves from before the traffic map was kept have none. */
+  traffic?: string;
   buildings: [number, string, number, number, number, number, number][];
   nextId: number;
   city: CityState;
+  /** A city's running simulation; terrain and older saves have none. */
+  run?: SavedRun;
+}
+
+/** One month's spending and income, or the year's so far, by Budget row. */
+export interface SavedBudget {
+  taxIncome: number;
+  transport: number;
+  police: number;
+  fire: number;
+  services: number;
+  power: number;
+  interest: number;
+}
+
+export type SavedMessageKind = 'info' | 'good' | 'warn' | 'alert';
+
+/**
+ * What the simulation was in the middle of: the week of the month, the month's and the year's budget, last month's
+ * residents, the news and when each piece of advice was last given, and any tornado, monster or flood under way.
+ */
+export interface SavedRun {
+  week: number;
+  lastBudget: SavedBudget;
+  yearBudget: SavedBudget;
+  lastPop?: number;
+  migration?: number;
+  messages: { text: string; kind: SavedMessageKind; x?: number; y?: number; month: number }[];
+  cooldown: [string, number][];
+  roamers: { kind: 'tornado' | 'monster'; x: number; y: number; vx: number; vy: number; weeks: number; heading: number }[];
+  floodLevel: number;
+  floodAge: number;
+}
+
+/** The news the log shows, and so what a save keeps. */
+export const SAVED_MESSAGES = 40;
+
+const BUDGET_ROWS: (keyof SavedBudget)[] = ['taxIncome', 'transport', 'police', 'fire', 'services', 'power', 'interest'];
+const MESSAGE_KINDS: SavedMessageKind[] = ['info', 'good', 'warn', 'alert'];
+
+/**
+ * A saved run block, field by field, as cleanCity does for the city: numbers finite and in range, kinds from the
+ * game's own lists, news as plain text, and anything malformed left out. Null when there is no block at all.
+ */
+function cleanRun(raw: unknown, w: number, h: number): SavedRun | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const s = raw as Record<string, unknown>;
+  const list = (v: unknown, max: number) => (Array.isArray(v) ? v.slice(-max) : []);
+  const budget = (v: unknown): SavedBudget => {
+    const r = record(v);
+    return Object.fromEntries(BUDGET_ROWS.map((k) => [k, num(r[k], 0)])) as unknown as SavedBudget;
+  };
+  const tile = (x: unknown, y: unknown) => {
+    const tx = Number(x), ty = Number(y);
+    return Number.isInteger(tx) && Number.isInteger(ty) && tx >= 0 && ty >= 0 && tx < w && ty < h ? { x: tx, y: ty } : {};
+  };
+  const run: SavedRun = {
+    week: Math.floor(num(s.week, 0, 0, 3)),
+    lastBudget: budget(s.lastBudget),
+    yearBudget: budget(s.yearBudget),
+    messages: [],
+    cooldown: [],
+    roamers: [],
+    floodLevel: num(s.floodLevel, 0, -1000, 1000),
+    floodAge: Math.floor(num(s.floodAge, 0, 0, 1e6)),
+  };
+  if (s.lastPop !== undefined) run.lastPop = Math.floor(num(s.lastPop, 0, 0));
+  if (s.migration !== undefined) run.migration = Math.round(num(s.migration, 0));
+  for (const v of list(s.messages, SAVED_MESSAGES)) {
+    const m = record(v);
+    const month = Number(m.month);
+    if (typeof m.text !== 'string' || !MESSAGE_KINDS.includes(m.kind as SavedMessageKind) || !Number.isFinite(month)) continue;
+    run.messages.push({ text: m.text.slice(0, 400), kind: m.kind as SavedMessageKind, month: Math.max(0, Math.floor(month)), ...tile(m.x, m.y) });
+  }
+  for (const v of list(s.cooldown, 200)) {
+    if (!Array.isArray(v) || typeof v[0] !== 'string' || v[0].length > 40 || !Number.isFinite(Number(v[1]))) continue;
+    run.cooldown.push([v[0], Math.floor(Number(v[1]))]);
+  }
+  for (const v of list(s.roamers, 8)) {
+    const r = record(v);
+    if (r.kind !== 'tornado' && r.kind !== 'monster') continue;
+    const x = Number(r.x), y = Number(r.y), weeks = Number(r.weeks);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(weeks) || weeks < 1) continue;
+    run.roamers.push({
+      kind: r.kind,
+      x: Math.min(w - 0.5, Math.max(0.5, x)),
+      y: Math.min(h - 0.5, Math.max(0.5, y)),
+      vx: num(r.vx, 0, -4, 4),
+      vy: num(r.vy, 0, -4, 4),
+      weeks: Math.min(60, Math.floor(weeks)),
+      heading: num(r.heading, 0, -1e6, 1e6),
+    });
+  }
+  return run;
 }
 
 // Run-length + base64. Maps are mostly long runs of the same byte.

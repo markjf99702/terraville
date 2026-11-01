@@ -412,7 +412,7 @@ export class Game {
   makeSaveFile(): SaveFile {
     return {
       v: 1,
-      world: this.world.serialize(),
+      world: this.world.serialize(this.mode === 'city' && this.sim ? this.sim.saveRun() : undefined),
       cam: { ...this.renderer.cam },
       mode: this.mode === 'city' ? 'city' : 'editor',
       terrain: this.terrain,
