@@ -7,6 +7,7 @@ import { readFile } from 'node:fs/promises';
 import { join, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
+import { fakeGoogle } from './fake-google.mjs';
 
 const require = createRequire(import.meta.url);
 let pw;
@@ -91,6 +92,36 @@ async function openCode(page, code) {
   await page.click('[data-act="open"]');
   await page.fill('#fPaste', code);
   await page.click('#fOpen');
+}
+
+/**
+ * A fresh browser profile that is served the game as if from terraville.junkdrawer.works, where Google Drive works.
+ * Other sites are refused and listed in `away`, unless a later route (the fake Google) answers first.
+ */
+const SITE = 'https://terraville.junkdrawer.works';
+async function atTheSite(opts = PHONE) {
+  const ctx = await profile({ ...opts, serviceWorkers: 'block' });
+  await ctx.addInitScript(() => localStorage.setItem('junkdrawer.carried', 'the tests')); // carry.js has nothing to bring
+  const away = [];
+  await ctx.route('**/*', async (route) => {
+    const u = new URL(route.request().url());
+    if (u.origin !== SITE) {
+      away.push(u.href);
+      return route.abort('blockedbyclient');
+    }
+    const path = u.pathname.endsWith('/') ? u.pathname + 'index.html' : u.pathname;
+    try {
+      return route.fulfill({ status: 200, contentType: TYPES[extname(path)] || 'text/html', body: await readFile(join(root, path)) });
+    } catch {
+      return route.fulfill({ status: 404, body: '' });
+    }
+  });
+  const page = await ctx.newPage();
+  const problems = [];
+  page.on('pageerror', (e) => problems.push(e.message));
+  await page.goto(SITE + '/');
+  await titleUp(page);
+  return { ctx, page, problems, away };
 }
 
 try {
@@ -574,29 +605,7 @@ try {
   });
 
   await test("at its own address the title screen asks nothing of Google, and Drive says so when Google's sign-in can't load", async () => {
-    // Served as if from terraville.junkdrawer.works, where Drive works; anything asked of another site is refused.
-    const site = 'https://terraville.junkdrawer.works';
-    const ctx = await profile({ ...PHONE, serviceWorkers: 'block' });
-    await ctx.addInitScript(() => localStorage.setItem('junkdrawer.carried', 'the tests')); // carry.js has nothing to bring
-    const away = [];
-    await ctx.route('**/*', async (route) => {
-      const u = new URL(route.request().url());
-      if (u.origin !== site) {
-        away.push(u.href);
-        return route.abort('blockedbyclient');
-      }
-      const path = u.pathname.endsWith('/') ? u.pathname + 'index.html' : u.pathname;
-      try {
-        return route.fulfill({ status: 200, contentType: TYPES[extname(path)] || 'text/html', body: await readFile(join(root, path)) });
-      } catch {
-        return route.fulfill({ status: 404, body: '' });
-      }
-    });
-    const page = await ctx.newPage();
-    const problems = [];
-    page.on('pageerror', (e) => problems.push(e.message));
-    await page.goto(site + '/');
-    await titleUp(page);
+    const { ctx, page, problems, away } = await atTheSite();
     await page.waitForTimeout(1500);
     assert.deepEqual(away, [], 'the title screen asked another site for something');
     // Open a saved city loads Google's sign-in ahead of a tap, as the privacy page says. Blocked here, it's no news to
@@ -613,6 +622,91 @@ try {
     await page.waitForFunction(() => /Could not load Google sign-in\. Check the connection\./.test(document.querySelector('#fDrive').textContent));
     assert.deepEqual(problems, []);
     await ctx.close();
+  });
+
+  await test('Google Drive: connect, wait out a lost connection, and carry on from another device', async () => {
+    const google = fakeGoogle();
+    let net = 'up'; // or 'down' (no connection to Google), or 'failing' (Google answers with an error)
+    const device = async (opts) => {
+      const d = await atTheSite(opts);
+      await google.install(d.ctx);
+      await d.ctx.route('https://www.googleapis.com/**', (route) =>
+        net === 'down' ? route.abort('internetdisconnected')
+        : net === 'failing' ? route.fulfill({ status: 500, headers: { 'Access-Control-Allow-Origin': '*' }, body: '{"error":{"message":"Backend Error"}}' })
+        : route.fallback());
+      return d;
+    };
+    const connect = async (page) => {
+      await page.click('[data-act="open"]');
+      await page.click('#fDvGo');
+      await page.waitForFunction(() => window.__terraville.drive.status() === 'ok');
+      await page.keyboard.press('Escape');
+    };
+    const drive = (page) => page.evaluate(() => [window.__terraville.drive.status(), window.__terraville.drive.pending]);
+    const uploaded = () => google.files().filter((f) => f.appProperties?.terraville === 'city').map((f) => [f.name, Number(f.appProperties.date), f.body.slice(0, 4)]);
+
+    // A Mac connects Drive and saves a city: the cloud sits quietly in the top bar.
+    // Each device names its copies by its browser's user agent.
+    const mac = await device({ ...DESK, userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36' });
+    const a = mac.page;
+    await connect(a);
+    await found(a);
+    const name = await a.evaluate(() => window.__terraville.world.city.name);
+    await a.evaluate(() => { for (let i = 0; i < 4 * 6; i++) window.__terraville.sim.step(); return window.__terraville.saveCity(); });
+    await a.waitForFunction(() => window.__terraville.drive.lastUpload > 0);
+    assert.deepEqual(uploaded(), [[`${name} (Mac).txt`, 6, 'TV1g']]);
+    assert.equal(await a.getAttribute('#driveBtn', 'data-s'), 'ok');
+
+    // No connection to Google: the save waits, and says so in amber, not as a failure.
+    net = 'down';
+    await a.evaluate(() => { for (let i = 0; i < 4 * 6; i++) window.__terraville.sim.step(); return window.__terraville.saveCity(); });
+    await a.waitForFunction(() => window.__terraville.drive.status() === 'waiting');
+    assert.deepEqual([await a.getAttribute('#driveBtn', 'data-s'), await a.textContent('#driveLbl'), await a.getAttribute('#driveBtn', 'title')],
+      ['waiting', 'Waiting', 'Waiting for a connection to save to Google Drive. The city is saved on this device.']);
+    assert.equal(await a.evaluate(() => {
+      const amber = document.body.appendChild(Object.assign(document.createElement('i'), { style: 'color:var(--caution)' }));
+      const same = getComputedStyle(amber).color === getComputedStyle(document.querySelector('#driveBtn')).color;
+      amber.remove();
+      return same;
+    }), true, 'the cloud is not amber');
+    await a.click('#driveBtn');
+    await a.waitForSelector('#fDvRetry');
+    const section = (await a.textContent('#fDrive')).replace(/\s+/g, ' ');
+    assert.match(section, /^Google Drive Waiting for a connection to save to Google Drive\. The city is saved on this device\. Every save/);
+    assert.doesNotMatch(section, /Last upload|Failed to fetch/);
+    await a.keyboard.press('Escape');
+    // The connection comes back: what waited goes up without another save.
+    net = 'up';
+    await a.evaluate(() => window.dispatchEvent(new Event('online')));
+    await a.waitForFunction(() => window.__terraville.drive.status() === 'ok' && !window.__terraville.drive.pending);
+    assert.deepEqual(uploaded(), [[`${name} (Mac).txt`, 12, 'TV1g']]);
+
+    // An iPhone connects: its title screen offers to carry on with the Mac's city, and opens it where the Mac left it.
+    const phone = await device({ ...PHONE, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1' });
+    const b = phone.page;
+    await connect(b);
+    await b.waitForSelector('[data-act="continue-drive"]');
+    assert.equal(await b.textContent('[data-act="continue-drive"] span'), `Continue ${name}`);
+    assert.match(await b.textContent('[data-act="continue-drive"] small'), /^From Mac · /);
+    await b.click('[data-act="continue-drive"]');
+    await b.waitForFunction(() => window.__terraville.mode === 'city');
+    assert.equal(await b.evaluate(() => { window.__terraville.setSpeed(0); return window.__terraville.world.city.month; }), 12);
+
+    // Google answers with an error: a phone has no cloud to tap, so its menu offers to try again.
+    net = 'failing';
+    await b.evaluate(() => window.__terraville.saveCity());
+    await b.waitForFunction(() => window.__terraville.drive.status() === 'error');
+    assert.equal(await b.evaluate(() => window.__terraville.drive.error), 'Google Drive said: Backend Error.');
+    await b.waitForSelector('#topbar [data-act="menu"].attn');
+    await b.click('#topbar [data-act="menu"]');
+    net = 'up';
+    await b.click('[role="menu"] button:has-text("Saving to Drive failed: try again")');
+    await b.waitForFunction(() => document.querySelector('#toast').textContent === 'Saved to Google Drive.');
+    assert.deepEqual(await drive(b), ['ok', 0]);
+    assert.deepEqual(uploaded().map((f) => f[0]).sort(), [`${name} (Mac).txt`, `${name} (iPhone).txt`]);
+    assert.deepEqual([...mac.problems, ...phone.problems], []);
+    await mac.ctx.close();
+    await phone.ctx.close();
   });
 
   await test('says what it needs with JavaScript off', async () => {

@@ -56,7 +56,8 @@ export interface CityMeta {
   saved: number;
 }
 
-export type DriveStatus = 'unavailable' | 'off' | 'signin' | 'busy' | 'ok' | 'error';
+/** 'waiting': an upload found no connection, and waits for one (this device keeps the city meanwhile). */
+export type DriveStatus = 'unavailable' | 'off' | 'signin' | 'busy' | 'waiting' | 'ok' | 'error';
 
 interface State {
   on: boolean;
@@ -139,6 +140,8 @@ export class Drive {
   private asked = false;
   private queue = new Map<string, { code: string; meta: CityMeta }>();
   private busy = false;
+  /** The last upload found no connection. Not kept: a new page tries again. */
+  private waiting = false;
   private listeners: (() => void)[] = [];
   /** Called when Google hands over a token, to upload whatever waited. */
   onSignedIn: (() => void) | null = null;
@@ -215,6 +218,7 @@ export class Drive {
     if (!this.st.on) return 'off';
     if (!this.hasToken()) return 'signin';
     if (this.busy) return 'busy';
+    if (this.waiting) return 'waiting';
     if (this.st.err) return 'error';
     return 'ok';
   }
@@ -322,6 +326,7 @@ export class Drive {
    */
   disconnect(): void {
     this.st = fresh();
+    this.waiting = false;
     this.queue.clear();
     this.save();
     this.emit();
@@ -359,10 +364,16 @@ export class Drive {
         try {
           await this.upload(job.code, job.meta);
           this.st.err = '';
+          this.waiting = false;
         } catch (e) {
           // Keep it for the next save or sign-in, unless a newer save queued meanwhile.
           if (!this.queue.has(city)) this.queue.set(city, job);
-          if ((e as DriveError).kind !== 'auth') this.st.err = (e as Error).message || 'Upload failed.';
+          // A fetch that can't reach Google at all (offline, a tunnel) is no fault: it waits for the connection.
+          if (e instanceof TypeError) this.waiting = true;
+          else if ((e as DriveError).kind !== 'auth') {
+            this.waiting = false;
+            this.st.err = sentence((e as Error).message || 'Upload failed');
+          }
           break;
         }
       }
@@ -488,7 +499,7 @@ export class Drive {
     if (!r.ok) {
       const t = await r.text();
       const m = /"message":\s*"([^"]+)"/.exec(t);
-      throw new DriveError('other', `Google Drive said: ${m ? m[1] : r.status}`);
+      throw new DriveError('other', sentence(`Google Drive said: ${m ? m[1] : r.status}`));
     }
     return r;
   }
@@ -504,6 +515,11 @@ export class Drive {
     } while (page);
     return out;
   }
+}
+
+/** A message as a sentence, with its full stop. */
+function sentence(m: string): string {
+  return /[.!?]$/.test(m) ? m : m + '.';
 }
 
 function multipart(meta: object, body: string): { body: string; type: string } {

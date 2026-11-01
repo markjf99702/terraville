@@ -39,6 +39,9 @@ const JD_FOOT = `<footer class="jd-foot">
 
 /** A middle dot between two pieces of text, drawn by the style sheet (see .sep there). */
 const SEP = ' <span class="sep" aria-hidden="true">·</span> ';
+const DRIVE_WAITING = 'Waiting for a connection to save to Google Drive. The city is saved on this device.';
+/** Listing Drive found no connection: no fault, so said plainly. */
+const UNREACHABLE = 'Google Drive could not be reached, so only the cities on this device are listed.';
 
 /** Text made safe to put in HTML. Not-quite-text from a damaged save is shown as text rather than stopping the page. */
 function esc(s: unknown): string {
@@ -346,7 +349,7 @@ export class UI {
         case 'drive': {
           const d = this.game.drive;
           if (d.status() === 'signin') return this.connectDrive();
-          if (d.status() === 'error') void d.flush();
+          if (d.status() === 'error' || d.status() === 'waiting') void d.flush();
           return this.openFiles();
         }
         case 'budget': return this.openBudget();
@@ -360,6 +363,14 @@ export class UI {
     this.syncSpeed();
     this.syncUndo();
     this.syncDrive();
+  }
+
+  /** Upload what waited for Drive now, and say how it went. */
+  private async retryDrive(): Promise<void> {
+    const d = this.game.drive;
+    await d.flush();
+    const st = d.status();
+    this.toast(st === 'ok' ? 'Saved to Google Drive.' : st === 'waiting' ? DRIVE_WAITING : st === 'error' ? `Saving to Google Drive failed: ${d.error}` : 'Saving to Google Drive…');
   }
 
   /** Connect or sign in to Google Drive, or say why it can't yet. */
@@ -379,10 +390,11 @@ export class UI {
     // Phones have no room for the cloud, so the menu button carries a dot instead.
     this.root.querySelector('#topbar [data-act="menu"]')?.classList.toggle('attn', st === 'signin' || st === 'error');
     const lbl = $(b, '#driveLbl');
-    lbl.textContent = st === 'signin' ? 'Sign in' : st === 'error' ? 'Sync failed' : '';
+    lbl.textContent = st === 'signin' ? 'Sign in' : st === 'error' ? 'Sync failed' : st === 'waiting' ? 'Waiting' : '';
     b.title =
       st === 'signin' ? 'Google signed Terraville out. Click to sign in again and keep saving to Drive.' :
       st === 'error' ? `Saving to Google Drive failed: ${d.error} Click to try again.` :
+      st === 'waiting' ? DRIVE_WAITING :
       st === 'busy' ? 'Saving to Google Drive…' :
       d.lastUpload ? `Saved to Google Drive ${ago(d.lastUpload)}` : 'Connected to Google Drive';
   }
@@ -867,6 +879,8 @@ export class UI {
     if (this.game.mode === 'city' && drive.status() === 'signin') {
       add('cloud', 'Sign in to Google Drive', () => this.connectDrive());
     }
+    // A phone has no cloud in the top bar to tap, so the menu offers the retry.
+    if (this.game.mode === 'city' && drive.status() === 'error') add('cloud', 'Saving to Drive failed: try again', () => void this.retryDrive());
     add('file', this.game.mode === 'city' ? 'Save, open and share' : 'Save, open and share terrain', () => this.openFiles());
     add('book', 'Strategy guide', () => this.openGuide());
     add('settings', 'Settings and keys', () => this.openSettings());
@@ -1657,7 +1671,8 @@ export class UI {
           listErr = '';
         },
         (e) => {
-          listErr = (e as Error).message || 'Could not reach Google Drive.';
+          // A fetch that can't reach Google says only 'Failed to fetch'.
+          listErr = e instanceof TypeError ? UNREACHABLE : (e as Error).message || 'Could not reach Google Drive.';
         },
       ).finally(() => {
         listing = false;
@@ -1733,7 +1748,8 @@ export class UI {
         );
         box.appendChild(row);
       }
-      if (listErr) box.appendChild(el(`<p class="note" style="color:var(--critical-ink)">${esc(listErr)}</p>`));
+      // Said once: the Google Drive section below shows Drive's own error.
+      if (listErr && listErr !== drive.error) box.appendChild(el(`<p class="note"${listErr === UNREACHABLE ? '' : ' style="color:var(--critical-ink)"'}>${esc(listErr)}</p>`));
       else if (listing && list.length) box.appendChild(el('<p class="note">Looking in Google Drive…</p>'));
     };
 
@@ -1775,11 +1791,15 @@ export class UI {
           <p class="note">Google signs Terraville out after an hour. Sign in again to keep cities syncing; they are safe on this device meanwhile.</p>${err}
           <div style="display:flex;gap:8px;margin-top:8px"><button class="btn small primary" id="fDvGo">Sign in to Google Drive</button><button class="btn small" id="fDvOff">Disconnect this device</button></div>`;
       } else {
-        const last = drive.lastUpload ? `Last upload ${ago(drive.lastUpload)}.` : 'Connected.';
+        // While uploads fail, when the last one worked is beside the point.
+        const failing = st === 'error' || st === 'waiting';
+        const last = st === 'busy' ? 'Uploading…' : st === 'waiting' ? DRIVE_WAITING : st === 'error' ? '' : drive.lastUpload ? `Last upload ${ago(drive.lastUpload)}.` : 'Connected.';
         box.innerHTML = `<h3>Google Drive</h3>
-          <p class="note">${st === 'busy' ? 'Uploading…' : last} Every save also goes to <b>My Drive › Terraville</b>, one file per city for each device. Opening a city takes its newest copy.</p>${err}
-          <div style="display:flex;gap:8px;margin-top:8px"><button class="btn small" id="fDvOff">Disconnect this device</button></div>`;
+          <p class="note">${last ? `${last} ` : ''}Every save also goes to <b>My Drive › Terraville</b>, one file per city for each device. Opening a city takes its newest copy.</p>${st === 'error' ? err : ''}
+          <div style="display:flex;gap:8px;margin-top:8px">${failing ? '<button class="btn small primary" id="fDvRetry">Try again</button>' : ''}<button class="btn small" id="fDvOff">Disconnect this device</button></div>`;
       }
+      const retry = box.querySelector<HTMLButtonElement>('#fDvRetry');
+      if (retry) retry.onclick = () => void this.retryDrive();
       const go = box.querySelector<HTMLButtonElement>('#fDvGo');
       if (go) go.onclick = () => this.connectDrive();
       const off = box.querySelector<HTMLButtonElement>('#fDvOff');

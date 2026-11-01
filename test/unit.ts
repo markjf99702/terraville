@@ -5,7 +5,7 @@ import { Sim } from '../src/sim';
 import { generateTerrain, cleanTerrain, DEFAULT_TERRAIN } from '../src/terrain';
 import { linePath, planLine, applyLine, planZones, applyBuildings } from '../src/tools';
 import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST, UPGRADE_LV, buildingName, upkeepOf } from '../src/defs';
-import { encode, decode, listSlots, saveCode, SlotMeta } from '../src/save';
+import { encode, decode, listSlots, pushSaved, saveCode, SlotMeta } from '../src/save';
 import { Drive, GisOAuth2 } from '../src/drive';
 import { makeRng } from '../src/rng';
 import { SCENARIOS, buildScenario, openScenario, scenarioMonth } from '../src/scenarios';
@@ -939,6 +939,53 @@ await test("Google's sign-in failing to load is news only to someone who wants D
   assert.equal(d.loadFailed, true);
   await tick();
   assert.deepEqual([loads, d.error], [2, 'Could not load Google sign-in. Check the connection.']);
+});
+
+await test('a save that finds no connection waits for one, and goes up when it is back', async () => {
+  const server = new FakeDrive();
+  server.valid.add('a1');
+  let down = false;
+  const storage = memStorage();
+  const d = new Drive({
+    fetch: ((u: string, o: RequestInit) => (down ? Promise.reject(new TypeError('Failed to fetch')) : server.fetch(u, o))) as typeof fetch,
+    storage, now: () => 1_000_000, device: { id: 'deva', label: 'Mac' }, origin: 'https://junkdrawer.works', loadGis: async () => fakeGis(() => 'a1'),
+  });
+  d.connect();
+  await tick();
+  d.connect();
+  down = true;
+  d.push('TV1g:riverton-1', { city: 'riv', name: 'Riverton', pop: 100, date: 5, saved: 10 });
+  for (let i = 0; i < 20 && d.status() === 'busy'; i++) await tick();
+  // Waiting, not failed: nothing to put right, and nothing kept that would say so after a reload.
+  assert.deepEqual([d.status(), d.error, d.pending], ['waiting', '', 1]);
+  assert.equal(JSON.parse(storage.getItem('terraville.drive')!).err, '');
+  down = false;
+  await d.flush();
+  assert.deepEqual([d.status(), d.pending], ['ok', 0]);
+  assert.deepEqual([...server.files.values()].filter((f) => f.content).map((f) => f.content), ['TV1g:riverton-1']);
+  // Any other failure is an error, said as a sentence.
+  const realFetch = server.fetch;
+  server.fetch = (async () => new Response('{"error":{"message":"Rate limit exceeded"}}', { status: 403 })) as typeof server.fetch;
+  d.push('TV1g:riverton-2', { city: 'riv', name: 'Riverton', pop: 100, date: 6, saved: 11 });
+  for (let i = 0; i < 20 && d.status() === 'busy'; i++) await tick();
+  assert.deepEqual([d.status(), d.error], ['error', 'Google Drive said: Rate limit exceeded.']);
+  server.fetch = realFetch;
+});
+
+await test('a page that opens with Drive signed in sends the saves that missed it', async () => {
+  const server = new FakeDrive();
+  server.valid.add('a1');
+  const storage = memStorage();
+  // A page that closed before its last save reached Drive: Drive has Riverton from save time 10, this device from 20.
+  storage.setItem('terraville.drive', JSON.stringify({ on: true, token: 'a1', exp: 9e15, err: '', folder: '', files: {}, pushed: { riv: 20, lak: 30 }, last: 0 }));
+  const d = new Drive({ fetch: server.fetch as typeof fetch, storage, now: () => 1_000_000, device: { id: 'deva', label: 'Mac' }, origin: 'https://junkdrawer.works' });
+  const meta = (city: string, savedAt: number): SlotMeta => ({ id: `c-${city}`, name: city, pop: 1, date: 1, savedAt, mode: 'city', city });
+  const codes: Record<string, string> = { 'c-riv': 'TV1g:riverton-new', 'c-lak': 'TV1g:lakeside-same', snap: 'TV1g:snapshot' };
+  assert.equal(d.hasToken(), true);
+  pushSaved(d, [meta('riv', 25), meta('lak', 30), { ...meta('x', 99), id: 'snap', city: undefined }], (id) => codes[id] ?? null);
+  for (let i = 0; i < 40 && (d.pending || d.status() === 'busy'); i++) await tick();
+  assert.deepEqual([...server.files.values()].filter((f) => f.content).map((f) => f.content), ['TV1g:riverton-new']);
+  assert.equal(d.needsPush('riv', 25), false);
 });
 
 await test('cities sync through Google Drive, one file per city per device', async () => {

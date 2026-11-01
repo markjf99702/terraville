@@ -1,5 +1,6 @@
 // Saving cities in the browser, plus portable text codes for sharing.
 import { deviceLabel } from './drive';
+import type { Drive } from './drive';
 import { SavedWorld, World } from './world';
 
 export interface SaveFile {
@@ -107,6 +108,15 @@ export function newCityId(): string {
   const a = new Uint32Array(2);
   crypto.getRandomValues(a);
   return a[0].toString(36) + a[1].toString(36);
+}
+
+/** Send Drive every city saved here since its last trip there: `slots` and `read` are this device's saves. */
+export function pushSaved(drive: Drive, slots: SlotMeta[], read: (id: string) => string | null): void {
+  for (const s of slots) {
+    if (!s.city || !drive.needsPush(s.city, s.savedAt)) continue;
+    const code = read(s.id);
+    if (code) drive.push(code, { city: s.city, name: s.name, pop: s.pop, date: s.date, saved: s.savedAt });
+  }
 }
 
 /** A lasting id for this browser, and a name for it, to tell its Drive copies apart. */

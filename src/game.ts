@@ -9,7 +9,7 @@ import { Renderer, SLOPE_CLASSES } from './render/renderer';
 import { hashString, makeRng, pick, randomSeedName } from './rng';
 import { CityMeta, Drive, DriveCopy } from './drive';
 import {
-  SaveFile, SlotMeta, citySlot, decode, deleteSlot, encode, encodeNow, listSlots, newCityId, readCode, saveCode, saveSlot, slotKey,
+  SaveFile, SlotMeta, citySlot, decode, deleteSlot, encode, encodeNow, listSlots, newCityId, pushSaved, readCode, saveCode, saveSlot, slotKey,
   thisDevice, worldFrom,
 } from './save';
 import { SCENARIOS, buildScenario, goalState, openScenario, scenarioMonth } from './scenarios';
@@ -139,6 +139,13 @@ export class Game {
     this.drive = new Drive({ fetch: (u, o) => fetch(u, o), storage, now: () => Date.now(), device: thisDevice(), origin: location.origin });
     this.drive.onSignedIn = () => this.pushLocalCities();
     if (this.drive.connected) this.drive.prepare();
+    // Saves that missed Drive (the page closed first, or there was no connection) go up as soon as they can: now,
+    // while Google's sign-in from earlier still holds, and whenever the connection comes back.
+    if (this.drive.hasToken()) this.pushLocalCities();
+    window.addEventListener('online', () => {
+      this.pushLocalCities();
+      void this.drive.flush();
+    });
     // Leaving the page (switching apps, closing the tab, reloading) saves. A closing page never finishes the
     // compressed save, so the city is written at once as a plain code first; the compressed save and the Drive
     // upload then replace it if the page lives on, as it does when switching apps.
@@ -659,11 +666,7 @@ export class Game {
 
   /** Upload every city saved here since its last trip to Drive. */
   pushLocalCities(): void {
-    for (const s of listSlots()) {
-      if (!s.city || !this.drive.needsPush(s.city, s.savedAt)) continue;
-      const code = readCode(s.id);
-      if (code) this.drive.push(code, { city: s.city, name: s.name, pop: s.pop, date: s.date, saved: s.savedAt });
-    }
+    pushSaved(this.drive, listSlots(), readCode);
   }
 
   /** The newest city saved in this browser. */

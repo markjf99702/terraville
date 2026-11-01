@@ -221,7 +221,7 @@ button.sign:hover { background: var(--sign-hi); box-shadow: inset 0 0 0 2px var(
 .menu-sep { width: 1px; align-self: stretch; margin: 6px 2px; background: var(--line); }
 #driveBtn { color: var(--muted); }
 #driveBtn[data-s="busy"] svg { animation: pausePulse 1.2s ease-in-out infinite; }
-#driveBtn[data-s="signin"] { color: var(--caution); }
+#driveBtn[data-s="signin"], #driveBtn[data-s="waiting"] { color: var(--caution); }
 #driveBtn[data-s="error"] { color: var(--critical-ink); }
 #driveBtn .label:empty { display: none; }
 .title-drive { font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px; align-items: baseline; min-height: 18px; }
