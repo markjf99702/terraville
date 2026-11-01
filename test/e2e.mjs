@@ -663,6 +663,8 @@ try {
     };
     const connect = async (page) => {
       await page.click('[data-act="open"]');
+      // The dialog loads Google's sign-in as it opens; until it has, Connect only says it is still loading.
+      await page.waitForFunction(() => !!window.google?.accounts?.oauth2);
       await page.click('#fDvGo');
       await page.waitForFunction(() => window.__terraville.drive.status() === 'ok');
       await page.keyboard.press('Escape');
