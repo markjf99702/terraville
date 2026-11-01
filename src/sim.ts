@@ -2,7 +2,7 @@
 // Zones are re-evaluated a quarter at a time each week, and the expensive
 // map passes (traffic, pollution, crime, land value) run at month end.
 import {
-  BUILDINGS, DIFFICULTIES, Kind, NET_UPKEEP, POWER, RAIL, ROAD, UPGRADE_LV, ZONE_LV_GATE, ZONE_POP, buildingName, cityClass,
+  BUILDINGS, DIFFICULTIES, DISASTER_POP, Kind, NET_UPKEEP, POWER, RAIL, ROAD, UPGRADE_LV, ZONE_LV_GATE, ZONE_POP, buildingName, cityClass,
   CITY_CLASSES, dateLabel, isZone, upkeepOf,
 } from './defs';
 import { MinHeap } from './heap';
@@ -988,8 +988,16 @@ export class Sim {
       if (b.kind === 'fire') fireStations++;
       if (b.kind === 'police') police++;
     }
-    if (s.residents > 2500 && fireStations === 0) this.say('needfire', 'The city has no fire station.', 'info', undefined, 18);
-    if (s.residents > 2500 && police === 0) this.say('needpolice', 'The city has no police station.', 'info', undefined, 18);
+    // Random disasters start at this size, and fire is the commonest: say what a station costs and what it is for.
+    const price = (k: Kind) => `$${BUILDINGS[k].cost.toLocaleString()}, $${BUILDINGS[k].upkeep} a month`;
+    if (s.residents > DISASTER_POP && fireStations === 0) {
+      this.say('needfire', city.disasters
+        ? `The city has no fire station. Fires break out from time to time now; a station (${price('fire')}) puts them out nearby.`
+        : `The city has no fire station. Should a fire start, a station (${price('fire')}) puts it out nearby.`, 'info', undefined, 18);
+    }
+    if (s.residents > DISASTER_POP && police === 0) {
+      this.say('needpolice', `The city has no police station. Crime grows as the town gets crowded; a station (${price('police')}) keeps it down nearby.`, 'info', undefined, 18);
+    }
 
     const idx = CITY_CLASSES.findIndex((c) => c.name === s.cityClass);
     if (idx > city.classReached) {

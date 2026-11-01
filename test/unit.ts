@@ -679,6 +679,23 @@ await test('setting off a fire always starts one where something can burn, and s
   }
 }));
 
+await test('a town big enough for fires is told what a fire or police station costs and does', () => seeded(2, () => {
+  const news = (disasters: boolean) => {
+    const w = flat(40, 30);
+    w.city.disasters = disasters;
+    w.city.month = 24;
+    for (const x of [2, 6]) w.setLevel(w.place('res', x, 2), 8);
+    const sim = new Sim(w);
+    for (let k = 0; k < 4; k++) sim.step();
+    assert.ok(sim.stats.residents > 2500, `${sim.stats.residents} residents`);
+    return sim.messages.map((m) => m.text).filter((t) => t.includes('station'));
+  };
+  const police = 'The city has no police station. Crime grows as the town gets crowded; a station ($500, $45 a month) keeps it down nearby.';
+  assert.deepEqual(news(true), ['The city has no fire station. Fires break out from time to time now; a station ($500, $45 a month) puts them out nearby.', police]);
+  // With random disasters off, no fire starts on its own.
+  assert.deepEqual(news(false), ['The city has no fire station. Should a fire start, a station ($500, $45 a month) puts it out nearby.', police]);
+}));
+
 await test('fire funding weakens a station once: at half funding it fights a fire next door at half strength', () => {
   const w = flat(40, 30);
   const home = w.place('res', 10, 10);
