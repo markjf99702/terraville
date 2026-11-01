@@ -1,13 +1,18 @@
 // A simple player bot: grows a city block by block from starting funds,
 // zoning whatever the RCI meter asks for. Prints a yearly summary.
-// Usage: node run-test.mjs test/bot.ts [years] [difficulty]
+// Usage: node run-test.mjs test/bot.ts [years] [difficulty] [seed=N]
+//   seed=N: the same run every time, for comparing before and after a change.
 import { World } from '../src/world';
 import { Sim } from '../src/sim';
 import { BUILDINGS, DIFFICULTIES, Kind, ROAD, POWER } from '../src/defs';
 import { linePath, planLine, applyLine } from '../src/tools';
+import { makeRng } from '../src/rng';
 
-const years = Number(process.argv[2] ?? 30);
-const diffId = (process.argv[3] ?? 'easy') as 'easy' | 'medium' | 'hard';
+const seed = process.argv.find((a) => a.startsWith('seed='));
+if (seed) Math.random = makeRng(Number(seed.slice(5)));
+const args = process.argv.slice(2).filter((a) => !a.startsWith('seed='));
+const years = Number(args[0] ?? 30);
+const diffId = (args[1] ?? 'easy') as 'easy' | 'medium' | 'hard';
 const W = 120, H = 100;
 const world = new World(W, H);
 world.height.fill(4);
@@ -48,14 +53,16 @@ function zoneNext(kind: Kind): boolean {
     const [c, r] = blocks[next];
     const bx = ox + c * 4 + 1, by = oy + r * 4 + 1;
     if (bx + 4 >= W || by + 4 >= H) { next++; continue; }
-    const need = 4 * 10 * 2 + 100 + 30;
+    // The block's roads and power, and what goes in it: until the city can pay for all of it, the block waits.
+    const lines: [number, number, number, number, number][] = [
+      [ROAD, bx - 1, by - 1, bx + 3, by - 1], [ROAD, bx - 1, by + 3, bx + 3, by + 3],
+      [ROAD, bx - 1, by - 1, bx - 1, by + 3], [ROAD, bx + 3, by - 1, bx + 3, by + 3],
+      [POWER, bx - 1, by - 1, bx + 3, by - 1], [POWER, bx - 1, by - 1, bx - 1, by + 3],
+    ];
+    let need = BUILDINGS[kind].cost;
+    for (const [bit, ax, ay, cx, cy] of lines) need += planLine(world, bit, linePath(ax, ay, cx, cy)).cost;
     if (world.city.funds < need) return false;
-    buildLine(ROAD, bx - 1, by - 1, bx + 3, by - 1);
-    buildLine(ROAD, bx - 1, by + 3, bx + 3, by + 3);
-    buildLine(ROAD, bx - 1, by - 1, bx - 1, by + 3);
-    buildLine(ROAD, bx + 3, by - 1, bx + 3, by + 3);
-    buildLine(POWER, bx - 1, by - 1, bx + 3, by - 1);
-    buildLine(POWER, bx - 1, by - 1, bx - 1, by + 3);
+    for (const [bit, ax, ay, cx, cy] of lines) buildLine(bit, ax, ay, cx, cy);
     next++;
     return place(kind, bx, by);
   }

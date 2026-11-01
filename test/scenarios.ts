@@ -1,6 +1,12 @@
-// Build every challenge city and report its opening state and first year.
+// Build every challenge city and report its opening state and first two years.
+// Usage: node run-test.mjs test/scenarios.ts [seed=N]
+//   seed=N: the same run every time, for comparing before and after a change.
 import { SCENARIOS, buildScenario, openScenario } from '../src/scenarios';
 import { Sim } from '../src/sim';
+import { makeRng } from '../src/rng';
+
+const seed = process.argv.find((a) => a.startsWith('seed='));
+if (seed) Math.random = makeRng(Number(seed.slice(5)));
 
 for (const s of SCENARIOS) {
   const t0 = performance.now();
