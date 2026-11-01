@@ -896,15 +896,16 @@ class FakeDrive {
       if (meta.parents?.some((p) => !this.files.has(p) || this.files.get(p)!.trashed)) return new Response('{"error":{"message":"File not found"}}', { status: 404 });
       const id = `f${++this.n}`;
       this.files.set(id, { id, name: meta.name ?? '', parents: meta.parents ?? [], appProperties: meta.appProperties ?? {}, content, trashed: false, modifiedTime: now });
-      return json({ id });
+      return json({ id, trashed: false });
     }
     if (method === 'PATCH' && f) {
-      if (meta.trashed) f.trashed = true;
+      // As in Drive, a folder goes to the trash with everything in it.
+      if (meta.trashed) for (const x of [f, ...[...this.files.values()].filter((x) => x.parents.includes(f.id))]) x.trashed = true;
       if (meta.appProperties) f.appProperties = { ...f.appProperties, ...meta.appProperties };
       if (meta.name) f.name = meta.name;
       if (url.searchParams.get('uploadType')) f.content = content;
       f.modifiedTime = now;
-      return json({ id: f.id });
+      return json({ id: f.id, trashed: f.trashed });
     }
     return new Response('bad', { status: 400 });
   };
@@ -970,6 +971,40 @@ await test('a save that finds no connection waits for one, and goes up when it i
   for (let i = 0; i < 20 && d.status() === 'busy'; i++) await tick();
   assert.deepEqual([d.status(), d.error], ['error', 'Google Drive said: Rate limit exceeded.']);
   server.fetch = realFetch;
+});
+
+await test('a Terraville folder put in the trash is made again, so other devices still see the city', async () => {
+  const server = new FakeDrive();
+  server.valid.add('a1');
+  const mk = (id: string, label: string) => new Drive({
+    fetch: server.fetch as typeof fetch, storage: memStorage(), now: () => 1_000_000, device: { id, label }, origin: 'https://junkdrawer.works', loadGis: async () => fakeGis(() => 'a1'),
+  });
+  const settle = async (d: Drive) => {
+    for (let i = 0; i < 40 && (d.pending || d.status() === 'busy'); i++) await tick();
+  };
+  const a = mk('deva', 'Mac');
+  a.connect();
+  await tick();
+  a.connect();
+  a.push('TV1g:riverton-1', { city: 'riv', name: 'Riverton', pop: 100, date: 5, saved: 10 });
+  await settle(a);
+  // Tidying Drive, someone moves the Terraville folder to the trash, and its file goes with it.
+  const folder = [...server.files.values()].find((f) => f.appProperties.terraville === 'folder')!;
+  await server.fetch(`https://www.googleapis.com/drive/v3/files/${folder.id}`, { method: 'PATCH', headers: { Authorization: 'Bearer a1' }, body: JSON.stringify({ trashed: true }) });
+  assert.deepEqual([...server.files.values()].map((f) => f.trashed), [true, true]);
+  a.push('TV1g:riverton-2', { city: 'riv', name: 'Riverton', pop: 120, date: 6, saved: 20 });
+  await settle(a);
+  assert.deepEqual([a.status(), a.error], ['ok', '']);
+  const live = [...server.files.values()].filter((f) => !f.trashed);
+  assert.deepEqual(live.map((f) => f.appProperties.terraville).sort(), ['city', 'folder']);
+  assert.equal(live.find((f) => f.content)!.content, 'TV1g:riverton-2');
+  assert.equal(live.find((f) => f.content)!.parents[0], live.find((f) => !f.content)!.id);
+  // Another device lists the new copy.
+  const b = mk('devb', 'iPhone');
+  b.connect();
+  await tick();
+  b.connect();
+  assert.deepEqual((await b.list()).map((c) => [c.name, c.date, c.label]), [['Riverton', 6, 'Mac']]);
 });
 
 await test('a page that opens with Drive signed in sends the saves that missed it', async () => {

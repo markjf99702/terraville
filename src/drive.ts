@@ -401,7 +401,14 @@ export class Drive {
     if (id) {
       try {
         const m = multipart(head, code);
-        await this.api('PATCH', `${UP}/${id}?uploadType=multipart&fields=id`, m.body, m.type);
+        const r = await (await this.api('PATCH', `${UP}/${id}?uploadType=multipart&fields=id,trashed`, m.body, m.type)).json();
+        // The file is in the trash, perhaps with the Terraville folder: Drive keeps it there, out of every list, for 30
+        // days. Start again from what this device has, as for a file that is gone.
+        if (r?.trashed) {
+          delete this.st.files[meta.city];
+          this.st.folder = '';
+          id = '';
+        }
       } catch (e) {
         if ((e as DriveError).kind !== 'gone') throw e;
         id = '';
@@ -410,12 +417,15 @@ export class Drive {
     if (!id) {
       const make = async () => {
         const m = multipart({ ...head, mimeType: 'text/plain', parents: [await this.folder()] }, code);
-        return (await (await this.api('POST', `${UP}?uploadType=multipart&fields=id`, m.body, m.type)).json()).id as string;
+        const r = await (await this.api('POST', `${UP}?uploadType=multipart&fields=id,trashed`, m.body, m.type)).json();
+        // Made inside a folder that is in the trash.
+        if (r?.trashed) throw new DriveError('gone');
+        return r.id as string;
       };
       try {
         id = await make();
       } catch (e) {
-        // The folder was deleted: make a new one.
+        // The folder was deleted, or is in the trash: make a new one.
         if ((e as DriveError).kind !== 'gone' || !this.st.folder) throw e;
         this.st.folder = '';
         id = await make();
