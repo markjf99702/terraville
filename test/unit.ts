@@ -431,6 +431,28 @@ await test('a connected, powered city grows and pays taxes', () => {
   assert.ok(w.city.history.income.at(-1)! > 0);
 });
 
+await test('underfunded roads crumble to rubble, but not under a power line that stays', () => seeded(3, () => {
+  const w = flat(60, 20);
+  w.city.funds = 1e6;
+  applyLine(w, ROAD, planLine(w, ROAD, linePath(2, 5, 57, 5)));
+  applyLine(w, ROAD, planLine(w, ROAD, linePath(2, 10, 57, 10)));
+  applyLine(w, POWER, planLine(w, POWER, linePath(2, 10, 57, 10)));
+  w.city.funding.transport = 0;
+  const sim = new Sim(w);
+  for (let m = 0; m < 60; m++) sim.budget();
+  let crumbled = 0, wired = 0;
+  for (let x = 2; x <= 57; x++) {
+    if (w.rubble[5 * w.w + x]) crumbled++;
+    const i = 10 * w.w + x;
+    if (!(w.net[i] & ROAD)) {
+      wired++;
+      assert.equal(w.net[i], POWER, `the line at ${x} went with the road`);
+      assert.equal(w.rubble[i], 0, `rubble under the line at ${x}`);
+    }
+  }
+  assert.ok(crumbled > 10 && wired > 10, `${crumbled} plain road tiles and ${wired} under the line crumbled`);
+}));
+
 await test('world and save codes round-trip', async () => {
   const w = generateTerrain({ ...DEFAULT_TERRAIN, seed: 'save-test', w: 50, h: 40 });
   w.city.founded = true;

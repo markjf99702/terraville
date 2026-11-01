@@ -871,7 +871,8 @@ export class Sim {
           const x = i % world.w;
           const y = (i / world.w) | 0;
           world.clearNet(x, y, ROAD | RAIL);
-          if (!world.water[i]) world.rubble[i] = 1;
+          // A power line on the tile stays up, so no rubble is left under it.
+          if (!world.water[i] && !world.net[i]) world.rubble[i] = 1;
           this.say('potholes', 'Underfunded roads are falling apart.', 'warn', { x, y }, 6);
         }
       }
