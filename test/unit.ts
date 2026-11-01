@@ -636,16 +636,48 @@ await test('disasters run without breaking the map', () => {
   assert.ok(occupied >= 0);
 });
 
-await test('fire reports read right: an airport, a school', () => {
+await test('a fire alert names what is burning and says what to do', () => {
   const w = flat(60, 40);
+  const towers = w.place('com', 10, 2);
+  w.setLevel(towers, 4);
+  const cottages = w.place('res', 14, 2);
+  w.setLevel(cottages, 1);
+  const shops = w.place('com', 18, 2);
+  w.setLevel(shops, 2);
+  const lots = [w.place('airport', 2, 2), towers, cottages, shops, w.place('school', 22, 2), w.place('res', 40, 30)];
+  w.place('fire', 26, 2);
   const sim = new Sim(w);
-  for (const b of [w.place('airport', 2, 2), w.place('ind', 10, 2), w.place('school', 15, 2)]) {
+  const covered = 'Firefighters are on the way.';
+  const alone = 'No fire station reaches it: bulldoze a gap around it to stop it spreading.';
+  for (const b of lots) {
     sim.disasters.ignite(b.x, b.y);
     w.city.month++; // past the month between fire reports
   }
-  assert.deepEqual(sim.messages.filter((m) => m.text.startsWith('Fire')).map((m) => m.text),
-    ['Fire reported at an airport.', 'Fire reported at an industrial zone.', 'Fire reported at a school.']);
+  assert.deepEqual(sim.messages.filter((m) => m.text.startsWith('Fire')).map((m) => [m.text, m.x, m.y]), [
+    [`Fire at an airport. ${alone}`, 5, 5], [`Fire at the office towers. ${covered}`, 11, 3], [`Fire at the cottages. ${covered}`, 15, 3],
+    [`Fire at the shops on main street. ${covered}`, 19, 3], [`Fire at a school. ${covered}`, 23, 3], [`Fire at a vacant residential lot. ${alone}`, 41, 31],
+  ]);
 });
+
+await test('setting off a fire always starts one where something can burn, and says so where nothing can', () => seeded(8, () => {
+  const w = flat(60, 40);
+  const sim = new Sim(w);
+  sim.disasters.trigger('fire');
+  assert.deepEqual(sim.messages.map((m) => [m.text, m.kind]), [['There is nothing here to burn yet.', 'info']]);
+  // A town under full fire cover, where a fire left to chance mostly doesn't start.
+  for (let x = 2; x < 50; x += 4) w.setLevel(w.place('res', x, 10), 2);
+  w.place('fire', 24, 14);
+  sim.computePower();
+  for (const b of w.buildings.values()) b.powered = true;
+  sim.computeMaps();
+  for (let k = 0; k < 30; k++) {
+    w.fire.fill(0);
+    sim.disasters.trigger('fire');
+    let burning = 0;
+    for (let i = 0; i < w.n; i++) if (w.fire[i]) burning++;
+    assert.ok(burning > 0, `try ${k} started no fire`);
+  }
+}));
 
 await test('fire funding weakens a station once: at half funding it fights a fire next door at half strength', () => {
   const w = flat(40, 30);

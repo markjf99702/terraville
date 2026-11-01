@@ -1,6 +1,6 @@
 // Fires, floods, tornadoes, earthquakes, the monster, and meltdowns.
-import { BUILDINGS, DIFFICULTIES, DISASTER_POP, FIRE_WEEKS, RAIL, ROAD } from './defs';
-import type { Sim } from './sim';
+import { DIFFICULTIES, DISASTER_POP, FIRE_WEEKS, RAIL, ROAD, buildingName, isZone } from './defs';
+import { type Sim, zoneTitle } from './sim';
 import type { Building, SavedRun } from './world';
 
 export type DisasterKind = 'fire' | 'flood' | 'tornado' | 'earthquake' | 'monster' | 'meltdown';
@@ -70,7 +70,7 @@ export class Disasters {
     if (pop < DISASTER_POP) return;
     const r = Math.random();
     // Rough monthly odds; fire is by far the most common.
-    if (r < 0.06 * f) this.trigger('fire');
+    if (r < 0.06 * f) this.randomFire(false);
     else if (r < 0.06 * f + 0.006 * f) this.trigger('flood');
     else if (r < 0.066 * f + 0.004 * f) this.trigger('tornado');
     else if (r < 0.07 * f + 0.0025 * f) this.trigger('earthquake');
@@ -81,9 +81,10 @@ export class Disasters {
     }
   }
 
+  /** Set off a disaster now, from the Disasters menu or a challenge's opening. */
   trigger(kind: DisasterKind): void {
     switch (kind) {
-      case 'fire': return this.randomFire();
+      case 'fire': return this.randomFire(true);
       case 'flood': return this.startFlood();
       case 'tornado': return this.spawnRoamer('tornado');
       case 'earthquake': return this.earthquake();
@@ -101,15 +102,27 @@ export class Disasters {
 
   // ---- fire ------------------------------------------------------------
 
-  private randomFire(): void {
+  /**
+   * A fire in a building. Left to chance, buildings far from fire stations are more likely to go up, and a city well
+   * covered may get none; `forced` (set off from the menu) always starts one where there is something to burn.
+   */
+  private randomFire(forced: boolean): void {
     const world = this.world;
     const cands: Building[] = [];
     for (const b of world.buildings.values()) {
       if (b.kind === 'park') continue;
       if (b.kind === 'res' || b.kind === 'com' || b.kind === 'ind' ? b.level > 0 : true) cands.push(b);
     }
-    if (!cands.length) return;
-    // Buildings far from fire stations are more likely to go up.
+    if (!cands.length) {
+      if (forced) this.sim.say('nofire', 'There is nothing here to burn yet.', 'info', undefined, 0);
+      return;
+    }
+    if (forced) {
+      const cold = cands.filter((b) => !world.fire[b.y * world.w + b.x]);
+      const b = cold[Math.floor(Math.random() * cold.length)];
+      if (b) this.ignite(b.x, b.y);
+      return;
+    }
     for (let t = 0; t < 6; t++) {
       const b = cands[Math.floor(Math.random() * cands.length)];
       const cov = world.fireCov[(b.y + 1) * world.w + b.x + 1] / 255;
@@ -133,8 +146,10 @@ export class Disasters {
         for (let dx = 0; dx < b.size; dx++) world.fire[(b.y + dy) * world.w + b.x + dx] = weeks;
       }
       world.dirty(b.x, b.y, b.x + b.size - 1, b.y + b.size - 1);
-      const name = BUILDINGS[b.kind].name.toLowerCase();
-      this.sim.say('fire', `Fire reported at ${/^[aeiou]/.test(name) ? 'an' : 'a'} ${name}.`, 'alert', { x: b.x + 1, y: b.y + 1 }, 1);
+      const c = Math.floor(b.size / 2);
+      const covered = world.fireCov[(b.y + c) * world.w + b.x + c] > 0;
+      const what = covered ? 'Firefighters are on the way.' : 'No fire station reaches it: bulldoze a gap around it to stop it spreading.';
+      this.sim.say('fire', `Fire at ${firePlace(b)}. ${what}`, 'alert', { x: b.x + c, y: b.y + c }, 1);
       this.sim.emit({ type: 'disaster', kind: 'fire', x, y });
       this.sim.powerDirty = true;
     } else if (world.trees[i]) {
@@ -485,4 +500,15 @@ export class Disasters {
     this.sim.say('quake', 'Earthquake! Check for fires and broken roads.', 'alert', { x: Math.round(cx), y: Math.round(cy) }, 0);
     this.sim.emit({ type: 'disaster', kind: 'earthquake', x: cx, y: cy });
   }
+}
+
+/** What is burning, as a fire alert names it: 'the cottages', 'the office towers', 'a coal plant'. */
+export function firePlace(b: Building): string {
+  if (isZone(b.kind)) {
+    const title = zoneTitle(b.kind as 'res' | 'com' | 'ind', b.level).toLowerCase();
+    if (b.level === 0) return 'a ' + title;
+    return title === 'main street' ? 'the shops on main street' : title === 'heavy industry' ? 'the heavy industrial plant' : 'the ' + title;
+  }
+  const name = buildingName(b).toLowerCase();
+  return `${/^[aeiou]/.test(name) ? 'an' : 'a'} ${name}`;
 }
