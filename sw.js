@@ -1,6 +1,6 @@
 // Offline support: keep a copy of the app so it works with no signal.
 // Cities live in localStorage (and Drive, if it's on), not here. The fonts are inside index.html, so they work
-// offline too.
+// offline too; the privacy page loads them from fonts/.
 // Network first, so a new version shows up as soon as you're online, but a page the network hasn't answered in a few
 // seconds opens from the copy instead (see page()).
 
@@ -8,10 +8,11 @@
 // refreshed only when a page that loads it is visited online, and the copy could mix two releases. So FILES is a
 // fingerprint of every file in SHELL: change any of them and test/e2e.mjs fails until FILES is changed to match (it
 // says what to), which changes this file, so every copy is made whole again at once.
-const CACHE = 'terraville-v1'; // bump the number when the file list changes
-const FILES = '4fea8169'; // test/e2e.mjs checks this
+const CACHE = 'terraville-v2'; // bump the number when the file list changes
+const FILES = '06318865'; // test/e2e.mjs checks this
 const SHELL = [
-  './', 'index.html', 'carry.js', 'privacy.html', 'icon.svg', 'icon-180.png', 'icon-192.png', 'manifest.webmanifest',
+  './', 'index.html', 'carry.js', 'privacy.html', 'fonts/overpass-latin.woff2', 'fonts/overpass-mono-latin.woff2', 'icon.svg',
+  'icon-180.png', 'icon-192.png', 'manifest.webmanifest',
 ];
 
 // Each file straight from the server (a quick "not modified" for one that hasn't changed), not from the browser's own

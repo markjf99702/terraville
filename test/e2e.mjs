@@ -777,6 +777,28 @@ try {
     await ctx.close();
   });
 
+  await test('the privacy page has its own lettering and icon, and links where it says', async () => {
+    const ctx = await profile();
+    const page = await ctx.newPage();
+    const problems = [];
+    page.on('pageerror', (e) => problems.push(e.message));
+    page.on('console', (m) => { if (m.type() === 'error') problems.push(m.text()); });
+    page.on('request', (r) => { if (!r.url().startsWith(base) && !/^(data|blob):/.test(r.url())) problems.push('left the site: ' + r.url()); });
+    await page.goto(base + 'privacy.html');
+    const loaded = await page.evaluate(async () => {
+      await Promise.all([document.fonts.load('16px Overpass'), document.fonts.load('600 13px "Overpass Mono"')]);
+      return [...document.fonts].filter((f) => f.status === 'loaded').map((f) => f.family.replace(/"/g, '')).sort();
+    });
+    assert.deepEqual(loaded, ['Overpass', 'Overpass Mono']);
+    assert.equal(await page.getAttribute('link[rel="icon"]', 'href'), 'icon.svg');
+    assert.equal(await page.getAttribute('a:has-text("junkdrawer.works projects")', 'href'), 'https://junkdrawer.works/privacy.html');
+    // The way back sits on its own line, above the sign.
+    const [back, sign] = await Promise.all(['.back', '.sign'].map((s) => page.locator(s).boundingBox()));
+    assert.ok(back.y + back.height <= sign.y, 'the back link shares the sign\'s line');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('fits a phone and works offline once opened', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);
