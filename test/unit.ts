@@ -378,7 +378,14 @@ await test('a connected, powered city grows and pays taxes', () => {
   applyLine(w, POWER, planLine(w, POWER, linePath(8, 4, 40, 4)));
   for (let x = 9; x < 39; x += 3) w.place(x % 9 === 0 ? 'com' : x % 2 ? 'res' : 'ind', x, 5);
   const sim = new Sim(w);
-  for (let i = 0; i < 4 * 36; i++) sim.step();
+  // A typical run (528 residents). Unseeded, about 1 run in 30 stays under 200.
+  const random = Math.random;
+  Math.random = makeRng(1);
+  try {
+    for (let i = 0; i < 4 * 36; i++) sim.step();
+  } finally {
+    Math.random = random;
+  }
   assert.ok(sim.stats.residents > 200, `residents ${sim.stats.residents}`);
   assert.ok(w.city.history.income.at(-1)! > 0);
 });
