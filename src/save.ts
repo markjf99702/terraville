@@ -93,6 +93,11 @@ export function readCode(id: string): string | null {
   }
 }
 
+/** The storage key a slot's code is kept under, as a 'storage' event from another tab names it. */
+export function slotKey(id: string): string {
+  return PREFIX + id;
+}
+
 /** The slot a city's autosave keeps up to date. */
 export function citySlot(city: string): string {
   return `c-${city}`;

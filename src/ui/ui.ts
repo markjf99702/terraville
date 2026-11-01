@@ -9,7 +9,7 @@ import { ZONE_COLORS } from '../render/color';
 import { drawBuilding } from '../render/sprites';
 import { randomSeedName } from '../rng';
 import { DRIVE_HOME, DriveCopy } from '../drive';
-import { SaveFile, SlotMeta, decode, deleteSlot, encode, listSlots, loadSlot, storageAvailable } from '../save';
+import { SaveFile, SlotMeta, decode, deleteSlot, encode, listSlots, storageAvailable } from '../save';
 import type { Message } from '../sim';
 import { STYLE_NAMES, TerrainStyle, hasSea } from '../terrain';
 import { GoalState, SCENARIOS, Scenario } from '../scenarios';
@@ -100,10 +100,14 @@ interface ModalSpec {
   wide?: boolean;
   /** Maximum width in pixels, for dialogs wider than `wide`. */
   width?: number;
+  /** Only its own buttons close it: no close button, Escape or tap outside. */
+  locked?: boolean;
 }
 
 export class UI {
   modalOpen = false;
+  /** The open dialog closes only from its own buttons. */
+  private modalLocked = false;
   /** Set while the save dialog is open, to redraw it when Drive changes. */
   private filesRefresh: (() => void) | null = null;
   private statTimer = 0;
@@ -123,7 +127,7 @@ export class UI {
   constructor(private game: Game, private root: HTMLElement) {
     this.buildMinimapControls();
     $(root, '#modalRoot').addEventListener('pointerdown', (e) => {
-      if (e.target === e.currentTarget) this.closeModal();
+      if (e.target === e.currentTarget && !this.modalLocked) this.closeModal();
     });
     document.addEventListener('pointerdown', (e) => {
       if (!this.dropdownEl) return;
@@ -138,7 +142,7 @@ export class UI {
       if (e.key === 'Tab') this.keepTabInside(e);
       // Elsewhere Escape is the game's (it ignores keys typed into a field), so here it only needs to close the dialog
       // from a slider, a switch or a text box in it.
-      else if (e.key === 'Escape' && (e.target as HTMLElement).matches?.('input, textarea, select') && $(this.root, '#modalRoot').contains(e.target as Node)) this.closeModal();
+      else if (e.key === 'Escape' && !this.modalLocked && (e.target as HTMLElement).matches?.('input, textarea, select') && $(this.root, '#modalRoot').contains(e.target as Node)) this.closeModal();
     });
     game.drive.onChange(() => {
       this.syncDrive();
@@ -1105,7 +1109,7 @@ export class UI {
     const width = spec.width ?? (spec.wide ? 860 : 0);
     const m = el(`<div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" tabindex="-1" ${width ? `style="width:min(${width}px,100%)"` : ''}>
       <header><div style="flex:1"><h2 id="modalTitle">${esc(spec.title)}</h2>${spec.sub ? `<div class="sub">${spec.sub}</div>` : ''}</div>
-      <button class="iconbtn" data-close aria-label="Close">${ICONS.close}</button></header>
+      ${spec.locked ? '' : `<button class="iconbtn" data-close aria-label="Close">${ICONS.close}</button>`}</header>
       <div class="body"></div></div>`);
     $(m, '.body').appendChild(spec.body);
     if (spec.foot?.length) {
@@ -1113,11 +1117,13 @@ export class UI {
       for (const b of spec.foot) f.appendChild(b);
       m.appendChild(f);
     }
-    $(m, '[data-close]').onclick = () => this.closeModal();
+    const close = m.querySelector<HTMLElement>('[data-close]');
+    if (close) close.onclick = () => this.closeModal();
     root.innerHTML = '';
     root.appendChild(m);
     root.hidden = false;
     this.modalOpen = true;
+    this.modalLocked = !!spec.locked;
     this.modalClose = spec.onClose ?? null;
     this.modalOpener = opener;
     this.game.renderer.preview = null;
@@ -1133,6 +1139,7 @@ export class UI {
     root.hidden = true;
     root.innerHTML = '';
     this.modalOpen = false;
+    this.modalLocked = false;
     const back = this.modalOpener;
     this.modalOpener = null;
     const f = this.modalClose;
@@ -1167,7 +1174,7 @@ export class UI {
       return true;
     }
     if (this.modalOpen) {
-      this.closeModal();
+      if (!this.modalLocked) this.closeModal();
       return true;
     }
     if (!$(this.root, '#log').hidden) {
@@ -1238,6 +1245,26 @@ export class UI {
    * Leave for the title screen, saving the city on the way. When this browser can't keep it (storage blocked, or the
    * save failed), say so and offer a city code, or leaving anyway.
    */
+  /** Another tab opened this city, so this one has stopped. */
+  cityTakenElsewhere(name: string): void {
+    const body = el(`<p class="note" style="font-size:14px">${esc(name)} is open in another tab, so this tab has stopped to keep the two from saving over each other.</p>`);
+    this.openModal({
+      title: 'Open in another tab',
+      body,
+      locked: true,
+      foot: [
+        this.btn('Back to the title screen', '', () => {
+          this.closeModal();
+          this.game.showTitle();
+        }),
+        this.btn('Play it here instead', 'primary', async () => {
+          if (await this.game.playHere()) this.closeModal();
+          else this.toast(`The save of ${name} could not be read here.`, 'warn');
+        }),
+      ],
+    });
+  }
+
   private confirmQuit(failed = false): void {
     const g = this.game;
     const city = g.mode === 'city';
@@ -1567,15 +1594,12 @@ export class UI {
     </div>`);
 
     const openLocal = async (id: string, name: string) => {
-      const f = await loadSlot(id);
-      if (!f) return this.toast('That save could not be read.', 'warn');
       try {
-        World.deserialize(f.world);
+        await g.openSlot(id);
       } catch (e) {
-        return this.toast(`That save is damaged: ${(e as Error).message}`, 'warn');
+        return this.toast((e as Error).message, 'warn');
       }
       this.closeModal();
-      g.loadFile(f, id);
       this.toast(`Opened ${name}.`);
     };
 

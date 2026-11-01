@@ -195,6 +195,71 @@ try {
     await ctx.close();
   });
 
+  await test('a city open in two tabs: the older tab stops, and the newer one keeps its months', async () => {
+    const ctx = await profile(DESK);
+    const { page: a, problems } = await open(ctx);
+    await found(a);
+    const play = (page, months) => page.evaluate((n) => {
+      const g = window.__terraville;
+      for (let i = 0; i < 4 * n; i++) g.sim.step();
+      return g.world.city.month;
+    }, months);
+    await play(a, 6);
+    assert.equal(await a.evaluate(() => window.__terraville.saveCity()), true);
+    const saved = () => a.evaluate(() => JSON.parse(localStorage.getItem('terraville.slots')).find((s) => s.city).date);
+    const stopped = (page) => page.evaluate(() => [window.__terraville.stopped, !!document.querySelector('.modal')]);
+    // A second tab on the title screen changes nothing.
+    const { page: b, problems: inB } = await open(ctx);
+    await a.waitForTimeout(300);
+    assert.deepEqual(await stopped(a), [false, false]);
+    // Continue in the second tab: the first one stops and says why.
+    await b.click('[data-act="continue"]');
+    await b.waitForFunction(() => window.__terraville.mode === 'city');
+    await b.evaluate(() => window.__terraville.setSpeed(0));
+    await a.waitForSelector('.modal');
+    const name = await a.evaluate(() => window.__terraville.world.city.name);
+    assert.equal(await a.textContent('.modal .body'), `${name} is open in another tab, so this tab has stopped to keep the two from saving over each other.`);
+    assert.deepEqual(await stopped(a), [true, true]);
+    assert.equal(await a.evaluate(() => window.__terraville.speed), 0);
+    await a.keyboard.press('Escape');
+    assert.deepEqual(await stopped(a), [true, true], 'Escape closed the dialog');
+    // The second tab plays on and saves; nothing the first tab does writes over it.
+    const month = await play(b, 30);
+    assert.equal(await b.evaluate(() => window.__terraville.saveCity()), true);
+    assert.equal(await saved(), month);
+    assert.equal(await a.evaluate(() => window.__terraville.autosave()), false);
+    await a.evaluate(() => {
+      const g = window.__terraville;
+      g.autoTimer = 200; // the 90-second save is due
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+      document.dispatchEvent(new Event('visibilitychange')); // leaving the page
+    });
+    await a.waitForTimeout(500);
+    assert.equal(await saved(), month);
+    // Reloading the second tab doesn't stop it, and its months are still there.
+    await b.reload();
+    await titleUp(b);
+    await b.click('[data-act="continue"]');
+    await b.waitForFunction(() => window.__terraville.mode === 'city');
+    await b.evaluate(() => window.__terraville.setSpeed(0));
+    assert.equal(await b.evaluate(() => window.__terraville.world.city.month), month);
+    assert.deepEqual(await stopped(b), [false, false]);
+    // Play it here instead: the second tab saves what it has played since and hands the city back.
+    const later = await play(b, 2);
+    await a.click('.modal footer .btn.primary');
+    await a.waitForFunction(() => !window.__terraville.stopped && !document.querySelector('.modal'));
+    assert.equal(await a.evaluate(() => window.__terraville.world.city.month), later);
+    await b.waitForSelector('.modal');
+    assert.deepEqual(await stopped(b), [true, true]);
+    // Back to the title screen leaves without saving.
+    await play(a, 1);
+    await b.click('.modal footer .btn:not(.primary)');
+    await titleUp(b);
+    assert.equal(await saved(), later);
+    assert.deepEqual([...problems, ...inB], []);
+    await ctx.close();
+  });
+
   await test('a challenge opened from its save shows its approval, worries and goal straight away', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

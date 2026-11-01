@@ -9,8 +9,8 @@ import { Renderer, SLOPE_CLASSES } from './render/renderer';
 import { hashString, makeRng, pick, randomSeedName } from './rng';
 import { CityMeta, Drive, DriveCopy } from './drive';
 import {
-  SaveFile, SlotMeta, citySlot, decode, deleteSlot, encode, encodeNow, listSlots, loadSlot, newCityId, readCode, saveCode, saveSlot, thisDevice,
-  worldFrom,
+  SaveFile, SlotMeta, citySlot, decode, deleteSlot, encode, encodeNow, listSlots, newCityId, readCode, saveCode, saveSlot, slotKey,
+  thisDevice, worldFrom,
 } from './save';
 import { SCENARIOS, buildScenario, goalState, openScenario, scenarioMonth } from './scenarios';
 import { Sim } from './sim';
@@ -62,6 +62,20 @@ export function randomCityName(): string {
   return pick(r, NAME_A) + pick(r, NAME_B);
 }
 
+/**
+ * What tabs of the game in one browser tell each other, so that two never play (and save) the same city: a new tab
+ * asks who is playing what, each answers with its city ('' for none), a tab that opens a city claims it, and a tab
+ * about to open a city another is playing asks that one to save and hand it over first.
+ */
+type TabNote =
+  | { t: 'hello'; tab: string }
+  | { t: 'playing' | 'claim' | 'handover'; tab: string; city: string }
+  | { t: 'handed'; tab: string; city: string; code: string | null }
+  | { t: 'bye'; tab: string };
+
+/** How long opening a city waits for the tab playing it to save and stop, should that tab not answer. */
+const HANDOVER_WAIT = 2000; // ms
+
 function fmtMoney(n: number): string {
   return '$' + Math.round(n).toLocaleString();
 }
@@ -95,6 +109,20 @@ export class Game {
   private brushSpent = 0;
   private autoTimer = 0;
   private titleDrift = { vx: 1.3, vy: 0.5 };
+  /** This tab, to other tabs of the game. */
+  readonly tab = newCityId();
+  private channel: BroadcastChannel | null = null;
+  /** The city each other tab said it is playing, by tab. */
+  private elsewhere = new Map<string, string>();
+  /** Waiting for another tab to hand over a city: called with the city's id, and its code, when it has. */
+  private onHanded: ((city: string, code: string | null) => void) | null = null;
+  /** The code this tab last opened a city from, so the echo of the save it was handed isn't taken for a rival's. */
+  private openedCode: string | null = null;
+  /**
+   * Set when another tab took over this city: nothing here saves it (not the 90-second save, the year's end, leaving
+   * the page or Drive) until it is opened here again.
+   */
+  stopped = false;
 
   constructor(canvas: HTMLCanvasElement, minimapCanvas: HTMLCanvasElement) {
     this.renderer = new Renderer(canvas);
@@ -115,10 +143,143 @@ export class Game {
     // compressed save, so the city is written at once as a plain code first; the compressed save and the Drive
     // upload then replace it if the page lives on, as it does when switching apps.
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState !== 'hidden' || this.mode !== 'city' || !this.settings.autosave) return;
+      if (document.visibilityState !== 'hidden' || this.mode !== 'city' || !this.settings.autosave || this.stopped) return;
       this.saveCityNow();
       void this.saveCity();
     });
+    // Two tabs on one city would save over each other, so the one that opened it last plays it. A browser without
+    // BroadcastChannel still hears another tab save the city, through a 'storage' event.
+    try {
+      this.channel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('terraville');
+    } catch {
+      this.channel = null;
+    }
+    if (this.channel) this.channel.onmessage = (e: MessageEvent) => this.onTabNote(e.data as TabNote);
+    this.post({ t: 'hello', tab: this.tab });
+    window.addEventListener('pagehide', () => this.post({ t: 'bye', tab: this.tab }));
+    window.addEventListener('storage', (e) => {
+      const id = this.world?.city.id;
+      if (!id || !this.playing(id) || e.newValue === null || e.key !== slotKey(citySlot(id)) || e.newValue === this.openedCode) return;
+      this.yieldCity();
+    });
+  }
+
+  // ---- other tabs --------------------------------------------------------------
+
+  private post(note: TabNote): void {
+    try {
+      this.channel?.postMessage(note);
+    } catch {
+      /* closed */
+    }
+  }
+
+  /** Playing this city here, and not stopped for another tab. */
+  private playing(city: string): boolean {
+    return this.mode === 'city' && !this.stopped && !!city && this.world.city.id === city;
+  }
+
+  private onTabNote(n: TabNote): void {
+    if (!n || typeof n !== 'object' || typeof n.tab !== 'string' || n.tab === this.tab) return;
+    const city = 'city' in n && typeof n.city === 'string' ? n.city : '';
+    switch (n.t) {
+      case 'hello':
+        if (this.mode === 'city' && !this.stopped && this.world.city.id) this.post({ t: 'playing', tab: this.tab, city: this.world.city.id });
+        break;
+      case 'playing':
+      case 'claim':
+        if (city) this.elsewhere.set(n.tab, city);
+        else this.elsewhere.delete(n.tab);
+        if (n.t === 'claim' && this.playing(city)) this.yieldCity();
+        break;
+      case 'handover': {
+        if (!this.playing(city)) break;
+        // The city goes to the other tab as it stands, so nothing played here is lost, and is saved here too. It
+        // travels with the message: another tab can read localStorage a moment before this tab's save reaches it.
+        let code: string | null = null;
+        try {
+          code = encodeNow(this.makeSaveFile());
+          if (this.settings.autosave) this.keepCity(code, this.saveMeta());
+        } catch {
+          /* the other tab opens the last save instead */
+        }
+        this.yieldCity();
+        this.post({ t: 'handed', tab: this.tab, city, code });
+        break;
+      }
+      case 'handed':
+        this.elsewhere.delete(n.tab);
+        this.onHanded?.(city, 'code' in n && typeof n.code === 'string' ? n.code : null);
+        break;
+      case 'bye':
+        this.elsewhere.delete(n.tab);
+        break;
+    }
+  }
+
+  /** Tell other tabs this one opened its city: a tab playing the same city stops. */
+  private claimCity(): void {
+    const id = this.world.city.id;
+    if (this.mode === 'city' && id) this.post({ t: 'claim', tab: this.tab, city: id });
+  }
+
+  /** Another tab opened this city: stop, save nothing, and say so. */
+  private yieldCity(): void {
+    this.stopped = true;
+    this.setSpeed(0);
+    this.post({ t: 'playing', tab: this.tab, city: '' });
+    this.ui.cityTakenElsewhere(this.world.city.name);
+  }
+
+  /**
+   * Before opening a city from its save: if another tab is playing it, have that tab save it and stop. Resolves with
+   * the city as that tab handed it over, or null when no tab had it (or it didn't answer).
+   */
+  private handover(city: string | undefined): Promise<string | null> {
+    if (!city || ![...this.elsewhere.values()].includes(city)) return Promise.resolve(null);
+    return new Promise((done) => {
+      const finish = (code: string | null) => {
+        clearTimeout(timer);
+        this.onHanded = null;
+        done(code);
+      };
+      const timer = setTimeout(() => finish(null), HANDOVER_WAIT);
+      this.onHanded = (c, code) => {
+        if (c === city) finish(code);
+      };
+      this.post({ t: 'handover', tab: this.tab, city });
+    });
+  }
+
+  /**
+   * Open a save from this device, first taking its city over from any other tab playing it. Throws with a readable
+   * message when the save can't be read.
+   */
+  async openSlot(id: string): Promise<void> {
+    const meta = listSlots().find((s) => s.id === id);
+    const code = (await this.handover(meta?.city)) ?? readCode(id);
+    if (!code) throw new Error('That save could not be read.');
+    let f: SaveFile;
+    try {
+      f = await decode(code);
+      World.deserialize(f.world);
+    } catch (e) {
+      throw new Error(`That save is damaged: ${(e as Error).message}`);
+    }
+    this.loadFile(f, id);
+    this.openedCode = code;
+  }
+
+  /** "Play it here instead": open this city's save again, which stops the tab that took it over. */
+  async playHere(): Promise<boolean> {
+    const id = this.world.city.id;
+    if (!id) return false;
+    try {
+      await this.openSlot(citySlot(id));
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   // ---- settings --------------------------------------------------------------
@@ -276,11 +437,16 @@ export class Game {
     this.renderer.cam.zoom = Math.max(this.renderer.cam.zoom, 14);
     this.renderer.clampCamera();
     this.audio.play('fanfare');
+    this.claimCity();
   }
 
   private setSim(sim: Sim | null): void {
     this.sim?.dispose();
     this.sim = sim;
+    // Whatever opens next, this tab isn't stopped for another any more; until a city opens, it plays none.
+    this.stopped = false;
+    this.openedCode = null;
+    if (!sim) this.post({ t: 'playing', tab: this.tab, city: '' });
   }
 
   private startSim(): void {
@@ -347,6 +513,7 @@ export class Game {
     this.minimap.markDirty();
     this.showGoal();
     this.ui.scenarioIntro(s);
+    this.claimCity();
   }
 
   private checkScenario(): void {
@@ -392,6 +559,7 @@ export class Game {
       this.applySettings();
       this.ui.enterCity();
       this.showGoal();
+      this.claimCity();
     } else {
       this.mode = 'editor';
       this.setSim(null);
@@ -431,6 +599,7 @@ export class Game {
   /** Save the city to its own slot here, and to Google Drive when connected. */
   async saveCity(): Promise<boolean> {
     if (this.mode !== 'city') return true;
+    if (this.stopped) return false;
     const meta = this.saveMeta();
     let code: string;
     try {
@@ -438,6 +607,8 @@ export class Game {
     } catch {
       return false;
     }
+    // Another tab may have taken the city over while the code was being made.
+    if (this.stopped) return false;
     const ok = this.keepCity(code, meta);
     // Drive gets it even when this browser's storage is full.
     this.drive.push(code, meta);
@@ -450,6 +621,7 @@ export class Game {
    */
   saveCityNow(): boolean {
     if (this.mode !== 'city') return true;
+    if (this.stopped) return false;
     try {
       return this.keepCity(encodeNow(this.makeSaveFile()), this.saveMeta());
     } catch {
@@ -494,8 +666,11 @@ export class Game {
     const file = await decode(code);
     World.deserialize(file.world);
     file.world.city.id = copy.city;
+    // A tab playing it saves it as it stops; the copy from Drive replaces that save here.
+    const handed = await this.handover(copy.city);
     saveCode(code, { id: citySlot(copy.city), name: copy.name, pop: copy.pop, date: copy.date, savedAt: copy.saved, mode: 'city', city: copy.city });
     this.loadFile(file, citySlot(copy.city));
+    this.openedCode = handed;
   }
 
   async saveTo(id: string): Promise<boolean> {
@@ -506,10 +681,13 @@ export class Game {
 
   async continueLatest(): Promise<boolean> {
     const s = this.latestLocal();
-    const f = s ? await loadSlot(s.id) : null;
-    if (!s || !f) return false;
-    this.loadFile(f, s.id);
-    return true;
+    if (!s) return false;
+    try {
+      await this.openSlot(s.id);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   fitMap(): void {
@@ -539,7 +717,7 @@ export class Game {
     const r = this.renderer;
     // Pin down what the last action changed before the simulation moves on.
     if (this.mode === 'city' && !this.brushOn) this.sealUndo();
-    const running = this.mode === 'city' && !!this.sim && this.speed > 0 && !this.ui.modalOpen;
+    const running = this.mode === 'city' && !!this.sim && this.speed > 0 && !this.ui.modalOpen && !this.stopped;
     if (running && this.sim) {
       this.acc += dt * SPEEDS[this.speed];
       let steps = 0;
@@ -569,7 +747,7 @@ export class Game {
       r.clampCamera(0);
     }
     if (this.brushOn) this.brushTick(dt);
-    if (this.mode === 'city' && this.settings.autosave) {
+    if (this.mode === 'city' && this.settings.autosave && !this.stopped) {
       this.autoTimer += dt;
       if (this.autoTimer > 90) {
         this.autoTimer = 0;
