@@ -4,7 +4,7 @@ import { World, encodeArray, decodeArray } from '../src/world';
 import { Sim } from '../src/sim';
 import { generateTerrain, cleanTerrain, DEFAULT_TERRAIN } from '../src/terrain';
 import { linePath, planLine, applyLine, planZones, applyBuildings, planBulldoze } from '../src/tools';
-import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST, UPGRADE_LV, buildingName, upkeepOf } from '../src/defs';
+import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST, UPGRADE_LV, Kind, buildingName, upkeepOf } from '../src/defs';
 import { DAMAGED_CODE, encode, encodeNow, decode, listSlots, pushSaved, saveCode, SlotMeta } from '../src/save';
 import { Drive, GisOAuth2 } from '../src/drive';
 import { makeRng } from '../src/rng';
@@ -473,6 +473,25 @@ await test("a city code's building rows are read as whole numbers in range, so a
   }
   assert.ok(Number.isFinite(back.city.funds) && Number.isFinite(sim.stats.residents) && Number.isFinite(sim.stats.comJobs), `funds ${back.city.funds}, residents ${sim.stats.residents}`);
   for (const b of back.buildings.values()) assert.ok(Number.isInteger(b.level) && Number.isFinite(b.pop), `${b.kind} ${b.id} at level ${b.level}`);
+});
+
+await test('crime grows only where people live and work: a ring of parks around a home brings it down', () => {
+  const crimeAt = (around: Kind | null) => {
+    const w = flat(60, 60);
+    for (let x = 10; x < 50; x++) { w.setNet(ROAD, x, 20); w.setNet(POWER, x, 20); }
+    w.place('coal', 2, 2);
+    const home = w.place('res', 28, 21); // 28..30, 21..23, on the road
+    if (around === 'park') {
+      for (let x = 27; x <= 31; x++) w.place('park', x, 24);
+      for (let y = 21; y <= 23; y++) { w.place('park', 27, y); w.place('park', 31, y); }
+    } else if (around) w.place(around, 32, 21);
+    const sim = new Sim(w);
+    for (let k = 0; k < 3; k++) sim.computeMaps();
+    return w.crime[(home.y + 1) * w.w + home.x + 1];
+  };
+  const alone = crimeAt(null);
+  assert.ok(crimeAt('park') < alone, `parks ${crimeAt('park')}, alone ${alone}`);
+  assert.ok(crimeAt('wind') <= alone, `a wind turbine next door ${crimeAt('wind')}, alone ${alone}`);
 });
 
 await test('a connected, powered city grows and pays taxes', () => {

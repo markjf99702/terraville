@@ -669,10 +669,11 @@ export class Sim {
       world.serviceCov[i] = clamp(service[i], 0, 255);
     }
 
-    // Crime grows where people are crowded and land is cheap.
+    // Crime grows where people are crowded and land is cheap: where they live and work, not in parks, plants or stations.
     const crimeRaw = new Float32Array(n);
     for (let i = 0; i < n; i++) {
-      if (!world.occ[i]) continue;
+      const b = world.occ[i] ? world.buildings.get(world.occ[i]) : undefined;
+      if (!b || !isZone(b.kind)) continue;
       const lvPrev = world.landValue[i];
       crimeRaw[i] = world.density[i] * 0.75 + Math.max(0, 150 - lvPrev) * 0.5;
     }

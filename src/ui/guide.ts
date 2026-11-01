@@ -110,14 +110,14 @@ function sections(): Section[] {
         ${table(['Raises it', 'Up to'], [
           ['Water within 6 tiles', '+$1,680'],
           ['Being close to the centre of town', '+$1,920'],
-          ['Parks nearby', '+$1,600'],
+          ['Parks nearby', '+$1,100'],
           ['Schools and hospitals nearby', '+$2,240'],
           ['Hills and high ground', '+$960'],
           ['Trees nearby', '+$880'],
           ['Landmark upgrades, all six', `+${money(6 * UPGRADE_LV * 40)}`],
         ], [1])}
         <p>Pollution is the big one on the other side: every point of it costs more than crime or traffic does. A lot next to heavy industry can lose most of its value.</p>
-        ${tip('Parks cost $10 each. A few parks around a residential block can lift it past a density threshold for less than the price of one zone.')}`,
+        ${tip('Parks cost $10 each. A ring of them around a block adds a few hundred dollars an acre, enough to tip a lot that is just short of a threshold. A school or hospital nearby does far more.')}`,
     },
     {
       id: 'power',
