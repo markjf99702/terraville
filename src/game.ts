@@ -839,6 +839,45 @@ export class Game {
     this.ui.cursorTip(0, 0, null);
   }
 
+  /**
+   * Take back a brush stroke that has only just begun, as if it had never started: a second finger landed, so it was
+   * the start of a pinch. The ground goes back, the money is refunded and the undo entry goes, with the redo list as
+   * it was. Anything else just stops, as cancelTool does.
+   */
+  abortStroke(): void {
+    if (!this.brushOn) return this.cancelTool();
+    this.brushOn = false;
+    const top = this.undoStack.pop();
+    if (top) {
+      if (this.mode === 'city') {
+        // The rest of the city kept growing meanwhile: put back only the ground the stroke touched.
+        const full = top.snap as WorldSnapshot;
+        const area = top.open && top.within ? this.world.changedArea(full, top.within) : null;
+        if (area) this.world.restoreArea(this.world.areaSnapshot(area, full));
+        this.world.city.funds += this.brushSpent;
+        this.ui.onFunds();
+      } else this.world.restore(top.snap as WorldSnapshot);
+      this.redoStack = this.strokeRedo;
+    }
+    this.brushSpent = 0;
+    this.strokeRedo = [];
+    if (this.sim) this.sim.powerDirty = true;
+    this.minimap.markDirty();
+    this.ui.syncUndo();
+    this.cancelTool();
+  }
+  /** The redo list from before the brush stroke under way, which starting it cleared. */
+  private strokeRedo: UndoEntry[] = [];
+
+  /**
+   * Start a touch brush stroke that waited `held` seconds to be sure it wasn't a pinch, and make up the time: a hold
+   * does as much as before, and a quick tap still does a little.
+   */
+  strokeDown(fx: number, fy: number, sx: number, sy: number, held: number): void {
+    this.pointerDown(fx, fy, sx, sy);
+    if (this.brushOn && held > 0) this.brushTick(Math.min(held, 0.25));
+  }
+
   get dragging(): boolean {
     return this.anchor !== null || this.brushOn || this.pendingPlace;
   }
@@ -960,6 +999,7 @@ export class Game {
         return;
       case 'brush':
         if (!inside) return;
+        this.strokeRedo = this.redoStack;
         this.pushUndo();
         if (this.mode === 'city') this.undoStack[this.undoStack.length - 1].within = null;
         this.brushOn = true;

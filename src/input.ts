@@ -4,6 +4,12 @@
 import { hasKeyboardFocus, watchFocus } from './focus';
 import type { Game } from './game';
 
+/** A touch brush waits this long, or for the finger to move this far, before it changes the land. */
+const BRUSH_WAIT_MS = 100;
+const BRUSH_SLOP = 6; // px
+/** A second finger this soon after a touch brush stroke began makes it a pinch, and the stroke is taken back. */
+const STROKE_UNDO_MS = 250;
+
 interface Ptr {
   x: number;
   y: number;
@@ -12,9 +18,15 @@ interface Ptr {
 
 export class Input {
   private pointers = new Map<number, Ptr>();
-  /** 'rclick': right button down, either a quick bulldoze or, once it moves, a pan. */
-  private mode: 'none' | 'tool' | 'pan' | 'pinch' | 'maybe' | 'rclick' = 'none';
+  /**
+   * 'rclick': right button down, either a quick bulldoze or, once it moves, a pan. 'brushwait': one finger down with
+   * a brush, not yet started in case a second finger turns it into a pinch.
+   */
+  private mode: 'none' | 'tool' | 'pan' | 'pinch' | 'maybe' | 'rclick' | 'brushwait' = 'none';
   private start = { x: 0, y: 0, camX: 0, camY: 0 };
+  /** When the finger went down for 'brushwait', and when a touch brush stroke began (performance.now). */
+  private downAt = 0;
+  private strokeAt = -Infinity;
   private pinch = { d: 1, zoom: 1, cx: 0, cy: 0, tx: 0, ty: 0 };
   private space = false;
   /** Space was used to drag the map, so releasing it should not toggle pause. */
@@ -72,8 +84,12 @@ export class Input {
     const p = this.local(e);
     this.pointers.set(e.pointerId, { ...p, type: e.pointerType });
     if (this.pointers.size === 2) {
-      // Second finger: abandon any tool drag and start pinching.
-      if (this.mode === 'tool') g.cancelTool();
+      // Second finger: abandon any tool drag and start pinching. A brush that had not started yet does nothing, and
+      // one that started a moment ago is taken back, ground, money and all.
+      if (this.mode === 'tool') {
+        if (performance.now() - this.strokeAt < STROKE_UNDO_MS) g.abortStroke();
+        else g.cancelTool();
+      }
       const [a, b] = [...this.pointers.values()];
       const cx = (a.x + b.x) / 2;
       const cy = (a.y + b.y) / 2;
@@ -108,9 +124,26 @@ export class Input {
       this.mode = 'maybe';
       return;
     }
+    if (e.pointerType === 'touch' && g.tool().kind === 'brush') {
+      // A pinch starts with one finger too: wait a moment before the brush touches the ground.
+      this.mode = 'brushwait';
+      this.downAt = performance.now();
+      return;
+    }
     this.mode = 'tool';
+    this.strokeAt = -Infinity;
     const t = g.renderer.screenToTile(p.x, p.y);
     g.pointerDown(t.x, t.y, p.x, p.y);
+  }
+
+  /** The finger has stayed down long enough, or moved far enough, to be a brush stroke rather than a pinch. */
+  private startStroke(): void {
+    const g = this.game;
+    const waited = (performance.now() - this.downAt) / 1000;
+    this.mode = 'tool';
+    this.strokeAt = performance.now();
+    const t = g.renderer.screenToTile(this.start.x, this.start.y);
+    g.strokeDown(t.x, t.y, this.start.x, this.start.y, waited);
   }
 
   private move(e: PointerEvent): void {
@@ -134,6 +167,7 @@ export class Input {
       r.clampCamera();
       return;
     }
+    if (this.mode === 'brushwait' && Math.hypot(p.x - this.start.x, p.y - this.start.y) > BRUSH_SLOP) this.startStroke();
     if ((this.mode === 'maybe' || this.mode === 'rclick') && Math.hypot(p.x - this.start.x, p.y - this.start.y) > 5) {
       this.mode = 'pan';
       this.canvas.classList.add('grabbing');
@@ -160,6 +194,8 @@ export class Input {
       if (this.pointers.size === 0) this.mode = 'none';
       return;
     }
+    // A quick tap with a brush: a short stroke, as long as the finger was down.
+    if (this.mode === 'brushwait') this.startStroke();
     if (this.mode === 'maybe') {
       const t = g.renderer.screenToTile(p.x, p.y);
       g.pointerDown(t.x, t.y, p.x, p.y);
@@ -263,8 +299,9 @@ export class Input {
     }
   }
 
-  /** Keyboard panning, once per frame. */
+  /** Keyboard panning, and a touch brush that has waited long enough, once per frame. */
   update(dt: number): void {
+    if (this.mode === 'brushwait' && performance.now() - this.downAt >= BRUSH_WAIT_MS) this.startStroke();
     if (!this.keys.size) return;
     const g = this.game;
     const speed = (620 * dt) / g.renderer.cam.zoom;

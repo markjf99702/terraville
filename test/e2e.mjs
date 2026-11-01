@@ -652,6 +652,114 @@ try {
     await ctx.close();
   });
 
+  await test('a pinch with a brush selected leaves the land, the undo list and the money as they were', async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    const cdp = await ctx.newCDPSession(page);
+    const touch = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map(([x, y], id) => ({ x, y, id })) });
+    const frames = (n) => page.evaluate((n) => new Promise((ok) => { const f = () => (n-- > 0 ? requestAnimationFrame(f) : ok()); f(); }), n);
+    // When each finger landed, as the page saw it.
+    await page.evaluate(() => {
+      window.__downs = [];
+      document.querySelector('#map').addEventListener('pointerdown', (e) => window.__downs.push(e.timeStamp));
+    });
+    const state = () => page.evaluate(() => {
+      const g = window.__terraville;
+      let land = 0;
+      for (let i = 0; i < g.world.n; i++) land += g.world.height[i] * ((i % 97) + 1);
+      return { land: Math.round(land * 1000), undo: g.canUndo(), redo: g.canRedo(), funds: Math.round(g.world.city.funds * 100) };
+    });
+    /** Centre the map on tile (x, y) and give its place on the screen. */
+    const aim = (x, y) => page.evaluate(([x, y]) => {
+      const r = window.__terraville.renderer;
+      r.cam.zoom = 16;
+      r.centerOn(x + 0.5, y + 0.5);
+      const p = r.tileToScreen(x + 0.5, y + 0.5);
+      const box = document.querySelector('#map').getBoundingClientRect();
+      return [Math.round(box.left + p.x), Math.round(box.top + p.y)];
+    }, [x, y]);
+    /** A finger held still for `ms`. */
+    async function hold([x, y], ms) {
+      await touch('touchStart', [[x, y]]);
+      await page.waitForTimeout(ms);
+      await touch('touchEnd', []);
+      await frames(2);
+    }
+    /** A pinch on tile (tx, ty) whose second finger lands `gap` ms after the first, and the gap the page saw. */
+    async function pinch([tx, ty], gap) {
+      const [x, y] = await aim(tx, ty);
+      await page.evaluate(() => { window.__downs = []; });
+      const zoom = await page.evaluate(() => window.__terraville.renderer.cam.zoom);
+      // Not waited for, so the second finger follows by the gap rather than by a round trip as well.
+      const first = touch('touchStart', [[x, y]]);
+      if (gap) await page.waitForTimeout(gap);
+      await touch('touchStart', [[x, y], [x + 30, y]]);
+      await first;
+      for (let k = 1; k <= 6; k++) {
+        await touch('touchMove', [[x - k * 8, y], [x + 30 + k * 8, y]]);
+        await frames(1);
+      }
+      await touch('touchEnd', []);
+      await frames(3);
+      assert.ok(await page.evaluate((z) => window.__terraville.renderer.cam.zoom > z * 1.2, zoom), 'the pinch zoomed in');
+      return page.evaluate(() => window.__downs[1] - window.__downs[0]);
+    }
+    /** Pinches with the second finger at several delays, up to the 250 ms in which a stroke is still taken back. */
+    async function pinches(at, before) {
+      for (const gap of [0, 30, 60, 150]) {
+        // On a busy machine a finger can land later than asked: the claim is only for gaps under 250 ms.
+        for (let tries = 0; tries < 3; tries++) {
+          const seen = await pinch(at, gap);
+          if (seen < 240) break;
+        }
+        assert.deepEqual(await state(), before, `second finger after ${gap} ms`);
+      }
+    }
+
+    // The terrain editor, with Raise: holding a finger raises the ground, and undo puts it back.
+    await page.click('[data-act="editor"]');
+    await page.waitForFunction(() => window.__terraville.mode === 'editor');
+    await page.evaluate(() => window.__terraville.setTool('raise'));
+    const hill = [60, 50];
+    const flat = await state();
+    await hold(await aim(...hill), 400);
+    const raised = await state();
+    assert.ok(raised.land !== flat.land && raised.undo, 'a held finger raised the ground');
+    await page.evaluate(() => window.__terraville.undo());
+    const before = await state();
+    assert.deepEqual(before, { ...flat, redo: true });
+    await pinches(hill, before);
+
+    // A city with Level land: a pinch on a slope costs nothing.
+    await page.evaluate(() => window.__terraville.showTitle());
+    await titleUp(page);
+    await found(page);
+    const slope = await page.evaluate(() => {
+      const w = window.__terraville.world;
+      let best = null;
+      for (let y = 8; y < w.h - 8; y++) for (let x = 8; x < w.w - 8; x++) {
+        const i = y * w.w + x;
+        if (w.water[i] || w.occ[i] || w.net[i]) continue;
+        const s = w.slope(x, y);
+        if (s < 12 && (!best || s > best.s)) best = { x, y, s };
+      }
+      w.city.funds = 50000;
+      window.__terraville.setTool('level');
+      return best;
+    });
+    const at = [slope.x, slope.y];
+    const unlevelled = await state();
+    await hold(await aim(...at), 400);
+    const levelled = await state();
+    assert.ok(levelled.funds < unlevelled.funds && levelled.undo, 'a held finger levelled the slope, for a price');
+    await page.evaluate(() => window.__terraville.undo());
+    const city = await state();
+    assert.deepEqual(city, { ...unlevelled, redo: true }, 'undo put the slope and the money back');
+    await pinches(at, city);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test("at its own address the title screen asks nothing of Google, and Drive says so when Google's sign-in can't load", async () => {
     const { ctx, page, problems, away } = await atTheSite();
     await page.waitForTimeout(1500);
