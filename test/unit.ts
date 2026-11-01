@@ -9,6 +9,7 @@ import { DAMAGED_CODE, encode, encodeNow, decode, listSlots, pushSaved, saveCode
 import { Drive, GisOAuth2 } from '../src/drive';
 import { makeRng } from '../src/rng';
 import { SCENARIOS, buildScenario, openScenario, scenarioMonth } from '../src/scenarios';
+import { Game } from '../src/game';
 
 let passed = 0;
 async function test(name: string, fn: () => void | Promise<void>) {
@@ -794,6 +795,111 @@ await test('undo snapshots restore the map but never money, and only onto the sa
   const other = flat(50, 30);
   assert.equal(other.restore(snap), false);
 });
+
+// ---- the game's own tools, undo and money, with the page left out ----
+
+/** Something that answers every property and call with itself, for the parts of the page a headless game touches. */
+function stub(): any {
+  const p: any = new Proxy(function () {}, {
+    get: (t: any, k) => (k === 'then' ? undefined : k === Symbol.toPrimitive ? () => 0 : k in t ? t[k] : p),
+    apply: () => p,
+    set: (t: any, k, v) => ((t[k] = v), true),
+  });
+  return p;
+}
+
+/** A Game playing `world` as a city, with no page: what it would toast is kept in `toasts`. */
+function headless(world: World): any {
+  const g: any = Object.create(Game.prototype);
+  const toasts: string[] = [];
+  const ui = stub();
+  ui.toast = (t: string) => toasts.push(t);
+  ui.modalOpen = false;
+  Object.assign(g, {
+    mode: 'city', world, sim: null, renderer: stub(), minimap: stub(), audio: stub(), ui, drive: stub(), speed: 2,
+    terrain: { ...DEFAULT_TERRAIN, seed: 'unit', w: world.w, h: world.h }, toolId: 'query', brush: { radius: 4, strength: 0.6 },
+    settings: { sound: false, autosave: false, traffic: false, grid: false, contours: false, night: false },
+    slotId: null, acc: 0, undoStack: [], redoStack: [], strokeRedo: [], pendingPlace: false, anchor: null, brushOn: false,
+    brushAt: { x: 0, y: 0 }, brushTarget: undefined, brushSpent: 0, autoTimer: 0, toolOnce: null, autoSlope: false,
+    lastSpeed: 2, toasts,
+  });
+  g.startSim();
+  return g;
+}
+
+/** Weeks of the game's clock, sealing undo before each step as a frame does. */
+function weeks(g: any, n: number): void {
+  for (let k = 0; k < n; k++) {
+    g.sealUndo();
+    g.sim.step();
+    if (g.sim.powerDirty) g.sim.computePower();
+  }
+  g.sealUndo();
+}
+
+/** Use a drag tool from one tile to another, as the pointer would. */
+function drag(g: any, tool: string, x0: number, y0: number, x1 = x0, y1 = y0): void {
+  g.setTool(tool);
+  g.pointerDown(x0 + 0.5, y0 + 0.5, 0, 0);
+  g.pointerMove(x1 + 0.5, y1 + 0.5, 0, 0);
+  g.pointerUp(x1 + 0.5, y1 + 0.5, 0, 0);
+  g.sealUndo();
+}
+
+/** Run `fn` with Math.random seeded, so a test that rolls dice rolls the same ones every time. */
+function seeded<T>(seed: number, fn: () => T): T {
+  const random = Math.random;
+  Math.random = makeRng(seed);
+  try {
+    return fn();
+  } finally {
+    Math.random = random;
+  }
+}
+
+/** A small powered grid town on flat land, three years old, with money to spare. */
+function town(): any {
+  const w = flat(60, 40);
+  w.city.difficulty = 'easy';
+  const g = headless(w);
+  w.city.funds = 100000;
+  drag(g, 'coal', 8, 5);
+  for (let y = 8; y <= 32; y += 4) {
+    drag(g, 'road', 10, y, 50, y);
+    drag(g, 'power', 10, y, 50, y);
+  }
+  for (let x = 10; x <= 50; x += 4) drag(g, 'road', x, 8, x, 32);
+  let k = 0;
+  for (let y = 10; y < 32; y += 4) for (let x = 12; x < 50; x += 4) drag(g, (['res', 'res', 'com', 'ind'] as const)[k++ % 4], x, y);
+  weeks(g, 4 * 36);
+  return g;
+}
+
+await test('undo refunds only within three months of the action, however often it was undone and redone since', () => seeded(42, () => {
+  const g = town();
+  drag(g, 'nuclear', 52, 20);
+  for (let m = 0; m < 24; m++) {
+    weeks(g, 4);
+    if (m % 3 === 2) {
+      g.undo();
+      g.redo();
+    }
+  }
+  const funds = g.world.city.funds;
+  g.undo();
+  assert.equal(g.world.city.funds, funds, `refunded $${Math.round(g.world.city.funds - funds)}`);
+  assert.equal(g.toasts.at(-1), 'Undone. It cost $5,000, which is only refunded within 3 months.');
+  // A quick change of mind is still refunded, and redo charges it again.
+  drag(g, 'coal', 52, 30);
+  weeks(g, 4);
+  const f = g.world.city.funds;
+  g.undo();
+  assert.equal(g.world.city.funds, f + 3000);
+  g.redo();
+  assert.equal(g.world.city.funds, f);
+  g.undo();
+  assert.equal(g.world.city.funds, f + 3000);
+}));
 
 await test('damaged saves are refused instead of half-loaded', () => {
   const w = flat();

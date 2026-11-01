@@ -1253,7 +1253,8 @@ export class Game {
     const refund = city && this.refundable(e) ? e.cost : 0;
     const back = this.copyLike(e.snap);
     if (!this.restore(e.snap)) return;
-    this.redoStack.push({ snap: back, cost: refund, month: this.world.city.month, upgrade: e.upgrade });
+    // Both stacks keep the month of the action itself, so undoing and redoing never restarts the refund clock.
+    this.redoStack.push({ snap: back, cost: refund, month: e.month, upgrade: e.upgrade });
     if (e.upgrade) this.sim?.computeMaps();
     this.ui.syncUndo();
     if (city) {
@@ -1274,7 +1275,7 @@ export class Game {
     }
     const back = this.copyLike(e.snap);
     if (!this.restore(e.snap)) return;
-    this.undoStack.push({ snap: back, cost: e.cost, month: this.world.city.month, upgrade: e.upgrade });
+    this.undoStack.push({ snap: back, cost: e.cost, month: e.month, upgrade: e.upgrade });
     if (e.upgrade) this.sim?.computeMaps();
     this.ui.syncUndo();
     if (this.mode === 'city') this.world.city.funds -= e.cost;
