@@ -43,6 +43,8 @@ const REFUND_MONTHS = 3;
 
 /** Simulated weeks per real second at each speed. */
 export const SPEEDS = [0, 0.7, 1.8, 5, 14];
+/** The most simulation one frame takes on before it lets the frame be drawn, in ms. */
+const SIM_MS_PER_FRAME = 10;
 export const SPEED_NAMES = ['Paused', 'Slow', 'Normal', 'Fast', 'Ultra'];
 
 export interface Settings {
@@ -735,10 +737,17 @@ export class Game {
     if (running && this.sim) {
       this.acc += dt * SPEEDS[this.speed];
       let steps = 0;
+      const t0 = performance.now();
       while (this.acc >= 1 && steps < 6) {
         this.sim.step();
         this.acc -= 1;
         steps++;
+        // A big city on a slow phone takes tens of ms a week: past this frame's share the weeks still owed are
+        // dropped, so the clock runs as fast as the device can while the map and taps keep up.
+        if (performance.now() - t0 > SIM_MS_PER_FRAME) {
+          this.acc = 0;
+          break;
+        }
       }
       if (this.acc > 1) this.acc = 0;
       r.stepFrac = this.acc;

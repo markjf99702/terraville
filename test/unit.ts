@@ -1053,6 +1053,26 @@ function town(): any {
   return g;
 }
 
+await test('on a device too slow for the speed, a frame runs one week of the clock and drops the rest', () => {
+  const g = headless(flat());
+  g.speed = 4; // Ultra: 14 weeks a second
+  let steps = 0;
+  g.sim.step = () => {
+    steps++;
+    const t = performance.now();
+    while (performance.now() - t < 15); // a slow phone takes 54-99 ms
+  };
+  g.frame(0.3); // owes 4.2 weeks
+  assert.equal(steps, 1);
+  assert.ok(g.acc < 1, `still owes ${g.acc} weeks`);
+  // Where weeks are quick, a frame catches up as before.
+  g.sim.step = () => steps++;
+  steps = 0;
+  g.acc = 0;
+  g.frame(0.3);
+  assert.equal(steps, 4);
+});
+
 await test('undo refunds only within three months of the action, however often it was undone and redone since', () => seeded(42, () => {
   const g = town();
   drag(g, 'nuclear', 52, 20);
