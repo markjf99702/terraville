@@ -150,12 +150,12 @@ export class Disasters {
     const burning: number[] = [];
     for (let i = 0; i < n; i++) if (fire[i]) burning.push(i);
     if (!burning.length) return;
-    const fund = world.city.funding.fire;
     const handled = new Set<number>();
     for (const i of burning) {
       const x = i % w;
       const y = (i / w) | 0;
-      const cov = (world.fireCov[i] / 255) * fund;
+      // Coverage already falls with the stations' funding (computeMaps), so funding isn't counted again here.
+      const cov = world.fireCov[i] / 255;
       // Spread to flammable neighbours.
       for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
         const nx = x + dx;

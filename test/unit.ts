@@ -647,6 +647,28 @@ await test('fire reports read right: an airport, a school', () => {
     ['Fire reported at an airport.', 'Fire reported at an industrial zone.', 'Fire reported at a school.']);
 });
 
+await test('fire funding weakens a station once: at half funding it fights a fire next door at half strength', () => {
+  const w = flat(40, 30);
+  const home = w.place('res', 10, 10);
+  const station = w.place('fire', 14, 10);
+  w.city.funding.fire = 0.5;
+  const sim = new Sim(w);
+  station.powered = true;
+  sim.computeMaps();
+  const cov = w.fireCov[11 * w.w + 11] / 255;
+  assert.ok(cov > 0.45 && cov < 0.5, `coverage ${cov}`);
+  // Firefighters put a fire out with chance coverage x 0.45 a week: 0.22 here, or 0.11 if funding counted twice.
+  sim.disasters.ignite(home.x, home.y);
+  const random = Math.random;
+  Math.random = () => 0.16;
+  try {
+    sim.disasters.week();
+  } finally {
+    Math.random = random;
+  }
+  assert.equal(w.fire[11 * w.w + 11], 0, 'the fire is still burning');
+});
+
 await test('a lot that burns down stops burning, so it can be rebuilt at once', () => {
   const w = flat();
   const lot = w.place('res', 10, 10);
