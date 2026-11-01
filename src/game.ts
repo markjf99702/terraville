@@ -1033,7 +1033,7 @@ export class Game {
       this.brushOn = false;
       this.minimap.markDirty();
       if (this.mode === 'city') this.setUndoCost(this.brushSpent);
-      if (this.brushSpent > 0) this.ui.toast(`Levelled for ${fmtMoney(this.brushSpent)}`);
+      if (Math.round(this.brushSpent) >= 1) this.ui.toast(`Levelled for ${fmtMoney(this.brushSpent)}`);
       return;
     }
     if (this.pendingPlace) {

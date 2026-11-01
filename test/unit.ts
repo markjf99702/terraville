@@ -954,6 +954,19 @@ await test('Level land leaves water alone and charges nothing for it', () => {
   assert.ok(!g.toasts.some((t: string) => t.startsWith('Levelled')), g.toasts.join(' / '));
 });
 
+await test("Level land that moves only cents of earth doesn't toast 'Levelled for $0'", () => {
+  const w = flat(40, 30);
+  for (let i = 0; i < w.n; i++) w.height[i] = 4 + (i % 2) * 0.01;
+  const g = headless(w);
+  w.city.funds = 50000;
+  g.setTool('level');
+  g.pointerDown(20.5, 15.5, 0, 0);
+  for (let t = 0; t < 10; t++) g.brushTick(1 / 30);
+  g.pointerUp(20.5, 15.5, 0, 0);
+  assert.ok(w.city.funds < 50000 && w.city.funds > 49999.5, `spent $${50000 - w.city.funds}`);
+  assert.deepEqual(g.toasts.filter((t: string) => t.startsWith('Levelled')), []);
+});
+
 await test('damaged saves are refused instead of half-loaded', () => {
   const w = flat();
   w.place('res', 2, 2);
