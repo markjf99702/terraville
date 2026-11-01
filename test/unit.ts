@@ -924,6 +924,23 @@ function fakeGis(token: () => string): GisOAuth2 {
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
+await test("Google's sign-in failing to load is news only to someone who wants Drive", async () => {
+  let loads = 0;
+  const d = new Drive({
+    fetch: (() => Promise.reject(new TypeError('offline'))) as typeof fetch, storage: memStorage(), now: () => 0, device: { id: 'd', label: 'Mac' },
+    origin: 'https://junkdrawer.works', loadGis: () => (loads++, Promise.reject(new Error('load'))),
+  });
+  // Opening Save, open and share loads it ahead of a tap; blocked, the dialog says nothing to someone who never used Drive.
+  d.prepare();
+  await tick();
+  assert.deepEqual([loads, d.loadFailed, d.error, d.status()], [1, true, '', 'off']);
+  // Pressing Connect tries again and reports that it could not load, rather than that it is still loading.
+  assert.equal(d.connect(), false);
+  assert.equal(d.loadFailed, true);
+  await tick();
+  assert.deepEqual([loads, d.error], [2, 'Could not load Google sign-in. Check the connection.']);
+});
+
 await test('cities sync through Google Drive, one file per city per device', async () => {
   const server = new FakeDrive();
   let tok = 'a1';

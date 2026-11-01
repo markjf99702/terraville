@@ -120,7 +120,10 @@ function loadGoogle(): Promise<GisOAuth2> {
     s.src = 'https://accounts.google.com/gsi/client';
     s.async = true;
     s.onload = () => (g() ? resolve(g()!) : reject(new Error('no oauth2')));
-    s.onerror = () => reject(new Error('load'));
+    s.onerror = () => {
+      s.remove();
+      reject(new Error('load'));
+    };
     document.head.appendChild(s);
   });
 }
@@ -130,6 +133,10 @@ export class Drive {
   private gis: GisOAuth2 | null = null;
   private client: TokenClient | null = null;
   private loading = false;
+  /** The last try at loading Google's sign-in library failed (offline, or a content blocker). */
+  loadFailed = false;
+  /** Someone pressed Connect or Sign in, so a library that won't load is worth a word in the Save dialog. */
+  private asked = false;
   private queue = new Map<string, { code: string; meta: CityMeta }>();
   private busy = false;
   private listeners: (() => void)[] = [];
@@ -235,6 +242,7 @@ export class Drive {
     (this.deps.loadGis ?? loadGoogle)().then(
       (g) => {
         this.loading = false;
+        this.loadFailed = false;
         this.gis = g;
         this.client = g.initTokenClient({
           client_id: GOOGLE_CLIENT_ID,
@@ -252,7 +260,9 @@ export class Drive {
       },
       () => {
         this.loading = false;
-        this.st.err = 'Could not load Google sign-in. Check the connection.';
+        this.loadFailed = true;
+        // Only for someone who uses Drive: for anyone else it's no news that Google's script didn't load.
+        if (this.st.on || this.asked) this.st.err = 'Could not load Google sign-in. Check the connection.';
         this.emit();
       },
     );
@@ -260,9 +270,11 @@ export class Drive {
 
   /**
    * Ask Google for access. Call it straight from a click: Google's sign-in is
-   * a pop-up. Returns false while the sign-in library is still loading.
+   * a pop-up. Returns false while the sign-in library is still loading, or when
+   * it could not load (`loadFailed`; it tries again meanwhile).
    */
   connect(): boolean {
+    this.asked = true;
     // Signed in to another junkdrawer.works app within the hour: no Google window at all.
     if (this.available() && this.useShared()) {
       this.st.on = true;

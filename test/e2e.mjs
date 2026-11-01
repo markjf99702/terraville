@@ -573,6 +573,48 @@ try {
     await ctx.close();
   });
 
+  await test("at its own address the title screen asks nothing of Google, and Drive says so when Google's sign-in can't load", async () => {
+    // Served as if from terraville.junkdrawer.works, where Drive works; anything asked of another site is refused.
+    const site = 'https://terraville.junkdrawer.works';
+    const ctx = await profile({ ...PHONE, serviceWorkers: 'block' });
+    await ctx.addInitScript(() => localStorage.setItem('junkdrawer.carried', 'the tests')); // carry.js has nothing to bring
+    const away = [];
+    await ctx.route('**/*', async (route) => {
+      const u = new URL(route.request().url());
+      if (u.origin !== site) {
+        away.push(u.href);
+        return route.abort('blockedbyclient');
+      }
+      const path = u.pathname.endsWith('/') ? u.pathname + 'index.html' : u.pathname;
+      try {
+        return route.fulfill({ status: 200, contentType: TYPES[extname(path)] || 'text/html', body: await readFile(join(root, path)) });
+      } catch {
+        return route.fulfill({ status: 404, body: '' });
+      }
+    });
+    const page = await ctx.newPage();
+    const problems = [];
+    page.on('pageerror', (e) => problems.push(e.message));
+    await page.goto(site + '/');
+    await titleUp(page);
+    await page.waitForTimeout(1500);
+    assert.deepEqual(away, [], 'the title screen asked another site for something');
+    // Open a saved city loads Google's sign-in ahead of a tap, as the privacy page says. Blocked here, it's no news to
+    // someone who never used Drive...
+    await page.click('[data-act="open"]');
+    await page.waitForFunction(() => document.querySelector('#fDvGo'));
+    for (let i = 0; i < 50 && !away.length; i++) await page.waitForTimeout(100);
+    assert.deepEqual(away, ['https://accounts.google.com/gsi/client']);
+    await page.waitForTimeout(300);
+    assert.doesNotMatch(await page.textContent('#fDrive'), /Could not load/);
+    // ...until they press Connect.
+    await page.click('#fDvGo');
+    assert.equal(await page.textContent('#toast'), 'Google sign-in could not load. Check the connection.');
+    await page.waitForFunction(() => /Could not load Google sign-in\. Check the connection\./.test(document.querySelector('#fDrive').textContent));
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('says what it needs with JavaScript off', async () => {
     const ctx = await profile({ ...PHONE, javaScriptEnabled: false });
     const page = await ctx.newPage();

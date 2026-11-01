@@ -209,12 +209,13 @@ export class UI {
           this.toast(`Could not open it from Google Drive: ${(e as Error).message}`, 'warn');
         }
       } else if (act === 'drive-signin') {
-        if (!this.game.drive.connect()) this.toast('Google sign-in is still loading. Try again in a moment.');
+        this.connectDrive();
       } else if (act === 'open' || act === 'drive-setup') this.openFiles();
     };
     this.titleCopy = null;
     this.titleChecked = false;
-    this.game.drive.prepare();
+    // Google's sign-in script loads only for someone who has connected Drive (the game does that as it starts) or
+    // opens Save, open and share, as the privacy page says.
     this.renderTitleDrive();
   }
 
@@ -344,10 +345,7 @@ export class UI {
         case 'redo': return this.game.redo();
         case 'drive': {
           const d = this.game.drive;
-          if (d.status() === 'signin') {
-            if (!d.connect()) this.toast('Google sign-in is still loading. Try again in a moment.');
-            return;
-          }
+          if (d.status() === 'signin') return this.connectDrive();
           if (d.status() === 'error') void d.flush();
           return this.openFiles();
         }
@@ -362,6 +360,12 @@ export class UI {
     this.syncSpeed();
     this.syncUndo();
     this.syncDrive();
+  }
+
+  /** Connect or sign in to Google Drive, or say why it can't yet. */
+  private connectDrive(): void {
+    const d = this.game.drive;
+    if (!d.connect()) this.toast(d.loadFailed ? 'Google sign-in could not load. Check the connection.' : 'Google sign-in is still loading. Try again in a moment.');
   }
 
   /** The top-bar cloud: shown once Drive is connected, loud only when it needs a tap. */
@@ -861,9 +865,7 @@ export class UI {
     };
     const drive = this.game.drive;
     if (this.game.mode === 'city' && drive.status() === 'signin') {
-      add('cloud', 'Sign in to Google Drive', () => {
-        if (!drive.connect()) this.toast('Google sign-in is still loading. Try again in a moment.');
-      });
+      add('cloud', 'Sign in to Google Drive', () => this.connectDrive());
     }
     add('file', this.game.mode === 'city' ? 'Save, open and share' : 'Save, open and share terrain', () => this.openFiles());
     add('book', 'Strategy guide', () => this.openGuide());
@@ -1779,9 +1781,7 @@ export class UI {
           <div style="display:flex;gap:8px;margin-top:8px"><button class="btn small" id="fDvOff">Disconnect this device</button></div>`;
       }
       const go = box.querySelector<HTMLButtonElement>('#fDvGo');
-      if (go) go.onclick = () => {
-        if (!drive.connect()) this.toast('Google sign-in is still loading. Try again in a moment.');
-      };
+      if (go) go.onclick = () => this.connectDrive();
       const off = box.querySelector<HTMLButtonElement>('#fDvOff');
       if (off) off.onclick = () => {
         drive.disconnect();
