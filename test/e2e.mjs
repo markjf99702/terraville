@@ -236,7 +236,9 @@ try {
     }, months);
     await play(a, 6);
     assert.equal(await a.evaluate(() => window.__terraville.saveCity()), true);
-    const saved = () => a.evaluate(() => JSON.parse(localStorage.getItem('terraville.slots')).find((s) => s.city).date);
+    const saved = (page) => page.evaluate(() => JSON.parse(localStorage.getItem('terraville.slots')).find((s) => s.city).date);
+    // One tab sees what another wrote to localStorage a moment later, longer on a busy machine: wait for it.
+    const seen = (page, date) => page.waitForFunction((d) => JSON.parse(localStorage.getItem('terraville.slots')).find((s) => s.city).date === d, date, { timeout: 5000 }).then(() => date, () => saved(page));
     const stopped = (page) => page.evaluate(() => [window.__terraville.stopped, !!document.querySelector('.modal')]);
     // A second tab on the title screen changes nothing.
     const { page: b, problems: inB } = await open(ctx);
@@ -256,7 +258,8 @@ try {
     // The second tab plays on and saves; nothing the first tab does writes over it.
     const month = await play(b, 30);
     assert.equal(await b.evaluate(() => window.__terraville.saveCity()), true);
-    assert.equal(await saved(), month);
+    assert.equal(await saved(b), month);
+    assert.equal(await seen(a, month), month);
     assert.equal(await a.evaluate(() => window.__terraville.autosave()), false);
     await a.evaluate(() => {
       const g = window.__terraville;
@@ -265,7 +268,7 @@ try {
       document.dispatchEvent(new Event('visibilitychange')); // leaving the page
     });
     await a.waitForTimeout(500);
-    assert.equal(await saved(), month);
+    assert.equal(await saved(a), month);
     // Reloading the second tab doesn't stop it, and its months are still there.
     await b.reload();
     await titleUp(b);
@@ -285,7 +288,7 @@ try {
     await play(a, 1);
     await b.click('.modal footer .btn:not(.primary)');
     await titleUp(b);
-    assert.equal(await saved(), later);
+    assert.equal(await seen(a, later), later);
     assert.deepEqual([...problems, ...inB], []);
     await ctx.close();
   });
