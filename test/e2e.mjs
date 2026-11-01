@@ -291,6 +291,27 @@ try {
     await ctx.close();
   });
 
+  await test('Save, open and share says how the city is kept, with autosave on or off', async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await found(page);
+    const kept = async () => {
+      await page.click('#topbar [data-act="menu"]');
+      await page.click('[role="menu"] button:has-text("Save, open and share")');
+      const text = await page.textContent('#fKept');
+      await page.keyboard.press('Escape');
+      return text;
+    };
+    assert.equal(await kept(), 'The city also saves itself every 90 seconds and whenever you leave the page.');
+    await page.evaluate(() => {
+      window.__terraville.settings.autosave = false;
+      window.__terraville.saveSettings();
+    });
+    assert.equal(await kept(), 'Autosave is off, so only Save now keeps this city.');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('a city code saved as a text file opens again from it', async () => {
     const ctx = await profile({ ...DESK, acceptDownloads: true });
     const { page, problems } = await open(ctx);
@@ -456,7 +477,7 @@ try {
     const autosave = () => page.evaluate(() => window.__terraville.autosave());
     await fullStorage(true);
     assert.deepEqual([await autosave(), await autosave(), await autosave()], [false, false, false]);
-    assert.deepEqual(await page.evaluate(() => window.saidSaving), ['Saving failed. Storage may be full.']);
+    assert.deepEqual(await page.evaluate(() => window.saidSaving), ["Saving failed: this browser's storage is full. Delete snapshots or cities you no longer need in Save, open and share."]);
     await fullStorage(false);
     assert.equal(await autosave(), true);
     await fullStorage(true);

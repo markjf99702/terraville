@@ -1102,7 +1102,9 @@ export class UI {
 
   /** What to say when a save didn't work: this browser is blocking storage, or storage is probably full. */
   saveFailedText(): string {
-    return storageAvailable() ? 'Saving failed. Storage may be full.' : 'Saving failed. This browser is blocking storage.';
+    return storageAvailable()
+      ? "Saving failed: this browser's storage is full. Delete snapshots or cities you no longer need in Save, open and share."
+      : 'Saving failed. This browser is blocking storage.';
   }
 
   toast(text: string, _kind: 'info' | 'warn' = 'info'): void {
@@ -1591,7 +1593,7 @@ export class UI {
     const body = el(`<div style="display:flex;flex-direction:column;gap:18px">
       ${canStore ? '' : '<p class="note">This browser is blocking storage, so saves cannot be kept here. City codes still work: copy one somewhere safe and paste it back later.</p>'}
       ${inGame ? `<div><h3>Save</h3><div style="display:flex;gap:8px;flex-wrap:wrap" id="fSaveBtns"></div>
-        ${g.mode === 'city' ? '<p class="note" style="margin-top:6px">The city also saves itself every 90 seconds and whenever you leave the page.</p>' : ''}</div>` : ''}
+        ${g.mode === 'city' ? `<p class="note" style="margin-top:6px" id="fKept">${g.settings.autosave ? 'The city also saves itself every 90 seconds and whenever you leave the page.' : 'Autosave is off, so only Save now keeps this city.'}</p>` : ''}</div>` : ''}
       <div><h3>Your cities</h3><div class="slots" id="fCities"></div></div>
       <div id="fDrive"></div>
       <div id="fOtherBox"><h3>Snapshots and terrain on this device</h3><div class="slots" id="fOther"></div></div>
