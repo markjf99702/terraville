@@ -257,6 +257,35 @@ await test('rail counts for commuting but carries no car traffic', () => {
   for (let x = 5; x <= 29; x++) assert.equal(w.traffic[5 * w.w + x], 0);
 });
 
+await test('trains through a level crossing add no cars to it, and rail laid along a road carries its riders as rail', () => {
+  const rideTo = (shops: number, lay: (w: World) => void) => {
+    const w = flat(60, 20);
+    const home = w.place('res', 2, 2);
+    w.setLevel(w.place('com', shops, 2), 2);
+    w.setLevel(home, 4);
+    lay(w);
+    const sim = new Sim(w);
+    sim.computeTraffic();
+    assert.equal(home.trip, true);
+    return w;
+  };
+  const crossed = rideTo(30, (w) => {
+    applyLine(w, ROAD, planLine(w, ROAD, linePath(2, 5, 4, 5)));
+    applyLine(w, RAIL, planLine(w, RAIL, linePath(5, 5, 29, 5)));
+    applyLine(w, ROAD, planLine(w, ROAD, linePath(30, 5, 32, 5)));
+    applyLine(w, ROAD, planLine(w, ROAD, linePath(15, 1, 15, 12))); // a street across the track
+  });
+  assert.equal(crossed.net[5 * crossed.w + 15], ROAD | RAIL);
+  assert.equal(crossed.traffic[5 * crossed.w + 15], 0);
+  assert.ok(crossed.traffic[5 * crossed.w + 4] > 0, 'the drive to the station has no cars');
+  // Rail down the middle of a road the whole way: a car-free tram line.
+  const tram = rideTo(50, (w) => {
+    applyLine(w, ROAD, planLine(w, ROAD, linePath(2, 5, 52, 5)));
+    applyLine(w, RAIL, planLine(w, RAIL, linePath(5, 5, 49, 5)));
+  });
+  for (let x = 6; x <= 48; x++) assert.equal(tram.traffic[5 * tram.w + x], 0, `cars at x ${x}`);
+});
+
 await test('homes with no road to any job stay empty, however strong demand is', () => {
   const w = flat(60, 40);
   w.place('coal', 1, 1);

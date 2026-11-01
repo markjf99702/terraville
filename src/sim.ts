@@ -410,7 +410,8 @@ export class Sim {
         const j = ny * w + nx;
         const v = net[j];
         if (!(v & (ROAD | RAIL))) continue;
-        const cost = v & RAIL && !(v & ROAD) ? 0.45 : jams ? 1 + traffic[j] / 90 : 1;
+        // Along the track a level crossing is still rail: only a trip that turns onto the road there pays road prices.
+        const cost = v & RAIL && (!(v & ROAD) || net[i] & RAIL) ? 0.45 : jams ? 1 + traffic[j] / 90 : 1;
         const nd = d + cost;
         if (nd < dist[j]) {
           dist[j] = nd;
@@ -435,13 +436,17 @@ export class Sim {
     }
   }
 
-  /** Follow a distance field downhill from tile i, adding vol to every road tile passed. */
+  /**
+   * Follow a distance field downhill from tile i, adding vol to every road tile driven along. A train passing through
+   * a level crossing adds no cars to it, and commuters who board or leave the train on a crossing don't either.
+   */
   private trace(field: Float32Array, i: number, vol: number, flow: Float32Array): void {
     const { w, h } = this.world;
     const net = this.world.net;
     let steps = 0;
+    // Whether the trip came onto tile i by rail; at the start, whether it can board a train there.
+    let byRail = !!(net[i] & RAIL);
     while (i >= 0 && field[i] > 0 && steps++ < MAX_TRIP * 2) {
-      if (net[i] & ROAD) flow[i] += vol;
       const x = i % w;
       const y = (i / w) | 0;
       let nxt = -1;
@@ -450,9 +455,12 @@ export class Sim {
       if (x < w - 1 && field[i + 1] < nd) { nd = field[i + 1]; nxt = i + 1; }
       if (y > 0 && field[i - w] < nd) { nd = field[i - w]; nxt = i - w; }
       if (y < h - 1 && field[i + w] < nd) { nd = field[i + w]; nxt = i + w; }
+      const onRail = nxt >= 0 && !!(net[i] & RAIL) && !!(net[nxt] & RAIL);
+      if (net[i] & ROAD && !(byRail && onRail)) flow[i] += vol;
+      byRail = onRail;
       i = nxt;
     }
-    if (i >= 0 && net[i] & ROAD) flow[i] += vol;
+    if (i >= 0 && net[i] & ROAD && !byRail) flow[i] += vol;
   }
 
   /**

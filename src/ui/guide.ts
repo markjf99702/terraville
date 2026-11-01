@@ -150,7 +150,7 @@ function sections(): Section[] {
         ], [1, 2, 3, 4])}
         <p>Residents spread their commutes over the city’s biggest employers, so traffic piles up on the roads leading downtown and into the industrial district. Busy roads add pollution and lower nearby land value, and jammed roads make commutes slower, which spreads traffic onto parallel streets.</p>
         <ul>
-          <li><b>Rail</b> is cheaper to travel on than any road, and trips by rail add no cars. Link rail to the road network at both ends and it pulls commuters off the busiest streets. Lots still need a road touching them to grow.</li>
+          <li><b>Rail</b> is cheaper to travel on than any road, and trips by rail add no cars. Link rail to the road network at both ends and it pulls commuters off the busiest streets. A street can cross the track: trains pass through without adding cars. Lots that touch a rail line put their commuters straight on the train, though they still need a road touching them to grow.</li>
           <li><b>Mixed zoning</b> shortens commutes. A pocket of commercial lots inside a residential district keeps many trips off the main roads.</li>
           <li><b>Parallel roads</b> share the load. One long arterial carrying everything will jam.</li>
         </ul>
