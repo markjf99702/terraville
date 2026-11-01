@@ -58,15 +58,17 @@ In **Menu › Save, open and share**, choose **Connect Google Drive**. From then
 | Input | Action |
 |---|---|
 | Left drag | Use the current tool |
-| Right drag, middle drag, Space + drag | Move the map |
-| Wheel, pinch | Zoom |
+| Right-click | Bulldoze what is under the cursor, whatever the tool |
+| `Shift` + drag | Clear an area, whatever the tool |
+| Right drag, middle drag, Space + drag, arrow keys | Move the map |
+| Wheel, pinch, `+` `-` | Zoom |
 | `1` `2` `3` | Residential, commercial, industrial |
 | `R` `T` `P` | Road, rail, power line |
 | `B` / `Q` | Bulldoze / inspect |
 | `Space` | Pause or resume |
 | `,` `.` | Slower, faster |
 | `[` `]` | Brush size |
-| `Ctrl+Z`, `Ctrl+Shift+Z` | Undo, redo |
+| `Ctrl+Z`, `Ctrl+Shift+Z` or `Ctrl+Y` | Undo, redo |
 | `Esc` | Cancel, close |
 
 ## Development
@@ -76,8 +78,9 @@ npm install
 npm run build        # writes index.html (and dist/page.html, a body-only copy)
 npm test             # unit checks for terrain, power, traffic, saves, undo, disasters, Drive sync,
                      # then plays the built index.html in Chromium (needs Playwright)
+npm run typecheck    # tsc --noEmit
 npm run bot -- 30    # a bot plays 30 years and prints a yearly summary
-npx tsc --noEmit     # typecheck
+npm run balance -- 30 # a tidy grid city simulated for 30 years, a line a year
 ```
 
 Source lives in `src/`:
@@ -96,6 +99,6 @@ Source lives in `src/`:
 | `render/` | Chunk-cached canvas renderer, procedural sprites, terrain painter, vehicles, minimap |
 | `ui/` | Top bar, toolbox, dialogs and charts |
 
-Everything in the game is drawn in code. The lettering is Overpass and Overpass Mono, served from here so nothing loads from elsewhere: `fonts/` holds their latin letters under the SIL Open Font License (`fonts/OFL.txt`); the build puts them inside `index.html`, and `privacy.html` loads them from there. The only images are the app icons: `icon.svg`, with `tools/icon-full-bleed.svg` for the edge-to-edge versions, and the `icon-*.png` sizes that `node tools/make-icons.mjs` renders from them for `manifest.webmanifest`. `sw.js` keeps the offline copy and opens from it when the connection isn't answering. `FILES` in it is a fingerprint of the files it keeps: after a rebuild `npm test` says what to set it to, so a release never leaves the copy half old.
+Everything in the game is drawn in code. The lettering is Overpass and Overpass Mono, served from here so nothing loads from elsewhere: `fonts/` holds their latin letters under the SIL Open Font License (`fonts/OFL.txt`); the build puts them inside `index.html`, and `privacy.html` loads them from there. The only images are the app icons and the link preview: `icon.svg`, with `tools/icon-full-bleed.svg` for the edge-to-edge versions, and the `icon-*.png` sizes that `node tools/make-icons.mjs` renders from them for `manifest.webmanifest`; and `og.png`, the picture a shared link shows, a screenshot that nothing here remakes. `sw.js` keeps the offline copy and opens from it when the connection isn't answering. `FILES` in it is a fingerprint of the files it keeps: after a rebuild `npm test` says what to set it to, so a release never leaves the copy half old.
 
 `index.html` is the built game and is committed, so GitHub Pages can serve the repository root as is (`.nojekyll` skips the Jekyll step). Rebuild it with `npm run build` after changing anything in `src/`.

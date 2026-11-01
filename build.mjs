@@ -26,7 +26,7 @@ const css = (await build({
 
 const head = [
   '<title>Terraville</title>',
-  '<meta name="description" content="A city builder with a terrain editor, in the spirit of the 1989 classic.">',
+  '<meta name="description" content="Shape a landscape, then grow a city on it: a city builder in the spirit of the 1989 classic, with a terrain editor, challenges and disasters.">',
   `<style>${css}</style>`,
 ].join('\n');
 const body = `<noscript>Terraville needs JavaScript to draw the map and run the city.</noscript>\n<div id="app"></div>\n<script>${js}</script>`;
@@ -35,7 +35,7 @@ const body = `<noscript>Terraville needs JavaScript to draw the map and run the 
 // single page.
 const preview = [
   '<meta property="og:title" content="Terraville">',
-  '<meta property="og:description" content="Shape a landscape, then grow a city on it. A city builder in the spirit of the 1989 classic.">',
+  '<meta property="og:description" content="Shape a landscape, then grow a city on it.">',
   '<meta property="og:image" content="https://terraville.junkdrawer.works/og.png">',
   '<meta property="og:url" content="https://terraville.junkdrawer.works/">',
   '<meta name="twitter:card" content="summary_large_image">',
