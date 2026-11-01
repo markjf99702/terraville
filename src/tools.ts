@@ -237,6 +237,12 @@ export function planBulldoze(world: World, rect: Pt[]): Plan {
   for (const [x, y] of rect) {
     if (!world.inBounds(x, y)) continue;
     const i = y * world.w + x;
+    // A fire is put out, or burns out: what is burning can't be cleared, though a gap around it can.
+    if (world.fire[i]) {
+      plan.bad.push([x, y]);
+      plan.reason = 'On fire';
+      continue;
+    }
     const id = world.occ[i];
     if (id) {
       if (seen.has(id)) continue;
@@ -253,7 +259,7 @@ export function planBulldoze(world: World, rect: Pt[]): Plan {
       plan.count++;
     }
   }
-  if (!plan.count) plan.reason = 'Nothing to clear';
+  if (!plan.count) plan.reason ??= 'Nothing to clear';
   return plan;
 }
 

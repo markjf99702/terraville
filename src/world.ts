@@ -665,6 +665,8 @@ export class World {
         this.net[i] = a.net[k];
         this.occ[i] = a.occ[k];
         this.rubble[i] = a.rubble[k];
+        // A fire needs something to burn: a lot that caught fire and is undone leaves bare, cold ground.
+        if (!this.occ[i] && !this.trees[i] && !this.rubble[i]) this.fire[i] = 0;
       }
     }
     for (const b of a.buildings) {

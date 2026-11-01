@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { World, encodeArray, decodeArray } from '../src/world';
 import { Sim } from '../src/sim';
 import { generateTerrain, cleanTerrain, DEFAULT_TERRAIN } from '../src/terrain';
-import { linePath, planLine, applyLine, planZones, applyBuildings } from '../src/tools';
+import { linePath, planLine, applyLine, planZones, applyBuildings, planBulldoze } from '../src/tools';
 import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST, UPGRADE_LV, buildingName, upkeepOf } from '../src/defs';
 import { DAMAGED_CODE, encode, encodeNow, decode, listSlots, pushSaved, saveCode, SlotMeta } from '../src/save';
 import { Drive, GisOAuth2 } from '../src/drive';
@@ -899,6 +899,37 @@ await test('undo refunds only within three months of the action, however often i
   assert.equal(g.world.city.funds, f);
   g.undo();
   assert.equal(g.world.city.funds, f + 3000);
+}));
+
+await test('nothing is left burning on bare ground when a burning lot is undone, and a burning lot cannot be bulldozed', () => seeded(42, () => {
+  const g = town();
+  const w = g.world;
+  const bare = () => {
+    let n = 0;
+    for (let i = 0; i < w.n; i++) if (w.fire[i] && !w.occ[i] && !w.trees[i] && !w.rubble[i]) n++;
+    return n;
+  };
+  drag(g, 'res', 53, 12);
+  const lot = w.buildingAt(53, 12);
+  g.sim.disasters.ignite(lot.x, lot.y);
+  assert.ok(w.fire[12 * w.w + 53] > 0);
+  g.undo();
+  assert.ok(!w.buildingAt(53, 12));
+  assert.equal(bare(), 0, 'undoing a lot that caught fire left the ground burning');
+  g.redo();
+  assert.equal(w.buildingAt(53, 12)?.kind, 'res');
+  assert.equal(w.fire[12 * w.w + 53], 0, 'redo put the lot back burning');
+  // Bulldozing a burning lot is refused, as building on burning ground is; clearing a gap beside it still works.
+  const homes = [...w.buildings.values()].filter((b: any) => b.kind === 'res' && b.level > 0 && b.x >= 16 && b.x <= 40 && b.y >= 14);
+  const [burning, beside] = [homes[0], homes.find((b: any) => b.y === homes[0].y && b.x === homes[0].x + 4)];
+  assert.ok(burning && beside, 'two homes side by side');
+  g.sim.disasters.ignite(burning.x, burning.y);
+  const plan = planBulldoze(w, [[burning.x + 1, burning.y + 1]]);
+  assert.deepEqual([plan.count, plan.reason], [0, 'On fire']);
+  drag(g, 'bulldoze', burning.x, burning.y, beside.x + 2, beside.y + 2);
+  assert.ok(w.buildings.has(burning.id), 'the burning lot is still there');
+  assert.equal(w.buildings.has(beside.id), false, 'the lot beside it was cleared');
+  assert.equal(bare(), 0);
 }));
 
 await test('damaged saves are refused instead of half-loaded', () => {
