@@ -468,7 +468,7 @@ export interface BrushOptions {
   target?: number;
   /** Seconds since the last application, so holding the mouse is frame-rate independent. */
   dt: number;
-  /** In city mode brushes leave built tiles alone. */
+  /** In city mode brushes leave built tiles and water alone. */
   protectBuilt?: boolean;
 }
 
@@ -500,7 +500,8 @@ export function applyBrush(world: World, tool: string, cx: number, cy: number, o
       if (d > 1) continue;
       const f = 0.5 + 0.5 * Math.cos(Math.PI * d);
       const i = y * w + x;
-      if (o.protectBuilt && (world.occ[i] || world.net[i])) continue;
+      // Level land can't fill a lake: moving the bed of water it leaves as water would only cost money.
+      if (o.protectBuilt && (world.occ[i] || world.net[i] || world.water[i])) continue;
       const before = hgt[i];
       switch (tool) {
         case 'raise':

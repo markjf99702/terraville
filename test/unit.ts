@@ -932,6 +932,28 @@ await test('nothing is left burning on bare ground when a burning lot is undone,
   assert.equal(bare(), 0);
 }));
 
+await test('Level land leaves water alone and charges nothing for it', () => {
+  const w = flat(60, 40);
+  w.height.fill(4);
+  for (let y = 15; y < 25; y++) for (let x = 25; x < 35; x++) {
+    w.water[y * w.w + x] = 1;
+    w.height[y * w.w + x] = -4;
+  }
+  const g = headless(w);
+  w.city.funds = 50000;
+  const lake = w.height.slice();
+  // Pressed beside the lake at 4 m and held over it for a second.
+  g.setTool('level');
+  g.brush.radius = 4;
+  g.pointerDown(30.5, 13.5, 0, 0);
+  g.pointerMove(30.5, 20.5, 0, 0);
+  for (let t = 0; t < 30; t++) g.brushTick(1 / 30);
+  g.pointerUp(30.5, 20.5, 0, 0);
+  assert.equal(w.city.funds, 50000, `charged $${Math.round(50000 - w.city.funds)}`);
+  assert.deepEqual(w.height, lake);
+  assert.ok(!g.toasts.some((t: string) => t.startsWith('Levelled')), g.toasts.join(' / '));
+});
+
 await test('damaged saves are refused instead of half-loaded', () => {
   const w = flat();
   w.place('res', 2, 2);

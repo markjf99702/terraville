@@ -897,10 +897,14 @@ export class Game {
       if (this.mode === 'editor' && inside) {
         this.ui.cursorTip(sx, sy, `<span class="num">${Math.round(this.world.height[ty * this.world.w + tx])} m</span>`);
       } else if (t.id === 'level' && inside) {
-        const s = this.world.slope(tx, ty);
-        const cls = SLOPE_CLASSES.find((c) => s <= c.max)!;
-        const spent = this.brushOn ? `Levelling <span class="num">${fmtMoney(this.brushSpent)}</span> · ` : 'Hold to level · ';
-        this.ui.cursorTip(sx, sy, `${spent}<b>${cls.label}</b> (<span class="num">${s.toFixed(1)} m</span>): ${cls.note}`, false);
+        const spent = this.brushOn ? `Levelling <span class="num">${fmtMoney(this.brushSpent)}</span> · ` : '';
+        if (this.world.water[ty * this.world.w + tx]) {
+          this.ui.cursorTip(sx, sy, `${spent}<b>Water</b>: Level land can't fill it in`, false);
+        } else {
+          const s = this.world.slope(tx, ty);
+          const cls = SLOPE_CLASSES.find((c) => s <= c.max)!;
+          this.ui.cursorTip(sx, sy, `${spent || 'Hold to level · '}<b>${cls.label}</b> (<span class="num">${s.toFixed(1)} m</span>): ${cls.note}`, false);
+        }
       }
       return;
     }
