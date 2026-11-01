@@ -101,7 +101,6 @@ async function openCode(page, code) {
 const SITE = 'https://terraville.junkdrawer.works';
 async function atTheSite(opts = PHONE) {
   const ctx = await profile({ ...opts, serviceWorkers: 'block' });
-  await ctx.addInitScript(() => localStorage.setItem('junkdrawer.carried', 'the tests')); // carry.js has nothing to bring
   const away = [];
   await ctx.route('**/*', async (route) => {
     const u = new URL(route.request().url());
