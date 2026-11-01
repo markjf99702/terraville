@@ -669,14 +669,16 @@ try {
       for (let i = 0; i < g.world.n; i++) land += g.world.height[i] * ((i % 97) + 1);
       return { land: Math.round(land * 1000), undo: g.canUndo(), redo: g.canRedo(), funds: Math.round(g.world.city.funds * 100) };
     });
-    /** Centre the map on tile (x, y) and give its place on the screen. */
+    /** Centre the map on tile (x, y) and give its place on the screen, or null when a panel covers it there. */
     const aim = (x, y) => page.evaluate(([x, y]) => {
       const r = window.__terraville.renderer;
       r.cam.zoom = 16;
       r.centerOn(x + 0.5, y + 0.5);
       const p = r.tileToScreen(x + 0.5, y + 0.5);
-      const box = document.querySelector('#map').getBoundingClientRect();
-      return [Math.round(box.left + p.x), Math.round(box.top + p.y)];
+      const map = document.querySelector('#map');
+      const box = map.getBoundingClientRect();
+      const at = [Math.round(box.left + p.x), Math.round(box.top + p.y)];
+      return document.elementFromPoint(at[0], at[1]) === map && document.elementFromPoint(at[0] + 80, at[1]) === map ? at : null;
     }, [x, y]);
     /** A finger held still for `ms`. */
     async function hold([x, y], ms) {
@@ -686,8 +688,8 @@ try {
       await frames(2);
     }
     /** A pinch on tile (tx, ty) whose second finger lands `gap` ms after the first, and the gap the page saw. */
-    async function pinch([tx, ty], gap) {
-      const [x, y] = await aim(tx, ty);
+    async function pinch(tile, gap) {
+      const [x, y] = await aim(...tile);
       await page.evaluate(() => { window.__downs = []; });
       const zoom = await page.evaluate(() => window.__terraville.renderer.cam.zoom);
       // Not waited for, so the second finger follows by the gap rather than by a round trip as well.
@@ -721,6 +723,7 @@ try {
     await page.waitForFunction(() => window.__terraville.mode === 'editor');
     await page.evaluate(() => window.__terraville.setTool('raise'));
     const hill = [60, 50];
+    assert.ok(await aim(...hill), 'the middle of the map is clear of panels');
     const flat = await state();
     await hold(await aim(...hill), 400);
     const raised = await state();
@@ -734,20 +737,25 @@ try {
     await page.evaluate(() => window.__terraville.showTitle());
     await titleUp(page);
     await found(page);
-    const slope = await page.evaluate(() => {
+    // The steepest open ground with no water near it, where the map isn't under a panel.
+    const slopes = await page.evaluate(() => {
       const w = window.__terraville.world;
-      let best = null;
+      const out = [];
       for (let y = 8; y < w.h - 8; y++) for (let x = 8; x < w.w - 8; x++) {
+        let wet = false;
+        for (let dy = -5; dy <= 5; dy++) for (let dx = -5; dx <= 5; dx++) if (w.water[(y + dy) * w.w + x + dx]) wet = true;
         const i = y * w.w + x;
-        if (w.water[i] || w.occ[i] || w.net[i]) continue;
+        if (wet || w.occ[i] || w.net[i]) continue;
         const s = w.slope(x, y);
-        if (s < 12 && (!best || s > best.s)) best = { x, y, s };
+        if (s > 2 && s < 12) out.push([x, y, s]);
       }
       w.city.funds = 50000;
       window.__terraville.setTool('level');
-      return best;
+      return out.sort((a, b) => b[2] - a[2]).slice(0, 200);
     });
-    const at = [slope.x, slope.y];
+    let at = null;
+    for (const [x, y] of slopes) if (await aim(x, y)) { at = [x, y]; break; }
+    assert.ok(at, 'a slope to level');
     const unlevelled = await state();
     await hold(await aim(...at), 400);
     const levelled = await state();
