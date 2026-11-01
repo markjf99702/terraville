@@ -260,6 +260,53 @@ try {
     await ctx.close();
   });
 
+  await test('opening an older copy of a city asks before it replaces the later save', async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await found(page);
+    const g = (fn) => page.evaluate(fn);
+    await g(() => { for (let i = 0; i < 4 * 6; i++) window.__terraville.sim.step(); });
+    const { id, name } = await g(() => ({ id: window.__terraville.world.city.id, name: window.__terraville.world.city.name }));
+    const code = await codeOf(page, '(f) => {}');
+    assert.equal(await g(() => window.__terraville.saveTo('snap')), true);
+    await g(() => { for (let i = 0; i < 4 * 30; i++) window.__terraville.sim.step(); return window.__terraville.saveCity(); });
+    const cities = () => g(() => JSON.parse(localStorage.getItem('terraville.slots')).filter((s) => s.city).map((s) => [s.city, s.date]).sort());
+    assert.deepEqual(await cities(), [[id, 36]]);
+    const ask = `This is an older copy of ${name} (Jul 1900). Your save of ${name} is at Jan 1903.`;
+    // A code from month 6, opened as a separate city: the save at month 36 stays as it was.
+    await page.goto(base);
+    await titleUp(page);
+    await openCode(page, code);
+    await page.waitForSelector('.modal:has-text("Open an older copy?")');
+    assert.equal(await page.textContent('.modal .body'), ask);
+    assert.deepEqual(await page.$$eval('.modal footer .btn', (b) => b.map((x) => x.textContent)), ['Go back to Jul 1900', 'Open as a separate city']);
+    await page.click('.modal footer .btn.primary');
+    await page.waitForFunction(() => window.__terraville.mode === 'city');
+    const other = await g(() => { window.__terraville.setSpeed(0); return [window.__terraville.world.city.id, window.__terraville.world.city.month]; });
+    assert.notEqual(other[0], id);
+    assert.equal(other[1], 6);
+    assert.equal(await g(() => window.__terraville.saveCity()), true);
+    assert.deepEqual(await cities(), [[id, 36], [other[0], 6]].sort());
+    // The snapshot from month 6, taken back to: it replaces the save at once.
+    await page.goto(base);
+    await titleUp(page);
+    await page.click('[data-act="open"]');
+    await page.click('#fOther .slot .btn.primary');
+    await page.waitForSelector('.modal:has-text("Open an older copy?")');
+    assert.equal(await page.textContent('.modal .body'), ask);
+    await page.click('.modal footer .btn.danger');
+    await page.waitForFunction(() => window.__terraville.mode === 'city');
+    assert.deepEqual(await g(() => { window.__terraville.setSpeed(0); return [window.__terraville.world.city.id, window.__terraville.world.city.month]; }), [id, 6]);
+    await page.waitForFunction((c) => JSON.parse(localStorage.getItem('terraville.slots')).find((s) => s.city === c)?.date === 6, id);
+    // A copy no older than the save opens as it always did.
+    await page.goto(base);
+    await titleUp(page);
+    await openCode(page, code);
+    await page.waitForFunction(() => window.__terraville.mode === 'city');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('a challenge opened from its save shows its approval, worries and goal straight away', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

@@ -9,7 +9,7 @@ import { ZONE_COLORS } from '../render/color';
 import { drawBuilding } from '../render/sprites';
 import { randomSeedName } from '../rng';
 import { DRIVE_HOME, DriveCopy } from '../drive';
-import { SaveFile, SlotMeta, decode, deleteSlot, encode, listSlots, storageAvailable } from '../save';
+import { SaveFile, SlotMeta, decode, deleteSlot, encode, listSlots, loadSlot, storageAvailable } from '../save';
 import type { Message } from '../sim';
 import { STYLE_NAMES, TerrainStyle, hasSea } from '../terrain';
 import { GoalState, SCENARIOS, Scenario } from '../scenarios';
@@ -1594,6 +1594,11 @@ export class UI {
     </div>`);
 
     const openLocal = async (id: string, name: string) => {
+      // A snapshot is a copy of a city that may have played on since.
+      if (!listSlots().find((s) => s.id === id)?.city) {
+        const f = await loadSlot(id);
+        if (f && olderCopy(f, id)) return;
+      }
       try {
         await g.openSlot(id);
       } catch (e) {
@@ -1601,6 +1606,40 @@ export class UI {
       }
       this.closeModal();
       this.toast(`Opened ${name}.`);
+    };
+
+    /**
+     * A copy of a city (a code or a snapshot) that this device, or Drive, has a later save of: opening it as it is
+     * would replace that save at the next autosave, so ask first. True when it asked.
+     */
+    const olderCopy = (f: SaveFile, slotId: string | null): boolean => {
+      let w: World;
+      try {
+        w = World.deserialize(f.world);
+      } catch {
+        return false;
+      }
+      const { id, name, month, founded } = w.city;
+      if (f.mode !== 'city' || !founded || !id) return false;
+      const later = Math.max(
+        ...listSlots().filter((s) => s.city === id && Number.isFinite(s.date)).map((s) => s.date),
+        ...(copies ?? []).filter((c) => c.city === id && Number.isFinite(c.date)).map((c) => c.date),
+      );
+      if (!(later > month)) return false;
+      const open = (separate: boolean) => {
+        this.closeModal();
+        g.openCopy(f, slotId, separate);
+        this.toast(separate ? `Opened ${name} as a separate city.` : `Opened ${name} as it was in ${dateLabel(month)}.`);
+      };
+      this.openModal({
+        title: 'Open an older copy?',
+        body: el(`<p class="note" style="font-size:14px">This is an older copy of ${esc(name)} (${dateLabel(month)}). Your save of ${esc(name)} is at ${dateLabel(later)}.</p>`),
+        foot: [
+          this.btn(`Go back to ${dateLabel(month)}`, 'danger', () => open(false)),
+          this.btn('Open as a separate city', 'primary', () => open(true)),
+        ],
+      });
+      return true;
     };
 
     // Cities: this device's own saves merged with the copies in Drive, newest first.
@@ -1808,6 +1847,7 @@ export class UI {
       try {
         const f: SaveFile = await decode(code);
         World.deserialize(f.world);
+        if (olderCopy(f, null)) return;
         this.closeModal();
         g.loadFile(f);
         this.toast(`Opened ${f.world.city.name}.`);

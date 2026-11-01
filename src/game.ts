@@ -577,6 +577,17 @@ export class Game {
     this.minimap.markDirty();
   }
 
+  /**
+   * Open a copy of a city, from a code or a snapshot. As a separate city it gets an id of its own, so its saves never
+   * replace those of the city it was copied from.
+   */
+  openCopy(file: SaveFile, slotId: string | null, separate: boolean): void {
+    if (separate) file.world.city.id = newCityId();
+    this.loadFile(file, separate ? null : slotId);
+    // Going back replaces the city's later save: do it now, so the list of saves shows what is being played.
+    if (!separate && this.settings.autosave) void this.saveCity();
+  }
+
   makeSaveFile(): SaveFile {
     return {
       v: 1,
