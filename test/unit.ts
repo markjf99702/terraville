@@ -5,7 +5,7 @@ import { Sim } from '../src/sim';
 import { generateTerrain, cleanTerrain, DEFAULT_TERRAIN } from '../src/terrain';
 import { linePath, planLine, applyLine, planZones, applyBuildings } from '../src/tools';
 import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST, UPGRADE_LV, buildingName, upkeepOf } from '../src/defs';
-import { encode, decode, listSlots, pushSaved, saveCode, SlotMeta } from '../src/save';
+import { DAMAGED_CODE, encode, encodeNow, decode, listSlots, pushSaved, saveCode, SlotMeta } from '../src/save';
 import { Drive, GisOAuth2 } from '../src/drive';
 import { makeRng } from '../src/rng';
 import { SCENARIOS, buildScenario, openScenario, scenarioMonth } from '../src/scenarios';
@@ -443,6 +443,29 @@ await test('world and save codes round-trip', async () => {
   assert.deepEqual(back.occ, w.occ);
   assert.equal(back.buildings.size, w.buildings.size);
   await assert.rejects(decode('hello'));
+});
+
+await test('a city code opens from whatever it was pasted with, and a damaged one says so plainly', async () => {
+  const w = generateTerrain({ ...DEFAULT_TERRAIN, seed: 'pasted', w: 50, h: 40 });
+  w.city.founded = true;
+  w.city.name = 'Pasted';
+  const file = { v: 1 as const, world: w.serialize(), mode: 'city' as const };
+  const gz = await encode(file);
+  const plain = encodeNow(file);
+  assert.ok(gz.startsWith('TV1g:') && plain.startsWith('TV1j:'));
+  const opens = async (text: string) => (await decode(text)).world.city.name;
+  // In quotes, after a few words, with a sign-off, or broken over lines by a mail program.
+  assert.equal(await opens(`"${gz}"`), 'Pasted');
+  assert.equal(await opens(`Here is my city: ${gz} Enjoy it!`), 'Pasted');
+  assert.equal(await opens(gz.replace(/(.{76})/g, '$1\n')), 'Pasted');
+  assert.equal(await opens(`Here is my city: ${plain}`), 'Pasted');
+  // Cut short anywhere, a character changed, or the last few missing: one message, never the browser's own.
+  const k = Math.floor(gz.length / 2);
+  const changed = gz.slice(0, k) + (gz[k] === 'A' ? 'B' : 'A') + gz.slice(k + 1);
+  for (const bad of [gz.slice(0, 4096), gz.slice(0, k), changed, gz.slice(0, -3), plain.slice(0, Math.floor(plain.length * 0.6)), plain.slice(0, -3)]) {
+    await assert.rejects(decode(bad), { message: DAMAGED_CODE });
+  }
+  await assert.rejects(decode('hello'), { message: 'That does not look like a Terraville city code. Codes start with TV1.' });
 });
 
 /** A save and reload the way the game does one: through a city code, then the opening evaluation. */

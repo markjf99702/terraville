@@ -1597,7 +1597,7 @@ export class UI {
       <div id="fOtherBox"><h3>Snapshots and terrain on this device</h3><div class="slots" id="fOther"></div></div>
       ${inGame ? `<div><h3>Share this ${g.mode === 'city' ? 'city' : 'terrain'}</h3>
         <p class="note" style="margin-bottom:8px">A city code holds the whole map. Paste it into Open a city code on any device.</p>
-        <div style="display:flex;gap:8px;margin-bottom:8px"><button class="btn small" id="fMake">Create city code</button><button class="btn small" id="fCopy" disabled>Copy</button></div>
+        <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap"><button class="btn small" id="fMake">Create city code</button><button class="btn small" id="fCopy" disabled>Copy</button><button class="btn small" id="fDownload" disabled>Save as a file</button></div>
         <textarea class="code" id="fCode" readonly placeholder="The code appears here." aria-label="City code"></textarea></div>` : ''}
       <div><h3>Open a city code</h3>
         <textarea class="code" id="fPaste" placeholder="Paste a code that starts with TV1" aria-label="Paste a city code"></textarea>
@@ -1847,7 +1847,19 @@ export class UI {
         const ta = $<HTMLTextAreaElement>(body, '#fCode');
         ta.value = code;
         $<HTMLButtonElement>(body, '#fCopy').disabled = false;
+        $<HTMLButtonElement>(body, '#fDownload').disabled = false;
         make.textContent = `Code ready · ${Math.round(code.length / 1024)} KB`;
+      };
+      // A text file keeps a code whole where a message would cut it short; Open a text file reads it back.
+      $(body, '#fDownload').onclick = () => {
+        const name = (g.mode === 'city' ? g.world.city.name : `Terrain ${g.terrain.seed}`).replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'Terraville';
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([$<HTMLTextAreaElement>(body, '#fCode').value], { type: 'text/plain' }));
+        a.download = `${name}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
       };
       $(body, '#fCopy').onclick = async () => {
         const ta = $<HTMLTextAreaElement>(body, '#fCode');

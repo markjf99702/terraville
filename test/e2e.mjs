@@ -291,6 +291,31 @@ try {
     await ctx.close();
   });
 
+  await test('a city code saved as a text file opens again from it', async () => {
+    const ctx = await profile({ ...DESK, acceptDownloads: true });
+    const { page, problems } = await open(ctx);
+    await found(page);
+    const name = await page.evaluate(() => window.__terraville.world.city.name);
+    await page.click('#topbar [data-act="menu"]');
+    await page.click('[role="menu"] button:has-text("Save, open and share")');
+    await page.click('#fMake');
+    await page.waitForFunction(() => !document.querySelector('#fDownload').disabled);
+    const [download] = await Promise.all([page.waitForEvent('download'), page.click('#fDownload')]);
+    assert.equal(download.suggestedFilename(), `${name}.txt`);
+    const text = await readFile(await download.path(), 'utf8');
+    assert.equal(text, await page.inputValue('#fCode'));
+    // On another device: Open a saved city, Open a text file.
+    const other = await profile(DESK);
+    const { page: b, problems: inB } = await open(other);
+    await b.click('[data-act="open"]');
+    await b.setInputFiles('#fFile', { name: `${name}.txt`, mimeType: 'text/plain', buffer: Buffer.from(text) });
+    await b.waitForFunction(() => window.__terraville.mode === 'city');
+    assert.equal(await b.evaluate(() => window.__terraville.world.city.name), name);
+    assert.deepEqual([...problems, ...inB], []);
+    await ctx.close();
+    await other.close();
+  });
+
   await test('opening an older copy of a city asks before it replaces the later save', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

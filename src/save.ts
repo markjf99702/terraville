@@ -196,20 +196,30 @@ export function encodeNow(file: SaveFile): string {
   return 'TV1j:' + toB64(new TextEncoder().encode(JSON.stringify(file)));
 }
 
-export async function decode(code: string): Promise<SaveFile> {
-  const c = code.trim().replace(/\s+/g, '');
-  let bytes: Uint8Array;
-  if (c.startsWith('TV1g:')) {
-    if (typeof DecompressionStream === 'undefined') throw new Error('This browser cannot open compressed city codes.');
-    bytes = await pipe(fromB64(c.slice(5)), new DecompressionStream('gzip'));
-  } else if (c.startsWith('TV1j:')) {
-    bytes = fromB64(c.slice(5));
-  } else {
-    throw new Error('That does not look like a Terraville city code. Codes start with TV1.');
+/** What a code that won't open says, whichever way it was broken: messaging apps cut long text. */
+export const DAMAGED_CODE = 'That city code is cut short or damaged. Codes are long: copy all of it, or share it as a text file.';
+
+/**
+ * Read a city code out of whatever was pasted: quotes, words around it and line breaks inside it don't matter.
+ * Throws with a readable message.
+ */
+export async function decode(text: string): Promise<SaveFile> {
+  const m = /TV1([gj]):([A-Za-z0-9+/=\s]+)/.exec(text);
+  if (!m) throw new Error('That does not look like a Terraville city code. Codes start with TV1.');
+  const gzip = m[1] === 'g';
+  if (gzip && typeof DecompressionStream === 'undefined') throw new Error('This browser cannot open compressed city codes.');
+  // Words after the code look like more of it, so if it won't open, try again without them, a word at a time.
+  const words = m[2].trim().split(/\s+/);
+  for (let n = words.length; n > 0 && n >= words.length - 8; n--) {
+    try {
+      const raw = fromB64(words.slice(0, n).join(''));
+      const file = JSON.parse(new TextDecoder().decode(gzip ? await pipe(raw, new DecompressionStream('gzip')) : raw)) as SaveFile;
+      if (file && file.v === 1 && file.world) return file;
+    } catch {
+      /* cut short, damaged, or with words after it */
+    }
   }
-  const file = JSON.parse(new TextDecoder().decode(bytes)) as SaveFile;
-  if (!file || file.v !== 1 || !file.world) throw new Error('The city code is incomplete.');
-  return file;
+  throw new Error(DAMAGED_CODE);
 }
 
 export function worldFrom(file: SaveFile): World {
