@@ -6,7 +6,7 @@ import {
 } from './defs';
 import { lessMotion } from './motion';
 import { Minimap } from './render/minimap';
-import { Renderer, SLOPE_CLASSES } from './render/renderer';
+import { Preview, Renderer, SLOPE_CLASSES } from './render/renderer';
 import { hashString, makeRng, pick, randomSeedName } from './rng';
 import { CityMeta, Drive, DriveCopy } from './drive';
 import {
@@ -145,6 +145,14 @@ export class Game {
   private redoStack: UndoEntry[] = [];
   /** A building placement waiting for the pointer to lift. */
   private pendingPlace = false;
+  /** The tile the pointer went down on, and whether a finger (or a pen) put it there rather than a mouse. */
+  private downAt: { x: number; y: number; touch: boolean } | null = null;
+  /**
+   * On a touch screen a plant, a service or a landmark waits for a second tap: the first shows where it goes and what it
+   * costs, with a Build button beside it. The tile tapped, the footprint, and the camera then: moving the map, pinching
+   * or picking another tool takes it back.
+   */
+  private proposal: { tool: string; cx: number; cy: number; x: number; y: number; size: number; cam: { x: number; y: number; zoom: number }; preview: Preview | null } | null = null;
   private anchor: { x: number; y: number } | null = null;
   private brushOn = false;
   private brushAt = { x: 0, y: 0 };
@@ -909,6 +917,16 @@ export class Game {
         void this.autosave();
       }
     }
+    // A building waiting for its second tap stays shown until the map moves or the tool changes.
+    const p = this.proposal;
+    if (p) {
+      const c = r.cam;
+      if (this.mode !== 'city' || this.tool().id !== p.tool || c.x !== p.cam.x || c.y !== p.cam.y || c.zoom !== p.cam.zoom) this.clearProposal();
+      else {
+        if (!this.pendingPlace) r.preview = p.preview;
+        this.placeCard();
+      }
+    }
     r.brushing = this.brushOn;
     r.frame(dt);
     this.minimap.draw(dt);
@@ -977,6 +995,7 @@ export class Game {
     this.pendingPlace = false;
     this.brushOn = false;
     this.built = null;
+    this.clearProposal();
     this.renderer.preview = null;
     this.ui?.syncTool();
   }
@@ -986,6 +1005,7 @@ export class Game {
     this.built = null;
     this.anchor = null;
     this.pendingPlace = false;
+    this.clearProposal();
     if (this.brushOn && this.mode === 'city') this.setUndoCost(this.brushSpent);
     this.brushOn = false;
     this.renderer.preview = null;
@@ -1134,6 +1154,13 @@ export class Game {
     } else {
       r.preview = { tiles: plan.tiles, bad: plan.bad, rects: [], tint: t.id === 'bulldoze' ? '242,193,78' : undefined };
     }
+    const { html, bad } = this.planTip(plan);
+    this.ui.cursorTip(sx, sy, html, bad);
+  }
+
+  /** What a plan builds and costs, or why it can't, for the tip beside it; `bad` when it can't go ahead. */
+  private planTip(plan: Plan): { html: string; bad: boolean } {
+    const t = this.tool();
     let html: string;
     let bad = false;
     if (!plan.count) {
@@ -1154,15 +1181,17 @@ export class Game {
         html += `${SEP}${plan.bad.length} blocked: ${why}`;
       }
     }
-    this.ui.cursorTip(sx, sy, html, bad);
+    return { html, bad };
   }
 
-  pointerDown(fx: number, fy: number, sx: number, sy: number): void {
+  /** The pointer went down on the map; `touch` when a finger or a pen put it there. */
+  pointerDown(fx: number, fy: number, sx: number, sy: number, touch = false): void {
     if (this.mode === 'title') return;
     this.audio.unlock();
     this.built = null;
     const tx = Math.floor(fx);
     const ty = Math.floor(fy);
+    this.downAt = { x: tx, y: ty, touch };
     const t = this.tool();
     const inside = this.world.inBounds(tx, ty);
     switch (t.kind) {
@@ -1222,7 +1251,14 @@ export class Game {
       const t = this.tool();
       if (this.world.inBounds(tx, ty)) {
         if (t.id === 'spring') this.dropSpring(tx, ty);
-        else {
+        else if (this.downAt?.touch && this.mode === 'city') {
+          // A second tap on the building shown builds it; a tap anywhere else shows it there instead.
+          const p = this.proposal;
+          const d = this.downAt;
+          if (p && p.tool === t.id && this.onProposal(d.x, d.y) && this.onProposal(tx, ty)) this.buildProposal();
+          else this.propose(tx, ty, sx, sy);
+          return;
+        } else {
           const plan = this.plan(tx, ty);
           if (plan) this.commit(plan, tx, ty);
         }
@@ -1235,6 +1271,57 @@ export class Game {
     this.anchor = null;
     if (plan) this.commit(plan, Math.floor(fx), Math.floor(fy));
     this.pointerMove(fx, fy, sx, sy);
+  }
+
+  /** Show where the building goes and what it costs, the first tap of two on a touch screen. */
+  private propose(tx: number, ty: number, sx: number, sy: number): void {
+    const t = this.tool();
+    const plan = this.plan(tx, ty);
+    const at = plan?.tiles[0] ?? plan?.bad[0];
+    if (!plan || !at || !t.building) return;
+    this.showPlan(plan, sx, sy);
+    this.ui.cursorTip(0, 0, null);
+    const c = this.renderer.cam;
+    this.proposal = { tool: t.id, cx: tx, cy: ty, x: at[0], y: at[1], size: BUILDINGS[t.building].size, cam: { x: c.x, y: c.y, zoom: c.zoom }, preview: this.renderer.preview };
+    const { html, bad } = this.planTip(plan);
+    this.ui.showPlaceCard(html, bad, plan.count > 0 && this.affordable(plan));
+    this.placeCard();
+  }
+
+  /** Whether tile (x, y) is on the building waiting for its second tap. */
+  private onProposal(x: number, y: number): boolean {
+    const p = this.proposal;
+    return !!p && x >= p.x && y >= p.y && x < p.x + p.size && y < p.y + p.size;
+  }
+
+  /** Build what the first tap showed: the second tap, or its Build button. */
+  buildProposal(): void {
+    const p = this.proposal;
+    if (!p) return;
+    this.clearProposal();
+    if (this.tool().id !== p.tool) return;
+    const plan = this.plan(p.cx, p.cy);
+    if (plan) this.commit(plan, p.cx, p.cy);
+    // The tip says what was built, over it, for its moment.
+    const mid = this.renderer.tileToScreen(p.cx + 0.5, p.cy + 0.5);
+    this.pointerMove(p.cx + 0.5, p.cy + 0.5, mid.x, mid.y);
+  }
+
+  /** Take back a building waiting for its second tap. */
+  private clearProposal(): void {
+    if (!this.proposal) return;
+    if (this.renderer.preview === this.proposal.preview) this.renderer.preview = null;
+    this.proposal = null;
+    this.ui?.hidePlaceCard();
+  }
+
+  /** Keep the Build card beside the building waiting for its second tap. */
+  private placeCard(): void {
+    const p = this.proposal;
+    if (!p) return;
+    const a = this.renderer.tileToScreen(p.x, p.y);
+    const b = this.renderer.tileToScreen(p.x + p.size, p.y + p.size);
+    this.ui.placePlaceCard(a.x, a.y, b.x, b.y);
   }
 
   private dropSpring(tx: number, ty: number): void {
@@ -1593,6 +1680,7 @@ export class Game {
     this.ui.flushRegen();
     this.sealUndo();
     this.built = null;
+    this.clearProposal();
     const e = this.undoStack.pop();
     if (!e) {
       this.ui.toast('Nothing to undo.');
@@ -1631,6 +1719,7 @@ export class Game {
   redo(): void {
     this.ui.flushRegen();
     this.built = null;
+    this.clearProposal();
     const e = this.redoStack.pop();
     if (!e) return;
     if (this.mode === 'city' && this.burning(e.snap)) {

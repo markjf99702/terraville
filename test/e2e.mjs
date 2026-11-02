@@ -2571,6 +2571,101 @@ try {
     await se.close();
   });
 
+  await test('on a phone the first tap with a plant or a service shows where it goes and its price, and a second tap builds it', async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await found(page);
+    // Open, flat ground in the middle of the view.
+    const spot = await page.evaluate(() => {
+      const g = window.__terraville;
+      const w = g.world;
+      const cx = Math.floor(w.w / 2);
+      const cy = Math.floor(w.h / 2);
+      for (let y = cy - 14; y < cy + 14; y++) for (let x = cx - 14; x < cx + 14; x++) {
+        const i = y * w.w + x;
+        if (w.occ[i]) w.remove(w.occ[i]);
+        w.water[i] = 0; w.height[i] = 6; w.trees[i] = 0; w.net[i] = 0; w.rubble[i] = 0;
+      }
+      w.dirtyAll(true);
+      g.renderer.cam.zoom = 16;
+      g.renderer.centerOn(cx, cy);
+      return { cx, cy };
+    });
+    const at = (x, y) => page.evaluate(([x, y]) => {
+      const r = window.__terraville.renderer;
+      const m = document.querySelector('#map').getBoundingClientRect();
+      const q = r.tileToScreen(x + 0.5, y + 0.5);
+      return { x: m.left + q.x, y: m.top + q.y };
+    }, [x, y]);
+    const state = () => page.evaluate(() => {
+      const g = window.__terraville;
+      const card = document.querySelector('#placeCard');
+      const kinds = [...g.world.buildings.values()].map((b) => b.kind);
+      return { funds: g.world.city.funds, fire: kinds.filter((k) => k === 'fire').length, police: kinds.filter((k) => k === 'police').length, res: kinds.filter((k) => k === 'res').length, card: !card || card.hidden ? '' : card.textContent, shown: g.renderer.preview?.rects.map((r) => [r.x, r.y]) ?? [] };
+    });
+    const tap = async (x, y) => {
+      const p = await at(x, y);
+      await page.touchscreen.tap(p.x, p.y);
+      await page.waitForTimeout(150);
+    };
+    await page.tap('[data-tool="fire"]');
+    const start = await state();
+    // One tap spends nothing: it shows the station's footprint, its price and a Build button.
+    await tap(spot.cx, spot.cy);
+    let s = await state();
+    assert.deepEqual([s.funds, s.fire], [start.funds, 0], 'one tap spends nothing and builds nothing');
+    assert.equal(s.card, 'Fire station · $500Build');
+    assert.deepEqual(s.shown, [[spot.cx - 1, spot.cy - 1]], 'its footprint shows where the tap was');
+    // A tap elsewhere shows it there instead.
+    await tap(spot.cx - 7, spot.cy);
+    s = await state();
+    assert.deepEqual([s.funds, s.fire, s.shown], [start.funds, 0, [[spot.cx - 8, spot.cy - 1]]], 'a tap elsewhere moves it');
+    // A second tap on it builds it, wherever on its footprint.
+    await tap(spot.cx - 6, spot.cy + 1);
+    s = await state();
+    assert.deepEqual([s.funds, s.fire, s.card], [start.funds - 500, 1, ''], 'the second tap builds it');
+    // Or the Build button.
+    await tap(spot.cx + 5, spot.cy);
+    assert.equal((await state()).fire, 1);
+    await page.tap('#placeBuild');
+    s = await state();
+    assert.deepEqual([s.funds, s.fire, s.card], [start.funds - 1000, 2, ''], 'Build builds it');
+    // Picking another tool takes it back, and so do moving the map and pinching.
+    await tap(spot.cx, spot.cy + 7);
+    await page.tap('[data-tool="police"]');
+    s = await state();
+    assert.deepEqual([s.funds, s.fire, s.card, s.shown], [start.funds - 1000, 2, '', []], 'another tool takes it back');
+    await tap(spot.cx, spot.cy + 7);
+    assert.ok((await state()).card, 'the police station shows');
+    await page.evaluate(() => { const r = window.__terraville.renderer; r.centerOn(r.cam.x + 2, r.cam.y); });
+    await page.waitForTimeout(100);
+    s = await state();
+    assert.deepEqual([s.police, s.card, s.shown], [0, '', []], 'moving the map takes it back');
+    await tap(spot.cx, spot.cy + 7);
+    const cdp = await ctx.newCDPSession(page);
+    const p = await at(spot.cx, spot.cy + 7);
+    const touch = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map(([x, y], id) => ({ x, y, id })) });
+    await touch('touchStart', [[p.x - 20, p.y]]);
+    await touch('touchStart', [[p.x - 20, p.y], [p.x + 20, p.y]]);
+    for (let k = 1; k <= 5; k++) await touch('touchMove', [[p.x - 20 - k * 6, p.y], [p.x + 20 + k * 6, p.y]]);
+    await touch('touchEnd', []);
+    await page.waitForTimeout(100);
+    s = await state();
+    assert.deepEqual([s.police, s.card], [0, ''], 'pinching takes it back');
+    // Zones still go down with one tap, and a mouse click still builds a station at once.
+    await page.evaluate(([x, y]) => { const r = window.__terraville.renderer; r.cam.zoom = 16; r.centerOn(x, y); }, [spot.cx, spot.cy]);
+    await page.tap('[data-tool="res"]');
+    await tap(spot.cx - 8, spot.cy + 8);
+    assert.equal((await state()).res, 1, 'a zone goes down with one tap');
+    await page.tap('[data-tool="police"]');
+    const q = await at(spot.cx + 6, spot.cy + 8);
+    await page.mouse.click(q.x, q.y);
+    await page.waitForTimeout(150);
+    assert.equal((await state()).police, 1, 'a click builds at once');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('a phone on its side: the Inspect card stays clear of the paused badge, the checklist and the goal card', async () => {
     const ctx = await profile({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
     const { page, problems } = await open(ctx);

@@ -185,6 +185,7 @@ export function buildShell(root: HTMLElement): { map: HTMLCanvasElement; minimap
     <div id="inspect" class="panel" role="region" aria-labelledby="inspectTitle" hidden></div>
     <div id="tooltip" class="panel" hidden></div>
     <div id="cursorTip" hidden></div>
+    <div id="placeCard" class="panel" role="group" aria-label="Build here?" hidden></div>
     <div id="toast" class="panel hide" role="status" aria-live="polite"></div>
     <div id="announce" class="sr-only" aria-live="polite"></div>
     <div id="announceAlert" class="sr-only" aria-live="assertive"></div>
@@ -343,6 +344,7 @@ export class UI {
     this.hideToast(); // a notice about the last screen has nothing to say about this one
     for (const id of ['#topbar', '#toolbox', '#editorPanel', '#minimapCard', '#ticker', '#log', '#guide', '#goal']) $(this.root, id).hidden = true;
     this.hideInspect();
+    this.hidePlaceCard();
     this.measureInsets();
     const t = $(this.root, '#title');
     t.hidden = false;
@@ -887,7 +889,8 @@ export class UI {
     const cost = t.cost ? `<span class="cost">${t.kind === 'line' || t.id === 'bulldoze' || t.id === 'trees' || t.id === 'park' ? `$${t.cost} a tile` : money(t.cost)}${t.building && BUILDINGS[t.building].upkeep ? ` · ${money(BUILDINGS[t.building].upkeep)}/mo upkeep` : ''}</span>` : '';
     const touch = touchScreen();
     const zoneTip = t.building && isZone(t.building) ? `<p>${esc(BUILDINGS[t.building].blurb)} Drag to zone several 3×3 lots.</p>` : `<p>${esc((touch && t.touchTip) || t.tip)}</p>`;
-    const keys = t.kind === 'brush' && !touch ? '<p><kbd>[</kbd> and <kbd>]</kbd> change the brush size.</p>' : '';
+    const keys = t.kind === 'brush' && !touch ? '<p><kbd>[</kbd> and <kbd>]</kbd> change the brush size.</p>'
+      : t.kind === 'place' && touch ? '<p>Tap the map to see where it goes and what it costs, then tap it again to build.</p>' : '';
     tip.innerHTML = `<b>${esc(t.name)}${t.key && !touch ? ` <kbd>${t.key.toUpperCase()}</kbd>` : ''}</b>${cost}${zoneTip}${keys}`;
     tip.hidden = false;
     const r = b.getBoundingClientRect();
@@ -1670,6 +1673,51 @@ export class UI {
     }
     tip.style.left = `${Math.round(Math.max(8, Math.min(W - w - 8, x)))}px`;
     tip.style.top = `${Math.round(Math.max(8, Math.min(H - h - 8, y)))}px`;
+  }
+
+  /**
+   * On a touch screen, beside a plant, a service or a landmark waiting for its second tap: what it costs (or why it
+   * can't go there) and, when it can, a Build button. A second tap on the building itself builds it too.
+   */
+  showPlaceCard(html: string, bad: boolean, canBuild: boolean): void {
+    const card = $(this.root, '#placeCard');
+    card.innerHTML = `<span class="what">${html}</span>${canBuild ? '<button class="btn small primary" id="placeBuild">Build</button>' : ''}`;
+    card.classList.toggle('bad', bad);
+    card.hidden = false;
+    const b = card.querySelector<HTMLButtonElement>('#placeBuild');
+    if (b) {
+      b.onclick = () => {
+        this.game.audio.unlock();
+        this.game.buildProposal();
+      };
+    }
+  }
+
+  hidePlaceCard(): void {
+    $(this.root, '#placeCard').hidden = true;
+  }
+
+  /**
+   * Put the Build card beside the footprint (l, t)-(r, b) on the map, in the room the panels leave: above it, else
+   * below it, else to one side.
+   */
+  placePlaceCard(l: number, t: number, r: number, b: number): void {
+    const card = $(this.root, '#placeCard');
+    if (card.hidden) return;
+    const w = card.offsetWidth;
+    const h = card.offsetHeight;
+    const e = this.game.renderer.insets;
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    let x = (l + r) / 2 - w / 2;
+    let y = t - h - 10;
+    if (y < e.t - 8) y = b + 10;
+    if (y + h > H - e.b + 8) {
+      y = (t + b) / 2 - h / 2;
+      x = r + 10 + w <= W - e.r + 8 ? r + 10 : l - w - 10;
+    }
+    card.style.left = `${Math.round(Math.max(8, Math.min(W - w - 8, x)))}px`;
+    card.style.top = `${Math.round(Math.max(8, Math.min(H - h - 8, y)))}px`;
   }
 
   /** A lasting notice for an unexpected error, with the message to report. */

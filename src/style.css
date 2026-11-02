@@ -335,6 +335,21 @@ input[type="range"] { width: 100%; accent-color: var(--sign-hi); margin: 0; touc
 #cursorTip .num { color: var(--caution); }
 #cursorTip.bad { border-color: var(--critical); color: var(--critical-ink); }
 
+/* On a touch screen, beside a building waiting for its second tap: its price and a Build button. */
+#placeCard {
+  position: absolute;
+  z-index: 36;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 5px 5px 12px;
+  font: 600 13px/1.3 var(--font);
+  width: max-content;
+  max-width: calc(100vw - 16px);
+}
+#placeCard .num { color: var(--caution); }
+#placeCard.bad { border-color: var(--critical); color: var(--critical-ink); padding: 8px 12px; }
+
 /* ---- minimap ------------------------------------------------------------- */
 #minimapCard {
   position: absolute;

@@ -51,7 +51,7 @@ The Challenges list marks each one you have won in this browser, with the year y
 - Drag to zone many lots at once, with live cost and a reason when something can't be built.
 - Every city keeps its own save, updated every 90 seconds, at each year's end and whenever you leave the page. Snapshots and city codes (the whole map compressed into text you can paste on another device) are there too.
 - Optional Google Drive sync, so you can carry on with a city on another device. See below.
-- Touch support: pinch to zoom, two fingers to move.
+- Touch support: pinch to zoom, two fingers to move. A plant, a service or a landmark takes two taps: the first shows where it goes and what it costs, and a second tap on it (or its Build button) builds it.
 - A starter checklist for the first few minutes.
 
 ## Google Drive sync

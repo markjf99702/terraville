@@ -138,7 +138,7 @@ export class Input {
     this.mode = 'tool';
     this.strokeAt = -Infinity;
     const t = g.renderer.screenToTile(p.x, p.y);
-    g.pointerDown(t.x, t.y, p.x, p.y);
+    g.pointerDown(t.x, t.y, p.x, p.y, e.pointerType !== 'mouse');
   }
 
   /** The finger has stayed down long enough, or moved far enough, to be a brush stroke rather than a pinch. */
