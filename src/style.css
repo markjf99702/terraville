@@ -668,18 +668,25 @@ kbd { font: 600 11.5px var(--mono); padding: 1px 6px; border: 1px solid var(--li
 /* ---- goal tracker ---------------------------------------------------------- */
 #goal { padding: 11px 13px; display: flex; flex-direction: column; gap: 7px; }
 #goal.folded { padding: 0; }
-#goal .goal-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; width: 100%; margin: 0; padding: 0; border: none; background: none; text-align: left; }
+#goal .goal-top { display: flex; align-items: center; gap: 6px; }
+#goal .goal-head { display: flex; flex: 1; min-width: 0; align-items: baseline; justify-content: space-between; gap: 8px; margin: 0; padding: 0; border: none; background: none; text-align: left; }
 #goal button.goal-head { align-items: center; min-height: 26px; }
 #goal.folded button.goal-head { min-height: 40px; padding: 8px 12px; }
+#goal .goal-close { width: 26px; height: 26px; flex: none; margin: -4px -6px -4px 0; }
+#goal.folded .goal-close { margin: 0 6px 0 0; }
 #goal .goal-name { flex: 1; min-width: 0; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 #goal .goal-time { font-size: 12px; color: var(--text); white-space: nowrap; }
 #goal .goal-time.lost { color: var(--critical-ink); }
-#goal .goal-rows { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
-#goal .goal-row { display: grid; grid-template-columns: minmax(0, 1fr) 16px; gap: 8px; align-items: baseline; }
-#goal .goal-row .fig { white-space: nowrap; font-variant-numeric: tabular-nums; }
-#goal .goal-row .mark { justify-self: center; color: var(--muted); font-weight: 800; line-height: 1; }
-#goal .goal-row.met .mark { color: var(--good-ink); }
-#goal .goal-row .mark svg { width: 14px; height: 14px; display: block; transform: translateY(2px); }
+/* The goal's conditions, in the tracker and in the result dialog. */
+.goal-rows { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
+.goal-row { display: grid; grid-template-columns: minmax(0, 1fr) 16px; gap: 8px; align-items: baseline; }
+.goal-row .fig { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.goal-row .mark { justify-self: center; color: var(--muted); font-weight: 800; line-height: 1; }
+.goal-row.met .mark { color: var(--good-ink); }
+.goal-row .mark svg { width: 14px; height: 14px; display: block; transform: translateY(2px); }
+.modal .goal-rows { font-size: 14px; }
+.modal .goal-row { grid-template-columns: minmax(0, 1fr); } /* a list of what was not met needs no dashes */
+.modal .goal-row .mark { display: none; }
 #goal .goal-note { margin: 0; font-size: 12px; color: var(--muted); }
 
 /* ---- strategy guide ------------------------------------------------------ */
@@ -904,7 +911,8 @@ footer.jd-foot { display: block; margin: 0; padding: 4px 0 0; border: 0; font-si
   .stat-strip { order: 3; flex: 1 1 100%; justify-content: space-between; }
   .menu { margin-left: auto; }
   #toolbox { top: calc(var(--top) + 130px); }
-  #guide, #goal { top: calc(var(--top) + 130px) !important; }
+  #guide { top: calc(var(--top) + 130px) !important; }
+  #goal { top: calc(var(--top) + 130px + var(--stack, 0px)) !important; }
   #inspect { max-height: calc(100% - var(--top) - var(--bottom) - 150px - var(--ticker-h, 44px)); }
   #toast, #pausedPill { top: calc(var(--top) + 140px); }
 }
@@ -928,7 +936,8 @@ footer.jd-foot { display: block; margin: 0; padding: 4px 0 0; border: 0; font-si
   .menu button { padding: 0 6px; height: 32px; }
   .menu-sep, .menu .hide-sm { display: none; } /* as on a phone: Redo moves to the menu, and the sign opens the report */
   #toolbox { top: calc(var(--top) + 66px); bottom: calc(var(--bottom) + 8px); }
-  #guide, #goal { top: calc(var(--top) + 66px) !important; max-height: calc(100% - var(--top) - var(--bottom) - 68px); overflow-y: auto; }
+  #guide { top: calc(var(--top) + 66px) !important; max-height: calc(100% - var(--top) - var(--bottom) - 68px); overflow-y: auto; }
+  #goal { top: calc(var(--top) + 66px + var(--stack, 0px)) !important; max-height: calc(100% - var(--top) - var(--bottom) - 68px - var(--stack, 0px)); overflow-y: auto; }
   #toast, #pausedPill { top: calc(var(--top) + 66px); }
   #ticker { bottom: calc(var(--bottom) + 8px); right: calc(var(--right) + 222px); }
   #minimapCard { bottom: calc(var(--bottom) + 8px); width: 200px; padding: 6px; gap: 5px; }
@@ -961,6 +970,7 @@ footer.jd-foot { display: block; margin: 0; padding: 4px 0 0; border: 0; font-si
   .menu button { padding: 0 6px; height: 32px; }
   .menu-sep { display: none; }
   #guide, #goal { left: 8px !important; right: 8px !important; width: auto !important; top: calc(var(--top) + 112px) !important; font-size: 12.5px; }
+  #goal { top: calc(var(--top) + 112px + var(--stack, 0px)) !important; }
   #toolbox {
     top: auto;
     left: 8px;

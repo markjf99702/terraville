@@ -1766,7 +1766,7 @@ await test('a city code is read field by field, so what someone typed into it st
   Object.assign(w.city, { id: 'k3j2h1abc9', name: 'Riverton', tax: 9, funds: -1250, month: 655, loan: 20000, classReached: 3, seed: 'river-oak-3', disasters: true });
   w.city.funding.fire = 0.55;
   w.city.history.pop.push(10, 20, 35);
-  w.city.scenario = { id: 'monster', end: 840, done: 'won' };
+  w.city.scenario = { id: 'monster', end: 840, done: 'won', decided: 838, closed: true };
   (w.city as unknown as Record<string, unknown>).later = { kept: true };
   assert.deepEqual(World.deserialize(JSON.parse(JSON.stringify(w.serialize()))).city, w.city);
 });

@@ -49,6 +49,9 @@ export interface Scenario {
   funds: number;
   blurb: string;
   goal: string;
+  /** What the result dialog adds after a win, and after a loss. */
+  win: string;
+  lose: string;
   /** Win as soon as the goal is met, or only judge at the deadline. */
   kind: 'reach' | 'hold';
   /** For a 'hold' goal: the month-ends in a row, up to the deadline, that it must be met. */
@@ -90,6 +93,8 @@ export const SCENARIOS: Scenario[] = [
     funds: 12000,
     blurb: 'A railway company has promised a station if a real town appears on this empty coast. Investors are watching.',
     goal: 'Reach 12,000 residents within 15 years.',
+    win: 'The railway company keeps its word: the station opens next spring.',
+    lose: 'The investors have lost interest, and the railway will go somewhere else.',
     kind: 'reach',
     terrain: { seed: 'boomtown-coast-7', style: 'coast', hills: 30, water: 35 },
     check: (sim) => {
@@ -105,6 +110,8 @@ export const SCENARIOS: Scenario[] = [
     funds: 25000,
     blurb: 'Everyone drives downtown, and the streets can only just take it. The council wants a bigger city and more jobs by the next election, without the traffic grinding to a halt.',
     goal: 'Keep the traffic index under 28 with at least 20,000 residents and 10,000 jobs.',
+    win: 'The streets kept moving and the council was re-elected.',
+    lose: 'The council went into the election with its promise unkept, and lost.',
     kind: 'hold',
     terrain: { seed: 'gridlock-plain-3', style: 'lakes', hills: 15, lakes: 15, forest: 25 },
     city: {
@@ -143,6 +150,8 @@ export const SCENARIOS: Scenario[] = [
     funds: 30000,
     blurb: 'Factories line the river and coal smoke fills the valley. People are leaving. Clean the air without killing the jobs.',
     goal: 'Keep the pollution index under 12, with at least 20,000 residents and 9,000 jobs, for the last 12 months.',
+    win: 'The air in the valley is clean, and people are staying.',
+    lose: 'The valley is still waiting for clean air and steady work.',
     kind: 'hold',
     holdMonths: 12,
     terrain: { seed: 'smog-valley-5', style: 'valley', hills: 40, rivers: 1, forest: 30 },
@@ -180,6 +189,8 @@ export const SCENARIOS: Scenario[] = [
     funds: 20000,
     blurb: 'A major earthquake has just struck. Fires are spreading and roads are broken. The city needs a steady hand.',
     goal: 'Rebuild and grow to 55,000 residents within 8 years.',
+    win: 'The city is back on its feet.',
+    lose: 'The city came through the quake, but the rebuilding fell short.',
     kind: 'reach',
     terrain: { seed: 'aftershock-bay-9', style: 'coast', hills: 35, water: 30 },
     city: {
@@ -211,6 +222,8 @@ export const SCENARIOS: Scenario[] = [
     funds: 30000,
     blurb: 'Something lives in the bay, and it is drawn to smoke. It keeps coming back. Keep the people on your side.',
     goal: 'After 10 years, have at least 25,000 residents and approval above 60%.',
+    win: 'The monster still comes, and the city stands with you.',
+    lose: 'The monster wore the city down before the deadline.',
     kind: 'hold',
     terrain: { seed: 'monster-bay-2', style: 'island', hills: 30, water: 45 },
     city: {

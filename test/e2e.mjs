@@ -485,6 +485,75 @@ try {
     await ctx.close();
   });
 
+  await test('a challenge ends in its own words and lists what was not met; its tracker can then be closed, and the result stays in the report', async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await page.click('[data-act="challenges"]');
+    await page.click('.slot:has-text("Gridlock") .btn.primary');
+    await page.waitForFunction(() => window.__terraville.mode === 'city');
+    // The intro points to the guide's tips, and Tips opens it there.
+    assert.equal(await page.textContent('.modal .panel .note'), 'You have until 1961. The goal tracker keeps score.');
+    await page.click('.modal footer .btn:has-text("Tips")');
+    await page.waitForFunction(() => document.querySelector('.guide-nav [aria-current="true"]')?.textContent === 'Challenges');
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => {
+      const g = window.__terraville;
+      g.setSpeed(0);
+      g.world.city.month = g.world.city.scenario.end;
+      g.checkScenario();
+    });
+    assert.equal(await page.textContent('.modal h2'), "Time's up");
+    assert.match(await page.textContent('.modal .body'), /^\s*The deadline for Gridlock passed at the end of 1960\. The council went into the election with its promise unkept, and lost\.\s*Not met:/);
+    assert.deepEqual(await page.$$eval('.modal .goal-row', (els) => els.map((e) => e.firstElementChild.textContent)), ['Residents 17,568 / 20,000']);
+    await page.click('.modal footer .btn.primary');
+    assert.equal(await page.textContent('#goal .goal-time'), 'Time ran out');
+    assert.match(await page.getAttribute('#goal .track i', 'style'), /var\(--critical\)/);
+    await page.click('#goal .goal-close');
+    assert.equal(await page.isHidden('#goal'), true);
+    // Closed for good: it stays closed when the city opens again, and the report keeps the result.
+    await page.evaluate(() => window.__terraville.saveCity());
+    await page.reload();
+    await titleUp(page);
+    await page.click('[data-act="continue"]');
+    await page.waitForFunction(() => window.__terraville.mode === 'city');
+    await page.evaluate(() => window.__terraville.setSpeed(0));
+    assert.equal(await page.isHidden('#goal'), true);
+    await page.click('#citySign');
+    assert.match((await page.textContent('.modal .body')).replace(/\s+/g, ' '), /Time's up ?The deadline for Gridlock passed at the end of 1960\./);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  await test('Boomtown, the one challenge with no city, shows the starter checklist with the goal tracker below it', async () => {
+    for (const opts of [PHONE, DESK]) {
+      const ctx = await profile(opts);
+      const { page, problems } = await open(ctx);
+      await page.click('[data-act="challenges"]');
+      await page.click('.slot:has-text("Boomtown") .btn.primary');
+      await page.click('.modal footer .btn.primary');
+      await page.waitForFunction(() => window.__terraville.mode === 'city');
+      await page.evaluate(() => window.__terraville.setSpeed(0));
+      const gap = () => page.evaluate(() => document.querySelector('#goal').getBoundingClientRect().top - document.querySelector('#guide').getBoundingClientRect().bottom);
+      await page.waitForFunction(() => !document.querySelector('#guide').hidden);
+      await page.waitForFunction(() => document.querySelector('#goal').getBoundingClientRect().top >= document.querySelector('#guide').getBoundingClientRect().bottom);
+      assert.ok((await gap()) <= 12, `${opts.viewport.width}: the tracker is far below the checklist`);
+      if (opts === PHONE) {
+        // Opened, the checklist pushes the tracker down; folded again, it comes back up.
+        await page.click('#guide .guide-next');
+        await page.waitForFunction(() => document.querySelector('#goal').getBoundingClientRect().top >= document.querySelector('#guide').getBoundingClientRect().bottom);
+        await page.click('#guide button.guide-head');
+        await page.waitForFunction(() => document.querySelector('#goal').getBoundingClientRect().top - document.querySelector('#guide').getBoundingClientRect().bottom <= 12);
+      }
+      // Gridlock hands over a city, and no checklist.
+      await page.evaluate(() => window.__terraville.startScenario('gridlock'));
+      await page.click('.modal footer .btn.primary');
+      assert.equal(await page.isHidden('#guide'), true);
+      assert.equal(await page.evaluate(() => document.querySelector('#goal').style.getPropertyValue('--stack')), '0px');
+      assert.deepEqual(problems, []);
+      await ctx.close();
+    }
+  });
+
   await test('leaving a city that cannot be saved offers a city code, or leaving anyway', async () => {
     const leave = async (page) => {
       await page.click('#topbar [data-act="menu"]');

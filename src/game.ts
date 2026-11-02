@@ -584,6 +584,7 @@ export class Game {
     if (sc.done) return;
     if ((s.kind === 'reach' && st.met) || month >= sc.end) {
       sc.done = st.met ? 'won' : 'lost';
+      sc.decided = month;
       this.audio.play(st.met ? 'fanfare' : 'error');
       this.ui.updateGoal(s, st, sc.end - month, sc.done);
       this.ui.scenarioResult(s, st, sc.done === 'won');

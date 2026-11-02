@@ -14,7 +14,7 @@ import { SaveFile, SlotMeta, decode, deleteSlot, encode, listSlots, loadSlot, st
 import { spending } from '../sim';
 import type { Message } from '../sim';
 import { STYLE_NAMES, TerrainParams, TerrainStyle, hasSea } from '../terrain';
-import { GoalRow, GoalState, SCENARIOS, Scenario, isCount, successLine } from '../scenarios';
+import { GoalRow, GoalState, SCENARIOS, Scenario, isCount, lastYear, successLine } from '../scenarios';
 import { World } from '../world';
 import { focusFromKeyboard, hasKeyboardFocus, watchFocus } from '../focus';
 import { lineChart } from './charts';
@@ -238,7 +238,10 @@ export class UI {
     });
     // The camera lets the map's edges come out from under the panels, however they fold, wrap or grow.
     if (typeof ResizeObserver !== 'undefined') {
-      const ro = new ResizeObserver(() => this.measureInsets());
+      const ro = new ResizeObserver(() => {
+        this.stackCards();
+        this.measureInsets();
+      });
       for (const id of INSET_PANELS) ro.observe($(root, id));
     }
     watchFocus();
@@ -445,7 +448,8 @@ export class UI {
     this.renderTicker();
     this.syncOverlay();
     this.updateStats();
-    $(this.root, '#goal').hidden = !this.game.world.city.scenario;
+    const sc = this.game.world.city.scenario;
+    $(this.root, '#goal').hidden = !sc || !!sc.closed;
     this.guideForced = this.guideSawIncomplete = false;
     this.updateGuide(true);
     this.measureInsets();
@@ -1387,7 +1391,9 @@ export class UI {
   private updateGuide(force: boolean): void {
     const g = this.game;
     const box = $(this.root, '#guide');
-    if (g.mode !== 'city' || this.guideDismissed || g.world.city.scenario) {
+    // A challenge that hands over a ready-made city has no use for it; Boomtown, an empty coast, does.
+    const sc = g.world.city.scenario;
+    if (g.mode !== 'city' || this.guideDismissed || (sc && SCENARIOS.find((x) => x.id === sc.id)?.city)) {
       box.hidden = true;
       return;
     }
@@ -1447,7 +1453,7 @@ export class UI {
     // Redrawn only when something changed, so a tap isn't lost to a redraw.
     if (box.dataset.html === html) return;
     box.dataset.html = html;
-    box.style.cssText = `position:absolute;right:calc(var(--right) + 10px);top:calc(var(--top) + 74px);width:260px;padding:${folded ? '0' : '12px 14px'};z-index:12`;
+    box.style.cssText = `position:absolute;right:calc(var(--right) + 10px);top:calc(var(--top) + 74px);width:270px;padding:${folded ? '0' : '12px 14px'};z-index:12`;
     box.innerHTML = html;
     const toggle = box.querySelector<HTMLElement>('.guide-next, button.guide-head');
     if (toggle) toggle.onclick = () => {
@@ -1813,7 +1819,8 @@ export class UI {
 
   // Strategy guide -----------------------------------------------------------------------
 
-  openGuide(): void {
+  /** The strategy guide, opened at the section `at` (its id, such as 'challenges') or at the top. */
+  openGuide(at?: string): void {
     const body = buildGuide();
     const m = this.openModal({
       title: 'Strategy guide',
@@ -1824,6 +1831,7 @@ export class UI {
     const scroller = $(m, '.body');
     scroller.classList.add('guide-scroll');
     trackGuide(body, scroller);
+    if (at) body.querySelector(`#guide-${at}`)?.scrollIntoView({ block: 'start' });
   }
 
   // Challenges ---------------------------------------------------------------------------
@@ -1851,10 +1859,21 @@ export class UI {
       <p style="margin:0;font-size:15px;line-height:1.55">${esc(s.blurb)}</p>
       <div class="panel" style="padding:12px 14px;display:flex;gap:10px;align-items:flex-start;box-shadow:none">
         <span class="caution" style="margin-top:3px"></span>
-        <div><b>${esc(s.goal)}</b><div class="note">You have until ${s.year + s.years}. The goal tracker sits at the top right.</div></div>
+        <div><b>${esc(s.goal)}</b><div class="note">You have until ${s.year + s.years}. The goal tracker keeps score.</div></div>
       </div>
     </div>`);
-    this.openModal({ title: s.name, sub: `<span class="num">${s.year}</span>`, body, foot: [this.btn('Begin', 'primary', () => this.closeModal())] });
+    this.openModal({
+      title: s.name,
+      sub: `<span class="num">${s.year}</span>`,
+      body,
+      foot: [
+        this.btn('Tips', '', () => {
+          this.closeModal();
+          this.openGuide('challenges');
+        }),
+        this.btn('Begin', 'primary', () => this.closeModal()),
+      ],
+    });
   }
 
   /**
@@ -1865,25 +1884,35 @@ export class UI {
     const box = $(this.root, '#goal');
     if (this.game.mode !== 'city') return;
     this.goalShown = { s, st, monthsLeft, done };
-    box.hidden = false;
+    const sc = this.game.world.city.scenario;
+    box.hidden = !!sc?.closed;
+    if (box.hidden) return;
     const small = this.compact();
     const folded = small && this.goalFolded;
     const left = Math.max(0, monthsLeft);
     const time = done === 'won' ? 'Won' : done === 'lost' ? 'Time ran out' : `${Math.floor(left / 12)}y ${left % 12}m left`;
-    const col = done === 'lost' ? 'var(--critical)' : st.met ? 'var(--good)' : 'var(--caution)';
+    // Once it is over, the bar says how it ended, whatever the city has done since.
+    const col = done === 'lost' ? 'var(--critical)' : done === 'won' || st.met ? 'var(--good)' : 'var(--caution)';
     const head = `<b class="goal-name">${esc(s.name)}</b> <span class="num goal-time${done === 'lost' ? ' lost' : ''}">${time}</span>`;
-    const html = (small
+    const html = `<div class="goal-top">${small
       ? `<button class="goal-head" aria-expanded="${!folded}" aria-label="${esc(s.name)}, ${time}. ${folded ? 'Show the goal' : 'Fold the goal away'}">${head}<i class="chev${folded ? '' : ' up'}" aria-hidden="true"></i></button>`
-      : `<div class="goal-head">${head}</div>`)
+      : `<div class="goal-head">${head}</div>`}${done
+      ? `<button class="iconbtn goal-close" aria-label="Close the goal tracker" title="Close. The result stays in the city report.">${ICONS.close}</button>` : ''}</div>`
       + (folded ? '' : `
       <ul class="goal-rows">${st.rows.map(goalRowHtml).join('\n')}</ul>
       <div class="barrow" style="grid-template-columns:1fr"><div class="track" role="img" aria-label="Progress ${Math.round(st.progress * 100)}%"><i style="width:${Math.max(2, st.progress * 100)}%;background:${col}"></i></div></div>
       ${st.note ? `<p class="goal-note">${esc(st.note)}</p>` : ''}`);
     box.classList.toggle('folded', folded);
-    box.style.cssText = 'position:absolute;right:calc(var(--right) + 10px);top:calc(var(--top) + 74px);width:270px;z-index:12';
+    box.style.cssText = 'position:absolute;right:calc(var(--right) + 10px);top:calc(var(--top) + 74px + var(--stack, 0px));width:270px;z-index:12';
+    this.stackCards();
     if (box.dataset.html === html) return;
     box.dataset.html = html;
     box.innerHTML = html;
+    const close = box.querySelector<HTMLElement>('.goal-close');
+    if (close) close.onclick = () => {
+      if (sc) sc.closed = true;
+      box.hidden = true;
+    };
     const toggle = box.querySelector<HTMLElement>('button.goal-head');
     if (toggle) toggle.onclick = () => {
       this.goalFolded = !this.goalFolded;
@@ -1893,17 +1922,36 @@ export class UI {
     };
   }
 
+  /**
+   * With the checklist up in a challenge (Boomtown, the one with no ready-made city), the goal tracker goes below it
+   * instead of under it.
+   */
+  private stackCards(): void {
+    const guide = $(this.root, '#guide');
+    const goal = $(this.root, '#goal');
+    const below = !guide.hidden && !goal.hidden ? Math.ceil(guide.getBoundingClientRect().height) + 8 : 0;
+    if (goal.style.getPropertyValue('--stack') !== `${below}px`) goal.style.setProperty('--stack', `${below}px`);
+  }
+
+  /** How a challenge ended, as the result dialog and the city report put it; `month` is when it was decided. */
+  private challengeResult(s: Scenario, won: boolean, month: number, end: number): string {
+    return won ? `${successLine(s, month, end)} ${s.win}` : `The deadline for ${s.name} passed at the end of ${lastYear(end)}. ${s.lose}`;
+  }
+
   /** Draw the goal tracker again as it was last filled in, for a fold or a window that changed shape. */
   private redrawGoal(): void {
     const g = this.goalShown;
     if (g && !$(this.root, '#goal').hidden) this.updateGoal(g.s, g.st, g.monthsLeft, g.done);
   }
 
+  /** The end of a challenge: how it went, in its own words, and after a loss, what was not met. */
   scenarioResult(s: Scenario, st: GoalState, won: boolean): void {
     const city = this.game.world.city;
+    const short = st.rows.filter((r) => !r.met);
     const body = el(`<div style="display:flex;flex-direction:column;gap:10px">
-      <p style="margin:0;font-size:15px">${won ? `${esc(successLine(s, city.month, city.scenario?.end ?? city.month))} The council is already naming a street after you.` : `The deadline for ${esc(s.name)} has passed without reaching the goal.`}</p>
-      <p class="note num" style="margin:0">${esc(st.status)}</p>
+      <p style="margin:0;font-size:15px">${esc(this.challengeResult(s, won, city.month, city.scenario?.end ?? city.month))}</p>
+      ${won ? `<p class="note" style="margin:0">${st.status.split(' · ').map(esc).join(SEP)}</p>`
+        : short.length ? `<div><p class="note" style="margin:0 0 6px">Not met:</p><ul class="goal-rows">${short.map(goalRowHtml).join('\n')}</ul></div>` : ''}
       <p class="note" style="margin:0">You can keep playing this city as long as you like.</p>
     </div>`);
     this.openModal({
@@ -2101,7 +2149,15 @@ export class UI {
     const approval = Math.round(s.approval);
     // Nobody to approve or worry yet: say so rather than show 50% of no one and an empty list.
     const empty = s.residents === 0;
+    // A finished challenge keeps its result here, after its tracker is closed.
+    const sc = g.world.city.scenario;
+    const chal = sc?.done ? SCENARIOS.find((x) => x.id === sc.id) : undefined;
+    const result = chal && sc ? `<div class="panel" style="padding:12px 14px;display:flex;gap:10px;align-items:flex-start;box-shadow:none">
+        <span class="caution" style="margin-top:3px;background:${sc.done === 'won' ? 'var(--good)' : 'var(--critical)'}"></span>
+        <div><b>${sc.done === 'won' ? 'Challenge complete' : "Time's up"}</b><div class="note">${esc(this.challengeResult(chal, sc.done === 'won', sc.decided ?? sc.end, sc.end))}</div></div>
+      </div>` : '';
     const body = el(`<div style="display:flex;flex-direction:column;gap:18px">
+      ${result}
       <div class="cols">
         ${empty ? `<div>
           <h3>Mayor's approval</h3>

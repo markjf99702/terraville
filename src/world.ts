@@ -52,10 +52,11 @@ export interface CityState {
   /** The mayor's approval, 0 to 100, as of the last month end. */
   approval: number;
   /**
-   * Set when the city is a challenge: which one, the deadline month, and the outcome once decided. For a goal that
-   * must hold to the end, also how many month-ends in a row it has been met.
+   * Set when the city is a challenge: which one, the deadline month, and the outcome once decided, with the month it
+   * was decided and whether the goal tracker has been closed since. For a goal that must hold to the end, also how many
+   * month-ends in a row it has been met.
    */
-  scenario?: { id: string; end: number; done: '' | 'won' | 'lost'; held?: number };
+  scenario?: { id: string; end: number; done: '' | 'won' | 'lost'; held?: number; decided?: number; closed?: boolean };
 }
 
 export function emptyHistory(): History {
@@ -118,6 +119,8 @@ function cleanCity(raw: unknown): CityState {
   if (typeof sc.id === 'string') {
     city.scenario = { id: sc.id, end: num(sc.end, 0), done: sc.done === 'won' || sc.done === 'lost' ? sc.done : '' };
     if (sc.held !== undefined) city.scenario.held = Math.floor(num(sc.held, 0, 0));
+    if (sc.decided !== undefined) city.scenario.decided = Math.floor(num(sc.decided, 0, 0));
+    if (sc.closed === true) city.scenario.closed = true;
   } else delete city.scenario;
   return city;
 }
