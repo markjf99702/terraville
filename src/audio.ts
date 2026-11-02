@@ -1,5 +1,5 @@
 // Small synthesized sound effects. Nothing plays until the first click.
-export type Sfx = 'click' | 'build' | 'zone' | 'bulldoze' | 'error' | 'alert' | 'coin' | 'fanfare' | 'terrain' | 'crumble';
+export type Sfx = 'click' | 'build' | 'zone' | 'bulldoze' | 'error' | 'alert' | 'coin' | 'fanfare' | 'sting' | 'terrain' | 'crumble';
 
 export class Audio {
   enabled = true;
@@ -44,6 +44,8 @@ export class Audio {
         [523, 659, 784, 1047].forEach((f, k) => this.tone(f, 0.18, 'triangle', 0.25, k * 0.11));
         return;
       }
+      // A lost challenge: two falling notes, the second held, where a win has the fanfare.
+      case 'sting': this.tone(392, 0.2, 'triangle', 0.28); return this.tone(277, 0.55, 'triangle', 0.28, 0.2);
       case 'alert': {
         const o = this.ctx.createOscillator();
         const g = this.ctx.createGain();

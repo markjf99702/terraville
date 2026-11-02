@@ -2069,6 +2069,23 @@ await test('a challenge opens with its goal in the news and its real monthly bal
   assert.equal(successLine(aftershock, end, end), 'Aftershock is a success in 1997.');
 }));
 
+await test('a won challenge plays the fanfare, and a lost one its own falling sting rather than the misclick buzz', () => seeded(4, () => {
+  const g = headless(flat(40, 30));
+  const played: string[] = [];
+  g.audio = { play: (s: string) => played.push(s), unlock: () => {} };
+  g.startScenario('gridlock');
+  g.world.city.month = g.world.city.scenario.end;
+  g.checkScenario();
+  assert.equal(g.world.city.scenario.done, 'lost');
+  assert.deepEqual(played.filter((s) => ['sting', 'error', 'fanfare'].includes(s)), ['sting']);
+  played.length = 0;
+  g.startScenario('boomtown');
+  g.sim.stats.residents = 12500;
+  g.checkScenario();
+  assert.equal(g.world.city.scenario.done, 'won');
+  assert.deepEqual(played.filter((s) => ['sting', 'error', 'fanfare'].includes(s)), ['fanfare']);
+}));
+
 await test("the city's first seaport, airport or stadium is news, with the limit it lifts and a fanfare; a second is not", () => seeded(5, () => {
   const w = flat(40, 30);
   for (let y = 0; y < 30; y++) for (let x = 0; x < 3; x++) { w.water[y * w.w + x] = 1; w.height[y * w.w + x] = -4; }

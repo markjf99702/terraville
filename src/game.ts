@@ -621,7 +621,7 @@ export class Game {
       sc.decided = month;
       // The news keeps the result under the dialog, and in the log, in place of the goal's deadline.
       this.sim.say('result', st.met ? successLine(s, month, sc.end) : timeUpLine(s, st), st.met ? 'good' : 'warn', undefined, 0);
-      this.audio.play(st.met ? 'fanfare' : 'error');
+      this.audio.play(st.met ? 'fanfare' : 'sting');
       this.ui.updateGoal(s, st, sc.end - month, sc.done);
       this.ui.scenarioResult(s, st, sc.done === 'won');
       return;
