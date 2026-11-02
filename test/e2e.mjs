@@ -606,6 +606,45 @@ try {
     }
   });
 
+  await test("a tool's tooltip shows for a moment after a tap and goes once the map is touched; hover and Tab still show it", async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await found(page);
+    const cdp = await ctx.newCDPSession(page);
+    const touch = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map(([x, y], id) => ({ x, y, id })) });
+    const tip = () => page.isVisible('#tooltip');
+    await page.tap('[data-tool="road"]');
+    assert.equal(await tip(), true, 'a tap shows the tip');
+    await touch('touchStart', [[120, 520]]);
+    assert.equal(await tip(), false, 'a finger on the map puts it away');
+    for (let k = 1; k <= 5; k++) await touch('touchMove', [[120 + k * 25, 520]]);
+    await touch('touchEnd', []);
+    await page.waitForTimeout(300);
+    assert.equal(await tip(), false, 'it stays away after the drag, though the button kept focus');
+    assert.equal(await page.evaluate(() => window.__terraville.world.net.some((v) => v & 1)), true, 'the drag laid a road');
+    await page.tap('[data-tool="rail"]');
+    assert.equal(await tip(), true);
+    await page.waitForTimeout(2600);
+    assert.equal(await tip(), false, 'left alone, it goes after a moment');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+
+    const desk = await profile(DESK);
+    const { page: d, problems: dp } = await open(desk);
+    await found(d);
+    await d.hover('[data-tool="road"]');
+    assert.equal(await d.isVisible('#tooltip'), true, 'hover shows it');
+    await d.mouse.move(640, 400);
+    assert.equal(await d.isVisible('#tooltip'), false);
+    await d.click('[data-tool="rail"]');
+    await d.mouse.move(640, 400);
+    assert.equal(await d.isVisible('#tooltip'), false, 'a click leaves no tip behind');
+    await d.keyboard.press('Tab');
+    assert.equal(await d.isVisible('#tooltip'), true, 'Tab to the next tool shows its tip');
+    assert.deepEqual(dp, []);
+    await desk.close();
+  });
+
   await test('on a phone, Inspect takes the bottom slot from the map layer card and the news log', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

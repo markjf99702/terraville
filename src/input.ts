@@ -78,6 +78,7 @@ export class Input {
     const g = this.game;
     if (g.mode === 'title') return;
     g.audio.unlock();
+    g.ui.hideToolTip();
     // A click on the map that closes a menu does nothing else.
     if (g.ui.closeDropdownIfOpen()) return;
     this.canvas.setPointerCapture(e.pointerId);

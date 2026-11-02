@@ -14,7 +14,7 @@ import type { Message } from '../sim';
 import { STYLE_NAMES, TerrainStyle, hasSea } from '../terrain';
 import { GoalState, SCENARIOS, Scenario, successLine } from '../scenarios';
 import { World } from '../world';
-import { hasKeyboardFocus, watchFocus } from '../focus';
+import { focusFromKeyboard, hasKeyboardFocus, watchFocus } from '../focus';
 import { lineChart } from './charts';
 import { buildGuide, trackGuide } from './guide';
 import { ICONS } from './icons';
@@ -115,6 +115,10 @@ export class UI {
   private filesRefresh: (() => void) | null = null;
   private statTimer = 0;
   private toastTimer = 0;
+  /** Puts away a tool's tooltip shown by a touch. */
+  private tipTimer = 0;
+  /** The tool button whose tooltip is up. */
+  private tipOwner: HTMLElement | null = null;
   private inspectAt: { x: number; y: number } | null = null;
   private modalClose: (() => void) | null = null;
   /** Where focus goes back to when the dialog closes: what opened it, if the keyboard had put focus there. */
@@ -544,10 +548,20 @@ export class UI {
           this.game.setTool(t.id);
           this.game.audio.play('click');
         });
-        b.addEventListener('pointerenter', () => this.showToolTip(b, t));
-        b.addEventListener('pointerleave', () => ($(this.root, '#tooltip').hidden = true));
-        b.addEventListener('focus', () => this.showToolTip(b, t));
-        b.addEventListener('blur', () => ($(this.root, '#tooltip').hidden = true));
+        b.addEventListener('pointerenter', (e) => {
+          this.showToolTip(b, t);
+          // A finger leaves the button as it lifts: the tip stays a moment to be read, then goes.
+          if (e.pointerType !== 'mouse') this.tipTimer = window.setTimeout(() => this.hideToolTip(), 2000);
+        });
+        b.addEventListener('pointerleave', (e) => {
+          if (e.pointerType === 'mouse') this.hideToolTip(b);
+        });
+        // Only the keyboard's focus shows it: a tap focuses the button too, and nothing on the map takes focus away.
+        b.addEventListener('focus', () => {
+          if (focusFromKeyboard(b)) this.showToolTip(b, t);
+        });
+        // Focus leaves the last tool after the next one's tip is up.
+        b.addEventListener('blur', () => this.hideToolTip(b));
         g.appendChild(b);
       }
       box.appendChild(g);
@@ -602,7 +616,17 @@ export class UI {
     return c;
   }
 
+  /** Put away a tool's tooltip (only if it is `owner`'s): the pointer left, a touch's moment is up, or the map was touched. */
+  hideToolTip(owner?: HTMLElement): void {
+    if (owner && owner !== this.tipOwner) return;
+    window.clearTimeout(this.tipTimer);
+    $(this.root, '#tooltip').hidden = true;
+    this.tipOwner = null;
+  }
+
   private showToolTip(b: HTMLElement, t: ToolDef): void {
+    window.clearTimeout(this.tipTimer);
+    this.tipOwner = b;
     const tip = $(this.root, '#tooltip');
     const cost = t.cost ? `<span class="cost">${t.kind === 'line' || t.id === 'bulldoze' || t.id === 'trees' || t.id === 'park' ? `$${t.cost} a tile` : money(t.cost)}${t.building && BUILDINGS[t.building].upkeep ? ` · ${money(BUILDINGS[t.building].upkeep)}/mo upkeep` : ''}</span>` : '';
     const zoneTip = t.building && isZone(t.building) ? `<p>${esc(BUILDINGS[t.building].blurb)} Drag to zone several 3×3 lots.</p>` : `<p>${esc(t.tip)}</p>`;

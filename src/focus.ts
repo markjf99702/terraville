@@ -22,6 +22,14 @@ export function hasKeyboardFocus(el: Element | null): el is HTMLElement {
   return !!el && el === keyboardFocus && el === document.activeElement;
 }
 
+/**
+ * Whether focus arriving on `el` came from the keyboard, for a 'focus' listener: that runs before the 'focusin' which
+ * hasKeyboardFocus goes by.
+ */
+export function focusFromKeyboard(el: Element): boolean {
+  return el === document.activeElement && focusVisible(el);
+}
+
 /** Browsers too old for :focus-visible say no, which leaves them as they always were here. */
 function focusVisible(el: Element): boolean {
   try {
