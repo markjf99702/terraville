@@ -156,7 +156,7 @@ export const SCENARIOS: Scenario[] = [
     year: 1968,
     years: 8,
     funds: 30000,
-    blurb: 'Factories line the river and coal smoke fills the valley. People are leaving. Clean the air without killing the jobs.',
+    blurb: 'Coal plants stand among the homes, and the air in the valley can only just take it. The town has to grow, and find work for its people, without choking on the smoke.',
     goal: 'Keep the pollution index under 12, with at least 20,000 residents and 9,000 jobs, for the last 12 months.',
     win: 'The air in the valley is clean, and people are staying.',
     lose: 'The valley is still waiting for clean air and steady work.',
