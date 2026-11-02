@@ -623,6 +623,16 @@ kbd { font: 600 11.5px var(--mono); padding: 1px 6px; border: 1px solid var(--li
 .note { color: var(--muted); font-size: 13px; margin: 0; }
 .disaster-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 
+/* ---- starter checklist ---------------------------------------------------- */
+#guide .guide-head { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; padding: 0; border: none; background: none; font-size: 12px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+#guide .guide-count { display: block; margin-top: 2px; color: var(--caution); font-size: 12px; }
+#guide .guide-next { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 8px 12px; border: none; background: none; text-align: left; font-size: 13px; }
+#guide .guide-next-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#guide .guide-next-text b { color: var(--caution); font-weight: 800; }
+#guide .guide-next .num { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.chev { display: inline-block; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: translateY(-2px) rotate(45deg); flex: none; color: var(--muted); }
+.chev.up { transform: translateY(2px) rotate(-135deg); }
+
 /* ---- strategy guide ------------------------------------------------------ */
 .modal .body.guide-scroll { padding: 0; }
 .guide { display: grid; grid-template-columns: 190px minmax(0, 1fr); align-items: start; }

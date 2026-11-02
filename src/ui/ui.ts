@@ -1,6 +1,6 @@
 // Everything in the DOM: top bar, toolbox, panels, dialogs, title screen.
 import {
-  BUILDINGS, DIFFICULTIES, DISASTER_POP, Difficulty, Kind, MAP_SIZES, SEP, ToolDef, UPGRADE_LV, cityClass, dateLabel, isZone,
+  BUILDINGS, DIFFICULTIES, DISASTER_POP, Difficulty, Kind, MAP_SIZES, ROAD, SEP, ToolDef, UPGRADE_LV, cityClass, dateLabel, isZone,
   nextUpgrade,
 } from '../defs';
 import { DISASTER_NAMES, DisasterKind } from '../disasters';
@@ -55,6 +55,17 @@ function difficultyNote(d: Difficulty): string {
   ].filter(Boolean);
   const text = parts.length ? parts.join(SEP) : 'the standard game';
   return text[0].toUpperCase() + text.slice(1);
+}
+
+/** Whether a zone has a road along one of its sides (a corner touching diagonally doesn't count), as growth asks. */
+function touchesRoad(w: World, b: { x: number; y: number; size: number }): boolean {
+  const s = b.size;
+  for (let d = 0; d < s; d++) {
+    for (const [x, y] of [[b.x + d, b.y - 1], [b.x + d, b.y + s], [b.x - 1, b.y + d], [b.x + s, b.y + d]]) {
+      if (w.inBounds(x, y) && w.net[y * w.w + x] & ROAD) return true;
+    }
+  }
+  return false;
 }
 
 /** A phone or tablet with no mouse: key letters and mouse moves mean nothing there (the style sheet asks the same). */
@@ -158,6 +169,8 @@ export class UI {
   private regenTimer = 0;
   private guideDismissed = false;
   private guideTimer = 0;
+  /** On a phone, the checklist has been tapped open. */
+  private guideOpen = false;
   private chartRange = 120;
 
   constructor(private game: Game, private root: HTMLElement) {
@@ -1117,23 +1130,27 @@ export class UI {
     }
     if (!force && box.hidden) return;
     const w = g.world;
-    let plant = false, res = false, com = false, ind = false, powered = false, grown = false;
+    let plant = false, res = false, com = false, ind = false, grown = false;
+    let zones = 0, roaded = 0, powered = 0;
     for (const b of w.buildings.values()) {
       if (BUILDINGS[b.kind].capacity) plant = true;
       if (b.kind === 'res') res = true;
       if (b.kind === 'com') com = true;
       if (b.kind === 'ind') ind = true;
-      if (isZone(b.kind) && b.powered) powered = true;
-      if (isZone(b.kind) && b.level > 0) grown = true;
+      if (!isZone(b.kind)) continue;
+      zones++;
+      // Worked out here rather than taken from the simulation, which looks only as the clock runs.
+      if (touchesRoad(w, b)) roaded++;
+      if (b.powered) powered++;
+      if (b.level > 0) grown = true;
     }
-    let roads = 0;
-    for (let i = 0; i < w.n; i++) if (w.net[i] & 1) roads++;
-    const items: [boolean, string][] = [
-      [plant, 'Build a power plant (coal is cheapest).'],
-      [res && com && ind, 'Zone residential, commercial and industrial lots.'],
-      [roads >= 6, 'Lay roads so each zone touches one.'],
-      [powered, 'Run power lines from the plant to the zones.'],
-      [grown, 'Press play and watch the first buildings go up.'],
+    const count = (n: number, what: string) => (zones && n < zones ? `${n} of ${zones} zones ${what}` : '');
+    const items: [boolean, string, string][] = [
+      [plant, 'Build a power plant (coal is cheapest).', ''],
+      [res && com && ind, 'Zone residential, commercial and industrial lots.', ''],
+      [zones > 0 && roaded === zones, 'Lay roads so each zone touches one.', count(roaded, roaded === 1 ? 'touches a road' : 'touch a road')],
+      [zones > 0 && powered === zones, 'Run power lines from the plant to the zones.', count(powered, powered === 1 ? 'has power' : 'have power')],
+      [grown, 'Press play and watch the first buildings go up.', ''],
     ];
     if (items.every(([ok]) => ok) && !force) {
       this.guideDismissed = true;
@@ -1143,17 +1160,36 @@ export class UI {
       return;
     }
     box.hidden = false;
-    box.style.cssText = 'position:absolute;right:10px;top:calc(var(--top) + 74px);width:260px;padding:12px 14px;z-index:12';
-    box.innerHTML = `<button class="iconbtn close" aria-label="Hide checklist" style="position:absolute;top:6px;right:6px;width:26px;height:26px">${ICONS.close}</button>
-      <h3 style="margin:0 0 8px;font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)">Getting started</h3>
+    const done = items.filter(([ok]) => ok).length;
+    // On a phone the list would cover a third of the map: it is one line, 'Next: …', until tapped open.
+    const small = this.narrow();
+    const folded = small && !this.guideOpen;
+    const next = items.find(([ok]) => !ok)!;
+    const html = folded
+      ? `<button class="guide-next" aria-expanded="false"><span class="guide-next-text"><b>Next:</b> ${next[1]}</span><span class="num">${done} of ${items.length} done</span><i class="chev" aria-hidden="true"></i></button>`
+      : `<button class="iconbtn close" aria-label="Hide checklist" style="position:absolute;top:6px;right:6px;width:26px;height:26px">${ICONS.close}</button>
+      ${small
+        ? '<button class="guide-head" aria-expanded="true">Getting started <i class="chev up" aria-hidden="true"></i></button>'
+        : '<h3 class="guide-head">Getting started</h3>'}
       <ol style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:7px;font-size:13px">
-        ${items.map(([ok, text]) => `<li style="display:flex;gap:8px;align-items:flex-start;${ok ? 'color:var(--muted)' : ''}">
+        ${items.map(([ok, text, more]) => `<li style="display:flex;gap:8px;align-items:flex-start;${ok ? 'color:var(--muted)' : ''}">
           <span style="flex:none;width:18px;height:18px;border-radius:5px;display:grid;place-items:center;border:1px solid ${ok ? 'var(--good)' : 'var(--line-2)'};background:${ok ? 'var(--good)' : 'transparent'};color:#fff">${ok ? ICONS.check.replace('<svg', '<svg style="width:13px;height:13px"') : ''}</span>
-          <span style="${ok ? 'text-decoration:line-through' : ''}">${text}</span></li>`).join('')}
+          <span><span style="${ok ? 'text-decoration:line-through' : ''}">${text}</span>${more ? `<small class="guide-count">${more}</small>` : ''}</span></li>`).join('')}
       </ol>
       <button class="btn small" id="guideOpen" style="margin-top:10px;width:100%">Read the strategy guide</button>`;
-    $(box, '#guideOpen').onclick = () => this.openGuide();
-    $(box, '.close').onclick = () => {
+    // Redrawn only when something changed, so a tap isn't lost to a redraw.
+    if (box.dataset.html === html) return;
+    box.dataset.html = html;
+    box.style.cssText = `position:absolute;right:10px;top:calc(var(--top) + 74px);width:260px;padding:${folded ? '0' : '12px 14px'};z-index:12`;
+    box.innerHTML = html;
+    const toggle = box.querySelector<HTMLElement>('.guide-next, button.guide-head');
+    if (toggle) toggle.onclick = () => {
+      this.guideOpen = !this.guideOpen;
+      this.updateGuide(true);
+    };
+    box.querySelector<HTMLElement>('#guideOpen')?.addEventListener('click', () => this.openGuide());
+    const close = box.querySelector<HTMLElement>('.close');
+    if (close) close.onclick = () => {
       this.guideDismissed = true;
       try { localStorage.setItem('terraville.guide', 'done'); } catch { /* ignore */ }
       box.hidden = true;

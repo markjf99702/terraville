@@ -902,7 +902,8 @@ try {
     const ctx = await profile();
     const { page, problems } = await open(ctx);
     await found(page);
-    await page.click('#guide .close');
+    await page.tap('#guide .guide-next');
+    await page.tap('#guide .close');
     const cdp = await ctx.newCDPSession(page);
     const touch = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map(([x, y], id) => ({ x, y, id })) });
     const at = await page.evaluate(() => {
@@ -959,6 +960,50 @@ try {
     await page.click('[data-act="menu"]');
     await page.click('.dropdown button:has-text("Settings and touch")');
     assert.match(await page.textContent('.modal .touch-help'), /One finger.*Two fingers.*Pinch to zoom.*Bulldoze.*Pick the bulldozer/s);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  await test('the checklist ticks roads and power only when every zone has them, and on a phone it is one line until tapped', async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await found(page);
+    assert.match(await page.textContent('#guide'), /^\s*Next: Build a power plant \(coal is cheapest\)\.\s*0 of 5 done\s*$/, 'one line on a phone');
+    assert.ok((await page.evaluate(() => document.querySelector('#guide').getBoundingClientRect().height)) < 60);
+    await page.tap('#guide .guide-next');
+    assert.equal(await page.isVisible('#guide ol'), true, 'a tap opens the list');
+    // Three zones, one with a road along its top and power: neither step is done yet.
+    const steps = () => page.evaluate(() => [...document.querySelectorAll('#guide li')].map((li) => li.textContent.replace(/\s+/g, ' ').trim()));
+    await page.evaluate(() => {
+      const g = window.__terraville;
+      const w = g.world;
+      let n = 0;
+      for (let y = 10; y < w.h - 10 && n < 3; y += 5) for (let x = 10; x < w.w - 10 && n < 3; x += 5) {
+        const k = ['res', 'com', 'ind'][n];
+        if (w.canPlace(k, x, y).ok) { w.place(k, x, y); n++; }
+      }
+      const z = [...w.buildings.values()][0];
+      for (let d = 0; d < 3; d++) w.net[(z.y - 1) * w.w + z.x + d] |= 1;
+      // Power as if a line reached this one zone (with no plant, the grid would take it away again).
+      g.sim.computePower();
+      g.sim.powerDirty = false;
+      z.powered = true;
+    });
+    await page.waitForTimeout(1300);
+    const [, , roads, power] = await steps();
+    assert.match(roads, /^Lay roads so each zone touches one\. ?1 of 3 zones touches a road$/);
+    assert.match(power, /^Run power lines from the plant to the zones\. ?1 of 3 zones has power$/);
+    assert.equal(await page.$$eval('#guide li', (l) => l.slice(2, 4).every((x) => !x.querySelector('svg'))), true, 'neither ticked');
+    await page.evaluate(() => {
+      const w = window.__terraville.world;
+      for (const b of w.buildings.values()) {
+        for (let d = 0; d < 3; d++) w.net[(b.y - 1) * w.w + b.x + d] |= 1;
+        b.powered = true;
+      }
+      window.__terraville.sim.powerDirty = false;
+    });
+    await page.waitForTimeout(1300);
+    assert.equal(await page.$$eval('#guide li', (l) => l.slice(2, 4).every((x) => !!x.querySelector('svg'))), true, 'both ticked once every zone has them');
     assert.deepEqual(problems, []);
     await ctx.close();
   });
