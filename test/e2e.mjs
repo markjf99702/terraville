@@ -913,6 +913,55 @@ try {
     await ctx.close();
   });
 
+  await test('dragging an editor slider is one undo step however often it regenerates, so brush work stays in reach', async () => {
+    const ctx = await profile(DESK);
+    const { page, problems } = await open(ctx);
+    await page.click('[data-act="editor"]');
+    await page.waitForFunction(() => window.__terraville.mode === 'editor');
+    const hash = () => page.evaluate(() => { const w = window.__terraville.world; let h = 0; for (let i = 0; i < w.n; i++) h = (h * 31 + Math.round(w.height[i] * 10) + w.water[i] * 7 + w.trees[i]) | 0; return h; });
+    const steps = () => page.evaluate(() => window.__terraville.undoStack.length);
+    await page.keyboard.press('r');
+    for (const [a, b] of [[[50, 40], [56, 48]], [[60, 44], [66, 52]]]) {
+      const [p, q] = await page.evaluate(([a, b]) => { const r = window.__terraville.renderer; return [r.tileToScreen(...a), r.tileToScreen(...b)]; }, [a, b]);
+      await page.mouse.move(p.x, p.y);
+      await page.mouse.down();
+      await page.mouse.move(q.x, q.y, { steps: 6 });
+      await page.mouse.up();
+    }
+    assert.equal(await steps(), 2);
+    const shaped = await hash();
+    await page.evaluate(() => {
+      const g = window.__terraville;
+      const regen = g.regenerate.bind(g);
+      window.regens = 0;
+      g.regenerate = (...a) => { window.regens++; return regen(...a); };
+    });
+    // Three seconds along Forest and back, resting past the 90 ms the panel waits, so the land regenerates many times.
+    const box = await page.$eval('#edForest', (s) => { s.scrollIntoView({ block: 'center' }); const r = s.getBoundingClientRect(); return { x: r.left, y: r.top + r.height / 2, w: r.width }; });
+    const thumb = box.x + box.w * 0.45;
+    await page.mouse.move(thumb, box.y);
+    await page.mouse.down();
+    for (let k = 1; k <= 24; k++) {
+      await page.mouse.move(thumb + (k <= 12 ? k : 24 - k) * 4 + 6, box.y);
+      await page.waitForTimeout(125);
+    }
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+    assert.ok(await page.evaluate(() => window.regens) >= 5, 'the drag regenerated the land as it went');
+    assert.equal(await steps(), 3, 'one undo step for the whole drag');
+    await page.click('#btnUndo');
+    assert.equal(await hash(), shaped, 'one undo goes back to the land as the brushes left it');
+    assert.equal(await page.$eval('#edForest', (s) => s.value), '45');
+    // The next drag, or a key press, is a step of its own.
+    await page.focus('#edForest');
+    await page.keyboard.press('ArrowRight');
+    await page.waitForFunction(() => window.__terraville.undoStack.length === 3);
+    await page.keyboard.press('ArrowRight');
+    await page.waitForFunction(() => window.__terraville.undoStack.length === 4);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('the cost tip draws its middle dots and says why lots are blocked', async () => {
     const ctx = await profile(DESK);
     const { page, problems } = await open(ctx);

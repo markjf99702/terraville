@@ -188,8 +188,10 @@ export class UI {
   private dropdownBtn: HTMLElement | null = null;
   private lastMessage: Message | null = null;
   private regenTimer = 0;
-  /** A regeneration waiting for its slider to rest: the settings changed so far. */
-  private regenPending: Partial<TerrainParams> | null = null;
+  /** A regeneration waiting for its slider to rest: the settings changed so far, and the gesture changing them. */
+  private regenPending: { params: Partial<TerrainParams>; group?: string } | null = null;
+  /** Each editor slider's gestures so far: one drag, or one key press, is one undo step however often it regenerates. */
+  private gestures = new Map<string, number>();
   private guideDismissed = false;
   private guideTimer = 0;
   /** The menu asked for the checklist: it stays until its close button, even with every step done. */
@@ -806,10 +808,15 @@ export class UI {
     };
     const bind = (id: string, key: (typeof EDITOR_SLIDERS)[number][1]) => {
       const input = $<HTMLInputElement>(p, '#' + id);
+      const next = () => this.gestures.set(id, (this.gestures.get(id) ?? 0) + 1);
+      input.addEventListener('pointerdown', next);
+      input.addEventListener('keydown', next);
       input.oninput = () => {
         $(p, `#${id}Val`).textContent = input.value;
-        this.regen({ [key]: Number(input.value) });
+        this.regen({ [key]: Number(input.value) }, `${id}:${this.gestures.get(id) ?? 0}`);
       };
+      // The slider let go (or a key changed it): whatever moves it next is a new step.
+      input.onchange = next;
     };
     for (const [id, key] of EDITOR_SLIDERS) bind(id, key);
     $(p, '#edStyle').onclick = (e) => {
@@ -842,20 +849,23 @@ export class UI {
     this.syncEditorPanel();
   }
 
-  /** Regenerate the land once the control has rested a moment, with every setting changed meanwhile. */
-  private regen(params: Partial<TerrainParams>): void {
+  /**
+   * Regenerate the land once the control has rested a moment, with every setting changed meanwhile. A `group` (a
+   * slider's gesture) makes one undo step of all its regenerations.
+   */
+  private regen(params: Partial<TerrainParams>, group?: string): void {
     window.clearTimeout(this.regenTimer);
-    this.regenPending = { ...this.regenPending, ...params };
+    this.regenPending = { params: { ...this.regenPending?.params, ...params }, group };
     this.regenTimer = window.setTimeout(() => this.flushRegen(), 90);
   }
 
   /** Carry out a regeneration still waiting, now: before an undo or redo, so they act on the latest change. */
   flushRegen(): void {
-    const params = this.regenPending;
-    if (!params) return;
+    const pending = this.regenPending;
+    if (!pending) return;
     window.clearTimeout(this.regenTimer);
     this.regenPending = null;
-    this.game.regenerate(params);
+    this.game.regenerate(pending.params, pending.group);
     const sub = this.root.querySelector('#signSub');
     if (sub) sub.textContent = this.game.terrain.seed;
     this.syncUndo();

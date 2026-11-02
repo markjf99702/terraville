@@ -41,6 +41,8 @@ interface UndoEntry {
   after?: AreaSnapshot;
   /** In the editor, the generator's settings that went with the map, so the panel and the next regeneration follow it. */
   terrain?: TerrainParams;
+  /** In the editor, the slider gesture that regenerated the map: its later regenerations join this step. */
+  group?: string;
 }
 
 /** Undo refunds an action's cost for this many game months after it (always while paused). */
@@ -396,14 +398,16 @@ export class Game {
     this.ui.toast(EDITOR_HINT());
   }
 
-  regenerate(params: Partial<TerrainParams>): void {
+  /** New land from the settings changed. Regenerations with the same `group` in a row are one undo step. */
+  regenerate(params: Partial<TerrainParams>, group?: string): void {
     // Fresh land is the seed's alone again.
     const next = { ...this.terrain, ...params, shaped: false };
     const sizeChanged = next.w !== this.terrain.w || next.h !== this.terrain.h;
     const fresh = generateTerrain(next);
     if (!sizeChanged && this.world && this.world.w === fresh.w && this.world.h === fresh.h) {
-      // The undo step keeps the settings from before, with the land.
-      this.pushUndo();
+      // The undo step keeps the settings from before, with the land. A slider still being dragged has its step.
+      const top = this.undoStack[this.undoStack.length - 1];
+      if (!group || top?.group !== group || this.redoStack.length) this.pushUndo(group);
       this.terrain = next;
       this.world.height.set(fresh.height);
       this.world.water.set(fresh.water);
@@ -1363,12 +1367,12 @@ export class Game {
     this.ui?.syncUndo();
   }
 
-  pushUndo(): void {
+  pushUndo(group?: string): void {
     if (!this.world) return;
     this.sealUndo();
     this.undoStack.push({
       snap: this.world.snapshot(), cost: 0, month: this.world.city.month, open: this.mode === 'city',
-      terrain: this.mode === 'editor' ? { ...this.terrain } : undefined,
+      terrain: this.mode === 'editor' ? { ...this.terrain } : undefined, group,
     });
     if (this.undoStack.length > (this.mode === 'editor' ? 40 : 25)) this.undoStack.shift();
     this.redoStack = [];
