@@ -13,7 +13,7 @@ import { DRIVE_HOME, DriveCopy } from '../drive';
 import { SaveFile, SlotMeta, challengeWins, decode, deleteSlot, encode, listSlots, loadSlot, readDraft, storageAvailable } from '../save';
 import { LOAN_LIMIT, passingSentence, spending } from '../sim';
 import type { BrokeReport, Message, Paper, Passing } from '../sim';
-import { STYLE_NAMES, TerrainParams, TerrainStyle, hasSea } from '../terrain';
+import { LandReadout, STYLE_NAMES, TerrainParams, TerrainStyle, hasSea, landReadout } from '../terrain';
 import { GoalRow, GoalState, SCENARIOS, Scenario, isCount, lastYear, successLine } from '../scenarios';
 import { World } from '../world';
 import { focusFromKeyboard, hasKeyboardFocus, watchFocus } from '../focus';
@@ -149,6 +149,20 @@ export function ago(t: number): string {
   // Written out one way for everyone, as the game's own dates are: on 2 Nov 2026.
   const d = new Date(t);
   return `on ${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+/**
+ * The editor's readout of the land, a line for each: how much of the map is flat for building, how much of the land its
+ * largest body holds, and its rivers and lakes. Each figure is between '*', for the panel to set it apart.
+ */
+export function landWords(r: LandReadout): string[] {
+  const pct = (v: number) => `${Math.round(v * 100)}%`;
+  const count = (k: number, one: string, many: string) => (k ? `*${num(k)}* ${k === 1 ? one : many}` : `no ${many}`);
+  return [
+    `Flat for building: *${pct(r.flat)}* of the map`,
+    `Largest landmass: *${pct(r.largest)}* of the land`,
+    `${count(r.rivers, 'river', 'rivers')} · ${count(r.lakes, 'lake', 'lakes')}`.replace(/^n/, 'N'),
+  ];
 }
 
 /** How the city report words a worry of 0 to 100. */
@@ -1077,11 +1091,13 @@ export class UI {
       ${slider('edRivers', 'Rivers', 0, 6, 1, t.rivers)}
       ${slider('edLakes', 'Lakes', 0, 100, 1, t.lakes)}
       ${slider('edForest', 'Forest', 0, 100, 1, t.forest)}
+      <p class="note" id="edLand" title="Flat for building is dry land a 3×3 zone lot can go on without levelling it. A river runs to the sea or off the map; a lake doesn't."></p>
       <div class="field"><span>Seed</span>
         <div class="seedrow"><input id="edSeed" value="${esc(t.seed)}" spellcheck="false" aria-label="Seed">
         <button class="iconbtn" id="edDice" aria-label="Random seed" title="Random seed">${ICONS.dice}</button></div>
       </div>
       <p class="note">Sliders regenerate the whole map. Sculpt afterwards with the brushes; Undo steps back through both.</p>`;
+    this.syncLand();
     if (fold) {
       const head = $(p, '#edHead');
       head.onclick = () => {
@@ -1158,6 +1174,15 @@ export class UI {
     const sub = this.root.querySelector('#signSub');
     if (sub) sub.textContent = this.game.terrain.seed;
     this.syncUndo();
+  }
+
+  /** The readout under the sliders, for the land as it is now: after each regeneration, stroke, spring, undo and redo. */
+  syncLand(): void {
+    const box = this.root.querySelector<HTMLElement>('#edLand');
+    if (!box || this.game.mode !== 'editor') return;
+    box.innerHTML = landWords(landReadout(this.game.world))
+      .map((line) => `<span>${esc(line).replace(/\*([^*]+)\*/g, '<span class="num">$1</span>').replace(' · ', SEP)}</span>`)
+      .join('');
   }
 
   /** Show the editor's settings in its panel and the sign: after an undo or a redo, they are the settings undone to. */

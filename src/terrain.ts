@@ -2,6 +2,7 @@
 import { MinHeap } from './heap';
 import { Noise2D } from './noise';
 import { clamp, hash3, hashString, makeRng, smoothstep } from './rng';
+import { BUILDINGS } from './defs';
 import { World } from './world';
 
 export type TerrainStyle = 'coast' | 'island' | 'archipelago' | 'lakes' | 'valley';
@@ -618,6 +619,96 @@ export function shoreDistance(world: World, cap: number): Uint8Array {
     if (y < h - 1 && dist[i + w] > d + 1) { dist[i + w] = d + 1; q[tail++] = i + w; }
   }
   return dist;
+}
+
+/** What the editor says of the land under its sliders: see landReadout. */
+export interface LandReadout {
+  /** Share of the map, 0 to 1, that a zone's lot can go on without levelling it. */
+  flat: number;
+  /** Share of the land, 0 to 1, in its largest body. */
+  largest: number;
+  rivers: number;
+  lakes: number;
+}
+
+/**
+ * How the land stands for a city. Flat for building is dry land inside at least one 3×3 lot, a zone's, whose ground
+ * varies by no more than a zone takes without levelling (BUILDINGS.res.maxSpread). Bodies of land and water are
+ * joined side to side, as roads join them. The sea is water below 0 m; any other water that reaches the sea or the
+ * edge of the map is a river (a river always runs to one or the other, through any lake on its way), and the rest
+ * are lakes.
+ */
+export function landReadout(world: World): LandReadout {
+  const { w, h, n, water, height } = world;
+  const lot = BUILDINGS.res.size;
+  const spread = BUILDINGS.res.maxSpread;
+  const flat = new Uint8Array(n);
+  for (let y = 0; y + lot <= h; y++) {
+    for (let x = 0; x + lot <= w; x++) {
+      let lo = Infinity;
+      let hi = -Infinity;
+      let dry = true;
+      for (let dy = 0; dy < lot && dry; dy++) {
+        for (let dx = 0; dx < lot; dx++) {
+          const i = (y + dy) * w + x + dx;
+          if (water[i]) {
+            dry = false;
+            break;
+          }
+          lo = Math.min(lo, height[i]);
+          hi = Math.max(hi, height[i]);
+        }
+      }
+      if (dry && hi - lo <= spread) for (let dy = 0; dy < lot; dy++) flat.fill(1, (y + dy) * w + x, (y + dy) * w + x + lot);
+    }
+  }
+  let flats = 0;
+  let land = 0;
+  for (let i = 0; i < n; i++) {
+    flats += flat[i];
+    if (!water[i]) land++;
+  }
+  const seen = new Uint8Array(n);
+  const stack: number[] = [];
+  /** The tiles like `s` around it (land, or inland water), counted; for water, whether any reach the sea or the edge. */
+  const body = (s: number, wet: boolean): { size: number; out: boolean } => {
+    const like = (j: number) => (wet ? water[j] === 1 && height[j] >= 0 : !water[j]);
+    let size = 0;
+    let out = false;
+    stack.push(s);
+    seen[s] = 1;
+    while (stack.length) {
+      const i = stack.pop()!;
+      size++;
+      const x = i % w;
+      const y = (i / w) | 0;
+      if (x === 0 || y === 0 || x === w - 1 || y === h - 1) out = true;
+      for (const [dx, dy] of DIRS4) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const j = ny * w + nx;
+        if (wet && water[j] && height[j] < 0) out = true;
+        if (!seen[j] && like(j)) {
+          seen[j] = 1;
+          stack.push(j);
+        }
+      }
+    }
+    return { size, out };
+  };
+  let largest = 0;
+  let rivers = 0;
+  let lakes = 0;
+  for (let s = 0; s < n; s++) {
+    if (seen[s]) continue;
+    if (!water[s]) largest = Math.max(largest, body(s, false).size);
+    else if (height[s] >= 0) {
+      if (body(s, true).out) rivers++;
+      else lakes++;
+    }
+  }
+  return { flat: flats / n, largest: land ? largest / land : 0, rivers, lakes };
 }
 
 // ---- sculpting ----------------------------------------------------------

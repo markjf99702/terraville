@@ -486,6 +486,12 @@ export class Game {
       this.fitMap();
     }
     this.minimap.markDirty();
+    this.landChanged();
+  }
+
+  /** The editor's land has changed: the readout under its sliders follows. */
+  private landChanged(): void {
+    if (this.mode === 'editor') this.ui?.syncLand();
   }
 
   /** A new random landscape and straight to the founding dialog. */
@@ -1194,6 +1200,7 @@ export class Game {
     this.strokeRedo = [];
     if (this.sim) this.sim.powerDirty = true;
     this.minimap.markDirty();
+    this.landChanged();
     this.ui.syncUndo();
     this.cancelTool();
   }
@@ -1395,6 +1402,7 @@ export class Game {
     if (this.brushOn) {
       this.brushOn = false;
       this.minimap.markDirty();
+      this.landChanged();
       if (this.mode === 'city') this.setUndoCost(this.brushSpent);
       if (Math.round(this.brushSpent) >= 1) this.ui.toast(`Levelled for ${fmtMoney(this.brushSpent)}.`);
       return;
@@ -1495,6 +1503,7 @@ export class Game {
       this.terrain.shaped = true;
       this.audio.play('terrain');
       this.minimap.markDirty();
+      this.landChanged();
     } else {
       this.undoStack.pop();
       this.ui.syncUndo();
@@ -1954,6 +1963,7 @@ export class Game {
       this.renderer.setWorld(s, null);
       this.fitMap();
       this.minimap.markDirty();
+      this.landChanged();
       return true;
     }
     if (!('x0' in s ? this.world.restoreArea(s) : this.world.restore(s))) {
@@ -1965,6 +1975,7 @@ export class Game {
       this.sim.refreshTerrainAppeal();
     }
     this.minimap.markDirty();
+    this.landChanged();
     return true;
   }
 

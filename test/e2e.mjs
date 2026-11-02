@@ -1366,6 +1366,49 @@ try {
     await ctx.close();
   });
 
+  await test('the lines under the editor sliders say how the land stands, after each regeneration, stroke and undo', async () => {
+    const ctx = await profile(DESK);
+    const { page, problems } = await open(ctx);
+    await page.click('[data-act="editor"]');
+    await page.waitForFunction(() => window.__terraville.mode === 'editor');
+    const lines = () => page.$$eval('#edLand > span', (s) => s.map((x) => x.textContent));
+    const shown = await lines();
+    assert.equal(shown.length, 3);
+    assert.match(shown[0], /^Flat for building: \d+% of the map$/);
+    await page.click('[data-style="coast"]');
+    await page.fill('#edSeed', 'amber-isle-11');
+    await page.press('#edSeed', 'Enter');
+    await page.waitForFunction(() => window.__terraville.terrain.seed === 'amber-isle-11' && window.__terraville.terrain.style === 'coast');
+    const coast = ['Flat for building: 56% of the map', 'Largest landmass: 98% of the land', '1 river · 3 lakes'];
+    assert.deepEqual(await lines(), coast);
+    await page.$eval('#edRivers', (s) => { s.value = '0'; s.dispatchEvent(new Event('input', { bubbles: true })); s.dispatchEvent(new Event('change', { bubbles: true })); });
+    await page.waitForFunction(() => window.__terraville.terrain.rivers === 0);
+    assert.equal((await lines())[2], 'No rivers · 7 lakes');
+    await page.click('#btnUndo');
+    assert.deepEqual(await lines(), coast, 'undo puts the readout back with the land');
+    // Water painted on dry land far from any other is a new lake, as the stroke ends.
+    const at = await page.evaluate(() => {
+      const w = window.__terraville.world;
+      let best = 0, d = 0;
+      for (let y = 8; y < w.h - 8; y++) for (let x = 8; x < w.w - 8; x++) {
+        let near = 99;
+        for (let dy = -8; dy <= 8; dy++) for (let dx = -8; dx <= 8; dx++) if (w.water[(y + dy) * w.w + x + dx]) near = Math.min(near, Math.hypot(dx, dy));
+        if (near > d) { d = near; best = y * w.w + x; }
+      }
+      return [best % w.w + 0.5, Math.floor(best / w.w) + 0.5];
+    });
+    await page.keyboard.press('w');
+    const p = await page.evaluate(([x, y]) => window.__terraville.renderer.tileToScreen(x, y), at);
+    await page.mouse.move(p.x, p.y);
+    await page.mouse.down();
+    await page.mouse.move(p.x + 3, p.y + 3, { steps: 3 });
+    assert.deepEqual(await lines(), coast, 'the readout waits for the stroke to end');
+    await page.mouse.up();
+    assert.equal((await lines())[2], '1 river · 4 lakes');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('every corner tile of the map can be brought out from under the panels, on a laptop and a phone', async () => {
     for (const opts of [DESK, PHONE]) {
       const ctx = await profile(opts);

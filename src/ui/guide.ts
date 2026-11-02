@@ -185,6 +185,7 @@ function sections(): Section[] {
           <li><b>Zones and buildings</b> level their own lot when the ground is moderately sloped, up to ${AUTO_GRADE} times their normal limit. The cursor price includes the earthworks.</li>
           <li><b>Roads and rail</b> only care about the slope along the line, so they can run across a hillside freely. Where they climb too steeply they cut themselves a ramp, also priced in.</li>
           <li><b>Level land</b> (<kbd>L</kbd>) is for anything steeper. Hold it over the slope and it flattens toward the height where you first pressed, at ${money(GRADE_COST)} per metre of earth moved. Selecting it turns on the Steepness layer, and the cursor shows the steepness underneath.</li>
+          <li><b>In the terrain editor</b>, the lines under the sliders say how much of the map is flat for building (dry land a zone's lot fits on without levelling), how much of the land is one landmass, and how many rivers and lakes there are. A river runs to the sea or off the map; a lake doesn't.</li>
         </ul>
         ${tip('High ground adds land value, and so does a view of water. A gentle hillside above a lake is prime residential land.')}`,
     },

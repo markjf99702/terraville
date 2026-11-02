@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { World, encodeArray, decodeArray } from '../src/world';
 import { Sim, compass, passingSentence, ridersWord, spending } from '../src/sim';
-import { generateTerrain, cleanTerrain, DEFAULT_TERRAIN, applyBrush } from '../src/terrain';
+import { generateTerrain, cleanTerrain, DEFAULT_TERRAIN, applyBrush, landReadout } from '../src/terrain';
 import { linePath, planLine, applyLine, planZones, applyBuildings, planBulldoze, levelCost } from '../src/tools';
 import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST, UPGRADE_LV, Kind, BUILDINGS, article, buildingName, cityClass, isZone, num, upkeepOf } from '../src/defs';
 import { DAMAGED_CODE, challengeWins, citySlot, encode, encodeNow, decode, listSlots, pushSaved, readCode, recordWin, saveCode, SlotMeta } from '../src/save';
@@ -13,7 +13,7 @@ import { Game, priceIncludes } from '../src/game';
 import { chartAxis, spreadLabels, tickLabel } from '../src/ui/charts';
 import { cutOff } from '../src/render/renderer';
 import { Vehicles } from '../src/render/vehicles';
-import { ago, demandWords, worryWord } from '../src/ui/ui';
+import { ago, demandWords, landWords, worryWord } from '../src/ui/ui';
 import { builtArea, pictureName, pictureScale } from '../src/ui/picture';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -85,6 +85,42 @@ await test('an archipelago is islands: several big ones, none with most of the l
     assert.ok(bodies.filter((b) => b >= 150).length >= 3, `probe-${k}-seed: three islands of 150 tiles or more`);
     assert.ok(bodies[0] < land * 0.6, `probe-${k}-seed: the largest holds ${Math.round((100 * bodies[0]) / land)}% of the land`);
   }
+});
+
+await test("the editor's land readout: flat for building, the largest landmass, rivers and lakes", () => {
+  const world = new World(12, 10);
+  world.height.fill(3);
+  assert.deepEqual(landReadout(world), { flat: 1, largest: 1, rivers: 0, lakes: 0 });
+  // A stream from edge to edge is a river, and parts the land 60 tiles to 50.
+  for (let y = 0; y < 10; y++) world.water[y * 12 + 6] = 1;
+  let r = landReadout(world);
+  assert.deepEqual([r.flat, r.largest, r.rivers, r.lakes], [110 / 120, 60 / 110, 1, 0]);
+  // A pond that reaches neither the sea nor the edge is a lake; one that reaches the sea (water below 0 m) is a river.
+  world.water[2 * 12 + 2] = world.water[2 * 12 + 3] = 1;
+  world.water[9 * 12 + 9] = 1;
+  world.height[9 * 12 + 9] = -2;
+  world.water[8 * 12 + 9] = 1;
+  r = landReadout(world);
+  assert.deepEqual([r.rivers, r.lakes], [2, 1]);
+  // A peak 30 m up: no 3×3 lot over it varies by 9 m or less, so it isn't flat for building, though the lots beside it are.
+  const peak = new World(9, 9);
+  peak.height.fill(3);
+  peak.height[4 * 9 + 4] = 30;
+  r = landReadout(peak);
+  assert.equal(r.flat, 80 / 81);
+  // Generated land: a coast is mostly one landmass with room to build; an archipelago's largest island holds a fraction.
+  for (const seed of ['amber-isle-11', 'cedar-bay-4']) {
+    const coast = landReadout(generateTerrain({ ...DEFAULT_TERRAIN, seed, w: 120, h: 100 }));
+    assert.ok(coast.flat > 0.45 && coast.flat < 0.7 && coast.largest > 0.9 && coast.lakes > 0, `${seed}: ${JSON.stringify(coast)}`);
+    const none = landReadout(generateTerrain({ ...DEFAULT_TERRAIN, rivers: 0, seed, w: 120, h: 100 }));
+    const six = landReadout(generateTerrain({ ...DEFAULT_TERRAIN, rivers: 6, seed, w: 120, h: 100 }));
+    assert.ok(none.rivers === 0 && six.rivers >= 4, `${seed}: rivers ${none.rivers} at 0, ${six.rivers} at 6`);
+    const isles = landReadout(generateTerrain({ ...DEFAULT_TERRAIN, style: 'archipelago', seed, w: 120, h: 100 }));
+    assert.ok(isles.largest < 0.4, `${seed}: the largest island holds ${isles.largest}`);
+  }
+  assert.deepEqual(landWords({ flat: 0.544, largest: 0.98, rivers: 2, lakes: 19 }), ['Flat for building: *54%* of the map', 'Largest landmass: *98%* of the land', '*2* rivers · *19* lakes']);
+  assert.equal(landWords({ flat: 0, largest: 0, rivers: 0, lakes: 1 })[2], 'No rivers · *1* lake');
+  assert.equal(landWords({ flat: 0, largest: 0, rivers: 1, lakes: 0 })[2], '*1* river · no lakes');
 });
 
 await test('generated land has no specks: no islets under 6 tiles, no ponds of 1 or 2', () => {

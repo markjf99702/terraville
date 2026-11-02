@@ -15,6 +15,7 @@ Play it at [terraville.junkdrawer.works](https://terraville.junkdrawer.works/), 
 **Terrain editor**
 - Five landscape styles (coastline, island, archipelago, lake country, river valley), each generated from a seed you can type or roll.
 - Sliders for sea level, mountains, ruggedness, rivers, lakes and forest. Every change regenerates the map instantly.
+- Under the sliders, how the land stands for a city: how much of the map is flat for building, how much of the land is one landmass, and how many rivers and lakes it has.
 - Sculpting brushes: raise, lower, smooth, flatten, roughen. Paint water, dry land, forest, or clear trees. Drop a spring on a hilltop and a river finds its own way downhill.
 - Real elevation with hillshading and contour lines. Beaches form on low coasts; rivers widen as they run.
 - Undo and redo through everything, including regenerations.
