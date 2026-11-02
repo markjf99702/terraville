@@ -443,6 +443,8 @@ input[type="range"] { width: 100%; accent-color: var(--sign-hi); margin: 0; }
 #inspect dd.text { font-family: var(--font); text-align: left; }
 #inspect .why { margin-top: 8px; line-height: 1.4; }
 #inspect .close { position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; }
+/* The small close buttons on the cards answer a finger 40 px across. */
+#inspect .close::after, #guide .close::after, #goal .goal-close::after { content: ''; position: absolute; inset: -7px; }
 #inspect .upgrade { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
 #inspect .upgrade .btn { align-self: flex-start; }
 
@@ -676,7 +678,7 @@ kbd { font: 600 11.5px var(--mono); padding: 1px 6px; border: 1px solid var(--li
 #goal .goal-head { display: flex; flex: 1; min-width: 0; align-items: baseline; justify-content: space-between; gap: 8px; margin: 0; padding: 0; border: none; background: none; text-align: left; }
 #goal button.goal-head { align-items: center; min-height: 26px; }
 #goal.folded button.goal-head { min-height: 40px; padding: 8px 12px; }
-#goal .goal-close { width: 26px; height: 26px; flex: none; margin: -4px -6px -4px 0; }
+#goal .goal-close { position: relative; width: 26px; height: 26px; flex: none; margin: -4px -6px -4px 0; }
 #goal.folded .goal-close { margin: 0 6px 0 0; }
 #goal .goal-name { flex: 1; min-width: 0; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 #goal .goal-time { font-size: 12px; color: var(--text); white-space: nowrap; }
@@ -1049,6 +1051,19 @@ footer.jd-foot { display: block; margin: 0; padding: 4px 0 0; border: 0; font-si
   .rci { padding: 3px 5px; }
   .speed { padding: 3px 1px; gap: 1px; }
   .speed button { width: 25px; }
+}
+
+/* ---- fingers: buttons a finger can find without a second try ------------- */
+@media (pointer: coarse) {
+  /* The report's worries: every row 40 px tall (a button's padding counts on top of its height), 4 px apart. */
+  .bars { gap: 4px; }
+  .bars > .barrow { min-height: 40px; }
+  .bars > button.barrow.worry { min-height: 32px; margin: 0 -6px; }
+  .dropdown button { min-height: 44px; }
+  #ticker button { height: 40px; }
+  .mm-row select { height: 40px; }
+  .btn.small { height: 40px; }
+  .guide-nav button { min-height: 40px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

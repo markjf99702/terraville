@@ -2023,6 +2023,35 @@ try {
     await ctx.close();
   });
 
+  await test("on a touch screen the small close buttons answer a finger, and the menus, the report's worries and the dialogs' buttons are finger-sized", async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await found(page);
+    const tall = (sel) => page.$$eval(sel, (es) => es.filter((e) => e.offsetWidth).map((e) => Math.round(e.getBoundingClientRect().height)));
+    // The checklist's close button stays 26 px, but a tap 6 px outside it still closes the list.
+    await page.tap('#guide .guide-next');
+    const x = await page.$eval('#guide .close', (b) => {
+      const r = b.getBoundingClientRect();
+      return document.elementFromPoint(r.left - 6, r.top + r.height / 2)?.closest('.close') === b && r.width === 26;
+    });
+    assert.ok(x, "a tap just outside the checklist's close button lands on it");
+    assert.ok((await tall('#ticker button')).every((h) => h >= 40), 'the news button is 40 px tall');
+    await page.tap('#topbar [data-act="menu"]');
+    assert.ok((await tall('.dropdown button')).every((h) => h >= 44), 'menu items are 44 px tall');
+    await page.tap('#topbar [data-act="menu"]');
+    // A city with people in it, and so worries.
+    await page.evaluate(() => window.__terraville.startScenario('gridlock'));
+    await page.click('.modal footer .btn.primary');
+    await page.tap('#citySign');
+    const rows = await page.$$eval('.bars > *', (es) => es.map((e) => e.getBoundingClientRect()).map((r) => [r.top, r.bottom]));
+    assert.ok(rows.length > 2 && rows.every(([t, b], i) => b - t >= 40 && (i === 0 || t - rows[i - 1][1] >= 4)), "the report's worries are 40 px tall and 4 px apart");
+    await page.click('.modal [data-close]');
+    await page.evaluate(() => window.__terraville.ui.openFiles());
+    assert.ok((await tall('.modal .btn.small')).every((h) => h >= 40), "Save, open and share's buttons are 40 px tall");
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('a phone on its side gets one row of top bar, room for the map, menus that scroll, and panels clear of the notch', async () => {
     const ctx = await profile({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
     const { page, problems } = await open(ctx);
