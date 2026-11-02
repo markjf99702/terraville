@@ -391,6 +391,9 @@ export class Disasters {
       x = cx + (Math.random() - 0.5) * 30;
       y = cy + (Math.random() - 0.5) * 30;
     }
+    // On the map from the start, so the news names a tile there, and Go there and a save keep it.
+    x = Math.max(0.5, Math.min(w - 0.5, x));
+    y = Math.max(0.5, Math.min(h - 0.5, y));
     const heading = Math.random() * Math.PI * 2;
     this.roamers.push({
       kind, x, y, px: x, py: y, vx: 0, vy: 0,
@@ -398,8 +401,9 @@ export class Disasters {
       heading,
     });
     const msg = kind === 'tornado' ? 'Tornado sighted!' : 'A monster is coming ashore!';
-    this.sim.say(kind, msg, 'alert', { x: Math.round(x), y: Math.round(y) }, 0);
-    this.sim.emit({ type: 'disaster', kind, x, y });
+    // The tile it stands on: rounding would name the next one, past the edge from the last column.
+    this.sim.say(kind, msg, 'alert', { x: Math.floor(x), y: Math.floor(y) }, 0);
+    this.sim.emit({ type: 'disaster', kind, x: Math.floor(x), y: Math.floor(y) });
   }
 
   private pollutionPeak(): { x: number; y: number } {
@@ -507,8 +511,8 @@ export class Disasters {
       }
     }
     this.shake = 2.5;
-    this.sim.say('quake', 'Earthquake! Check for fires and broken roads.', 'alert', { x: Math.round(cx), y: Math.round(cy) }, 0);
-    this.sim.emit({ type: 'disaster', kind: 'earthquake', x: cx, y: cy });
+    this.sim.say('quake', 'Earthquake! Check for fires and broken roads.', 'alert', { x: Math.floor(cx), y: Math.floor(cy) }, 0);
+    this.sim.emit({ type: 'disaster', kind: 'earthquake', x: Math.floor(cx), y: Math.floor(cy) });
   }
 }
 

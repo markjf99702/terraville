@@ -1189,6 +1189,28 @@ await test('a flood or a tornado over burning woods leaves no fire burning on ba
   });
 });
 
+await test('the news names a tile on the map for every tornado and monster, even one that starts at the edge', () => {
+  let off = 0, placed = 0;
+  for (let k = 0; k < 40; k++) seeded(100 + k, () => {
+    // Deep water down the east edge for the monster to rise from; the town hugs the west edge for the tornado.
+    const w = flat(60, 40);
+    for (let y = 0; y < 40; y++) for (let x = 56; x < 60; x++) { w.water[y * 60 + x] = 1; w.height[y * 60 + x] = -6; }
+    w.place('coal', 2, 2);
+    w.place('res', 2, 20);
+    const sim = new Sim(w);
+    sim.disasters.trigger(k % 2 ? 'monster' : 'tornado');
+    for (const m of sim.messages) {
+      if (m.x === undefined) continue;
+      placed++;
+      if (!w.inBounds(m.x, m.y!) || !Number.isInteger(m.x) || !Number.isInteger(m.y)) off++;
+    }
+    const r = sim.disasters.roamers[0];
+    if (!(r.x >= 0 && r.y >= 0 && r.x < w.w && r.y < w.h)) off++;
+  });
+  assert.equal(placed, 40);
+  assert.equal(off, 0, `${off} tornadoes and monsters named, or stood on, a spot off the map`);
+});
+
 await test('a save with rubble left burning for years opens with it put out', () => {
   const w = flat();
   w.fire[5 * w.w + 5] = 250; // burnt-down rubble from before the fix
