@@ -774,6 +774,58 @@ try {
     await ctx.close();
   });
 
+  await test('after a build the tip says what it cost, with no red preview over it, and the bulldozer raises dust', async () => {
+    const ctx = await profile(DESK);
+    const { page, problems } = await open(ctx);
+    await found(page);
+    const p = await page.evaluate(() => {
+      const g = window.__terraville;
+      const w = g.world;
+      const r = g.renderer;
+      r.cam.zoom = 20;
+      w.city.funds = 50000;
+      for (let y = 12; y < w.h - 12; y++) for (let x = 12; x < w.w - 24; x++) {
+        let ok = true;
+        for (let dx = 0; dx < 12 && ok; dx++) for (let dy = 0; dy < 4 && ok; dy++) {
+          const i = (y + dy) * w.w + x + dx;
+          if (w.water[i] || w.occ[i] || w.net[i] || w.slope(x + dx, y + dy) > 3) ok = false;
+        }
+        if (!ok) continue;
+        w.place('police', x + 8, y + 3);
+        r.centerOn(x + 6, y + 2);
+        const at = (tx, ty) => { const s = r.tileToScreen(tx + 0.5, ty + 0.5); return [s.x, s.y]; };
+        return { a: at(x, y), b: at(x + 6, y), police: at(x + 8, y + 3), far: at(x + 6, y + 12) };
+      }
+    });
+    await page.click('[data-tool="res"]');
+    await page.mouse.move(...p.a);
+    await page.mouse.down();
+    await page.mouse.move(...p.b, { steps: 4 });
+    await page.mouse.up();
+    const tip = () => page.evaluate(() => {
+      const t = document.querySelector('#cursorTip');
+      return { text: t.hidden ? null : t.textContent, bad: t.classList.contains('bad'), preview: !!window.__terraville.renderer.preview };
+    });
+    const after = await tip();
+    assert.match(after.text, /^Zoned [23] lots · \$\d{3}$/);
+    assert.deepEqual([after.bad, after.preview], [false, false], 'no red, no preview over the new lots');
+    await page.mouse.move(p.b[0] + 4, p.b[1] + 3);
+    await page.waitForTimeout(1400);
+    assert.deepEqual(await tip(), { text: null, bad: false, preview: false }, 'after a moment the tip goes and the spot stays quiet');
+    await page.mouse.move(...p.far);
+    assert.equal((await tip()).preview, true, 'previews come back away from it');
+    await page.click('[data-tool="bulldoze"]');
+    await page.mouse.click(...p.police);
+    assert.match((await tip()).text, /^Cleared 1 · \$\d+$/);
+    assert.deepEqual(await page.evaluate(() => window.__terraville.renderer.vehicles.dust.map((d) => d.size)), [1], 'dust where the station came down');
+    await page.click('[data-tool="police"]');
+    await page.mouse.click(...p.police);
+    assert.match((await tip()).text, /^Police station built · \$\d+$/);
+    assert.deepEqual(await page.evaluate(() => window.__terraville.renderer.vehicles.dust.map((d) => d.size)), [1, 0.6], 'a smaller puff where it went up');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('on a phone, Inspect takes the bottom slot from the map layer card and the news log', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

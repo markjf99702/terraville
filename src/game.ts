@@ -2,7 +2,7 @@
 import { Audio } from './audio';
 import {
   BUILDINGS, CITY_CLASSES, CITY_TOOLS, DIFFICULTIES, Difficulty, EDITOR_TOOLS, GRADE_COST, Kind, MAP_SIZES, SEP, ToolDef, Upgrade,
-  buildingName, cityClass, nextUpgrade,
+  buildingName, cityClass, isZone, nextUpgrade,
 } from './defs';
 import { Minimap } from './render/minimap';
 import { Renderer, SLOPE_CLASSES } from './render/renderer';
@@ -783,6 +783,11 @@ export class Game {
       r.clampCamera(0);
     }
     if (this.brushOn) this.brushTick(dt);
+    // The moment for saying what was built is up: the tip goes, and the spot stays quiet until the pointer leaves it.
+    if (this.built?.shown && performance.now() >= this.built.until) {
+      this.built.shown = false;
+      this.ui.cursorTip(0, 0, null);
+    }
     if (this.mode === 'city' && this.settings.autosave && !this.stopped) {
       this.autoTimer += dt;
       if (this.autoTimer > 90) {
@@ -825,10 +830,16 @@ export class Game {
       return;
     }
     this.toolOnce = 'bulldoze';
-    this.commit(plan);
+    this.commit(plan, tx, ty);
     this.toolOnce = null;
     this.pointerMove(fx, fy, sx, sy);
   }
+
+  /**
+   * What was just built: the tip says so for a moment, and the spot it covers shows no preview (which would only say
+   * the spot is taken) until the pointer leaves it. `until` is a performance.now() time.
+   */
+  private built: { html: string; until: number; tiles: Set<number>; shown: boolean } | null = null;
 
   /** The steepness layer was switched on by picking Level land, so switch it off after. */
   private autoSlope = false;
@@ -847,12 +858,14 @@ export class Game {
     this.anchor = null;
     this.pendingPlace = false;
     this.brushOn = false;
+    this.built = null;
     this.renderer.preview = null;
     this.ui?.syncTool();
   }
 
   cancelTool(): void {
     this.toolOnce = null;
+    this.built = null;
     this.anchor = null;
     this.pendingPlace = false;
     if (this.brushOn && this.mode === 'city') this.setUndoCost(this.brushSpent);
@@ -930,6 +943,14 @@ export class Game {
         }
       }
       return;
+    }
+    if (this.built && !this.anchor && !this.pendingPlace) {
+      if (inside && this.built.tiles.has(ty * this.world.w + tx)) {
+        r.preview = null;
+        this.ui.cursorTip(sx, sy, this.built.shown ? this.built.html : null);
+        return;
+      }
+      this.built = null;
     }
     if (!inside && !this.anchor) {
       r.preview = null;
@@ -1011,6 +1032,7 @@ export class Game {
   pointerDown(fx: number, fy: number, sx: number, sy: number): void {
     if (this.mode === 'title') return;
     this.audio.unlock();
+    this.built = null;
     const tx = Math.floor(fx);
     const ty = Math.floor(fy);
     const t = this.tool();
@@ -1070,7 +1092,7 @@ export class Game {
         if (t.id === 'spring') this.dropSpring(tx, ty);
         else {
           const plan = this.plan(tx, ty);
-          if (plan) this.commit(plan);
+          if (plan) this.commit(plan, tx, ty);
         }
       }
       this.pointerMove(fx, fy, sx, sy);
@@ -1079,7 +1101,7 @@ export class Game {
     if (!this.anchor) return;
     const plan = this.plan(Math.floor(fx), Math.floor(fy));
     this.anchor = null;
-    if (plan) this.commit(plan);
+    if (plan) this.commit(plan, Math.floor(fx), Math.floor(fy));
     this.pointerMove(fx, fy, sx, sy);
   }
 
@@ -1101,7 +1123,8 @@ export class Game {
     return this.mode !== 'city' || this.tool().id === 'bulldoze' || plan.cost <= this.world.city.funds;
   }
 
-  private commit(plan: Plan): void {
+  /** Carry out a plan, the pointer having lifted on tile (tx, ty). */
+  private commit(plan: Plan, tx: number, ty: number): void {
     const t = this.tool();
     if (!plan.count) {
       if (plan.reason) this.ui.toast(plan.reason, 'warn');
@@ -1110,20 +1133,76 @@ export class Game {
     }
     const city = this.world.city;
     if (!this.affordable(plan)) return this.notEnough(plan.cost);
+    const spot = this.footprint(t, plan);
+    if (this.world.inBounds(tx, ty)) spot.add(ty * this.world.w + tx);
     this.pushUndo();
     if (t.kind === 'line') applyLine(this.world, t.net!, plan);
-    else if (t.id === 'bulldoze') applyBulldoze(this.world, plan);
-    else if (t.id === 'trees') applyTrees(this.world, plan);
+    else if (t.id === 'bulldoze') {
+      this.raiseDust(plan);
+      applyBulldoze(this.world, plan);
+    } else if (t.id === 'trees') applyTrees(this.world, plan);
     else if (t.building) applyBuildings(this.world, t.building as Kind, plan);
+    // A small, short puff where a plant or a service goes up.
+    if (t.kind === 'place') {
+      const size = BUILDINGS[t.building!].size;
+      for (const [x, y] of plan.tiles.slice(0, 8)) this.renderer.vehicles.addDust(x + size / 2, y + size / 2, 0.6);
+    }
     if (this.mode === 'city') {
       city.funds -= plan.cost;
       this.setUndoCost(plan.cost);
+      this.built = { html: this.builtText(t, plan), until: performance.now() + 1200, tiles: spot, shown: true };
     }
     this.sealUndo();
     if (this.sim) this.sim.powerDirty = true;
     this.minimap.markDirty();
     this.audio.play(t.id === 'bulldoze' ? 'bulldoze' : t.kind === 'zone' ? 'zone' : 'build');
     this.ui.onFunds();
+  }
+
+  /**
+   * The tiles a plan builds on (or clears), before it is carried out, and around them as far as another of the same
+   * would overlap it: there a preview could only say the spot is taken.
+   */
+  private footprint(t: ToolDef, plan: Plan): Set<number> {
+    const w = this.world;
+    const tiles = new Set<number>();
+    const add = (x0: number, y0: number, s: number) => {
+      for (let y = y0; y < y0 + s; y++) for (let x = x0; x < x0 + s; x++) if (w.inBounds(x, y)) tiles.add(y * w.w + x);
+    };
+    const size = t.building ? BUILDINGS[t.building].size : 1;
+    const m = size - 1;
+    for (const [x, y] of plan.tiles) {
+      const b = t.id === 'bulldoze' ? w.buildingAt(x, y) : undefined;
+      if (b) add(b.x, b.y, b.size);
+      else add(x - m, y - m, size + 2 * m);
+    }
+    return tiles;
+  }
+
+  /** What the tip says once a plan is built: 'Zoned 11 lots · $1,100', 'Road · 9 tiles · $90', 'Cleared 4 · $4'. */
+  private builtText(t: ToolDef, plan: Plan): string {
+    const n = plan.count;
+    const cost = `<span class="num">${fmtMoney(plan.cost)}</span>`;
+    if (t.id === 'bulldoze') return `Cleared ${n}${SEP}${cost}`;
+    if (t.kind === 'zone') return `Zoned ${n} lot${n > 1 ? 's' : ''}${SEP}${cost}`;
+    if (t.kind === 'place') return `${BUILDINGS[t.building!].name} built${SEP}${cost}`;
+    return `${t.name}${SEP}${n} tile${n > 1 ? 's' : ''}${SEP}${cost}`;
+  }
+
+  /** Dust where the bulldozer takes down buildings: one cloud each, eight at most. Empty lots raise none. */
+  private raiseDust(plan: Plan): void {
+    const seen = new Set<Building>();
+    for (const [x, y] of plan.tiles) {
+      const b = this.world.buildingAt(x, y);
+      if (b && !(isZone(b.kind) && b.level === 0)) seen.add(b);
+      if (seen.size >= 8) break;
+    }
+    for (const b of seen) this.renderer.vehicles.addDust(b.x + b.size / 2, b.y + b.size / 2);
+  }
+
+  /** Whether the tip is saying what was just built, which a lifted finger leaves up for its moment. */
+  get showingBuilt(): boolean {
+    return !!this.built?.shown;
   }
 
   private notEnough(cost: number): void {

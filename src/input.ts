@@ -38,10 +38,11 @@ export class Input {
     canvas.addEventListener('pointermove', (e) => this.move(e));
     canvas.addEventListener('pointerup', (e) => this.up(e));
     canvas.addEventListener('pointercancel', (e) => this.cancel(e));
-    canvas.addEventListener('pointerleave', () => {
+    canvas.addEventListener('pointerleave', (e) => {
       if (this.mode === 'none') {
         this.game.renderer.hover = null;
-        this.game.ui.cursorTip(0, 0, null);
+        // A lifted finger leaves too, after saying what it built.
+        if (e.pointerType === 'mouse' || !this.game.showingBuilt) this.game.ui.cursorTip(0, 0, null);
         if (this.game.tool().kind !== 'brush') this.game.renderer.preview = null;
       }
     });
@@ -207,9 +208,10 @@ export class Input {
     } else if (this.mode === 'tool') {
       const t = g.renderer.screenToTile(p.x, p.y);
       g.pointerUp(t.x, t.y, p.x, p.y);
+      // A finger that lifts leaves no preview behind, though the tip saying what it built stays for its moment.
       if (e.pointerType !== 'mouse') {
         g.renderer.preview = null;
-        g.ui.cursorTip(0, 0, null);
+        if (!g.showingBuilt) g.ui.cursorTip(0, 0, null);
       }
     }
     this.mode = 'none';

@@ -33,6 +33,9 @@ interface Dust {
   x: number;
   y: number;
   age: number;
+  /** 1 for a building coming down; smaller and shorter for one going up. */
+  size: number;
+  life: number;
 }
 
 const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
@@ -59,8 +62,8 @@ export class Vehicles {
     this.scanTimer = 0;
   }
 
-  addDust(x: number, y: number): void {
-    this.dust.push({ x, y, age: 0 });
+  addDust(x: number, y: number, size = 1): void {
+    this.dust.push({ x, y, age: 0, size, life: size >= 1 ? 2.5 : 1.4 });
   }
 
   private scan(): void {
@@ -93,7 +96,7 @@ export class Vehicles {
       this.scanTimer = 2;
     }
     for (const d of this.dust) d.age += dt;
-    this.dust = this.dust.filter((d) => d.age < 2.5);
+    this.dust = this.dust.filter((d) => d.age < d.life);
     if (!running) return;
 
     // Trains.
@@ -263,13 +266,14 @@ export class Vehicles {
       plane(ctx, p.x, p.y, s, p.heading, '#F5F6F7');
     }
     for (const d of this.dust) {
-      const t = d.age / 2.5;
+      const t = d.age / d.life;
+      const s = d.size;
       for (let k = 0; k < 6; k++) {
         const a = (k / 6) * Math.PI * 2 + d.x;
-        const r = 0.3 + t * 1.4;
+        const r = (0.3 + t * 1.4) * s;
         ctx.fillStyle = `rgba(150,138,120,${(1 - t) * 0.45})`;
         ctx.beginPath();
-        ctx.arc(d.x + Math.cos(a) * r * 0.6, d.y + Math.sin(a) * r * 0.5 - t * 0.5, 0.35 + t * 0.9, 0, Math.PI * 2);
+        ctx.arc(d.x + Math.cos(a) * r * 0.6, d.y + Math.sin(a) * r * 0.5 - t * 0.5 * s, (0.35 + t * 0.9) * s, 0, Math.PI * 2);
         ctx.fill();
       }
     }
