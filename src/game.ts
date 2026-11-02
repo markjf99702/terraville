@@ -162,6 +162,14 @@ export class Game {
    * the page or Drive) until it is opened here again.
    */
   stopped = false;
+  /**
+   * Saves are numbered as they begin. A compressed save takes a moment, so one begun before a later save (the plain
+   * one made as the page hides) can finish after it: it would then put the older city back. By city, the newest save
+   * kept here and the newest sent to Drive; a save older than either is not kept, or not sent.
+   */
+  private saveSeq = 0;
+  private keptSeq = new Map<string, number>();
+  private pushedSeq = new Map<string, number>();
 
   constructor(canvas: HTMLCanvasElement, minimapCanvas: HTMLCanvasElement) {
     this.renderer = new Renderer(canvas);
@@ -695,6 +703,7 @@ export class Game {
     if (this.mode !== 'city') return true;
     if (this.stopped) return false;
     const meta = this.saveMeta();
+    const seq = ++this.saveSeq;
     let code: string;
     try {
       code = await encode(this.makeSaveFile());
@@ -703,9 +712,12 @@ export class Game {
     }
     // Another tab may have taken the city over while the code was being made.
     if (this.stopped) return false;
-    const ok = this.keepCity(code, meta);
-    // Drive gets it even when this browser's storage is full.
-    this.drive.push(code, meta);
+    const ok = this.keepCity(code, meta, seq);
+    // Drive gets it even when this browser's storage is full, unless a later save has gone there first.
+    if ((this.pushedSeq.get(meta.city) ?? 0) < seq) {
+      this.pushedSeq.set(meta.city, seq);
+      this.drive.push(code, meta);
+    }
     return ok;
   }
 
@@ -729,10 +741,16 @@ export class Game {
     return { city: city.id, name: city.name, pop: this.sim?.stats.residents ?? 0, date: city.month, saved: Date.now() };
   }
 
-  /** Store a city code in the city's own slot. The old copy is only replaced once the new one fits. */
-  private keepCity(code: string, meta: CityMeta): boolean {
+  /**
+   * Store a city code in the city's own slot. The old copy is only replaced once the new one fits. `seq` numbers the
+   * save from when it began (a new number for a save made at once): when a later save has been kept meanwhile, this
+   * one is older than what the slot holds and stays out, and the city is saved all the same.
+   */
+  private keepCity(code: string, meta: CityMeta, seq = ++this.saveSeq): boolean {
+    if ((this.keptSeq.get(meta.city) ?? 0) > seq) return true;
     const ok = saveCode(code, { id: citySlot(meta.city), name: meta.name, pop: meta.pop, date: meta.date, savedAt: meta.saved, mode: 'city', city: meta.city });
     if (ok) {
+      this.keptSeq.set(meta.city, seq);
       // The old single autosave slot is superseded by the city's own.
       if (this.slotId === 'auto') deleteSlot('auto');
       this.slotId = citySlot(meta.city);
@@ -758,7 +776,13 @@ export class Game {
     file.world.city.id = copy.city;
     // A tab playing it saves it as it stops; the copy from Drive replaces that save here.
     const handed = await this.handover(copy.city);
-    saveCode(code, { id: citySlot(copy.city), name: copy.name, pop: copy.pop, date: copy.date, savedAt: copy.saved, mode: 'city', city: copy.city });
+    // It counts as the newest save, so a save of the city begun before it doesn't put the older city back, here or in
+    // Drive.
+    const seq = ++this.saveSeq;
+    this.pushedSeq.set(copy.city, seq);
+    if (saveCode(code, { id: citySlot(copy.city), name: copy.name, pop: copy.pop, date: copy.date, savedAt: copy.saved, mode: 'city', city: copy.city })) {
+      this.keptSeq.set(copy.city, seq);
+    }
     this.loadFile(file, citySlot(copy.city));
     this.openedCode = handed;
   }

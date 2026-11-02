@@ -5,7 +5,7 @@ import { Sim, spending } from '../src/sim';
 import { generateTerrain, cleanTerrain, DEFAULT_TERRAIN } from '../src/terrain';
 import { linePath, planLine, applyLine, planZones, applyBuildings, planBulldoze, levelCost } from '../src/tools';
 import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST, UPGRADE_LV, Kind, BUILDINGS, article, buildingName, num, upkeepOf } from '../src/defs';
-import { DAMAGED_CODE, encode, encodeNow, decode, listSlots, pushSaved, saveCode, SlotMeta } from '../src/save';
+import { DAMAGED_CODE, citySlot, encode, encodeNow, decode, listSlots, pushSaved, readCode, saveCode, SlotMeta } from '../src/save';
 import { Drive, GisOAuth2 } from '../src/drive';
 import { makeRng } from '../src/rng';
 import { SCENARIOS, buildScenario, goalRowText, goalState, openScenario, scenarioMonth, scenarioNews, successLine } from '../src/scenarios';
@@ -1640,7 +1640,7 @@ function headless(world: World): any {
     settings: { sound: false, autosave: false, traffic: false, grid: false, contours: false, night: false },
     slotId: null, acc: 0, undoStack: [], redoStack: [], strokeRedo: [], pendingPlace: false, anchor: null, brushOn: false,
     brushAt: { x: 0, y: 0 }, brushTarget: undefined, brushSpent: 0, autoTimer: 0, toolOnce: null, autoSlope: false,
-    lastSpeed: 2, toasts,
+    lastSpeed: 2, toasts, saveSeq: 0, keptSeq: new Map(), pushedSeq: new Map(),
   });
   g.startSim();
   return g;
@@ -2531,6 +2531,56 @@ await test('a damaged list of saves keeps every save it can read', () => {
   }
 });
 
+await test('a compressed save that finishes after a later one never puts the older city back, here or in Drive', async () => {
+  const glob = globalThis as unknown as { window?: unknown; CompressionStream: unknown };
+  const real = glob.CompressionStream;
+  // Compression that finishes only when the test says, so two saves can finish in either order.
+  const gates: (() => void)[] = [];
+  glob.CompressionStream = class extends TransformStream<Uint8Array, Uint8Array> {
+    constructor() {
+      let open!: () => void;
+      const gate = new Promise<void>((r) => (open = r));
+      gates.push(open);
+      super({ async transform(chunk, c) { await gate; c.enqueue(chunk); } });
+    }
+  };
+  glob.window = { localStorage: memStorage() };
+  try {
+    const w = flat(40, 30);
+    w.city.founded = true;
+    const g = headless(w);
+    const pushed: number[] = [];
+    g.drive = { push: (_code: string, meta: { date: number }) => pushed.push(meta.date) };
+    const slot = () => ({ date: listSlots()[0]?.date, code: readCode(citySlot(w.city.id!))?.slice(0, 5) });
+    // The year-end autosave begins compressing, and the page is hidden half a year of play later, before it finishes.
+    w.city.month = 12;
+    const yearEnd = g.saveCity();
+    w.city.month = 18;
+    assert.equal(g.saveCityNow(), true);
+    gates[0]();
+    assert.equal(await yearEnd, true);
+    assert.deepEqual(slot(), { date: 18, code: 'TV1j:' });
+    // Two compressed saves finishing the other way round: the later one stays, and only it goes to Drive.
+    w.city.month = 24;
+    const first = g.saveCity();
+    w.city.month = 30;
+    const second = g.saveCity();
+    gates[2]();
+    assert.equal(await second, true);
+    gates[1]();
+    assert.equal(await first, true);
+    assert.deepEqual([slot(), pushed], [{ date: 30, code: 'TV1g:' }, [12, 30]]);
+    // Saves go on as usual after.
+    w.city.month = 36;
+    const next = g.saveCity();
+    gates[3]();
+    assert.equal(await next, true);
+    assert.deepEqual([slot().date, pushed], [36, [12, 30, 36]]);
+  } finally {
+    glob.CompressionStream = real;
+    delete glob.window;
+  }
+});
 
 // ---- Google Drive, against a fake of the parts of the API Terraville uses ----
 
