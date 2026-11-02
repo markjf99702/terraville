@@ -1284,12 +1284,17 @@ export class Game {
 
   // ---- landmark upgrades -----------------------------------------------------
 
-  /** A landmark's next upgrade, offered on the city's most upgraded one of its kind (the only one that counts). */
-  upgradeFor(b: Building): Upgrade | undefined {
+  /**
+   * A landmark's next upgrade, offered on the city's most upgraded one of its kind (the only one that counts), and not
+   * while it is on fire: it may burn down, and then the money is gone. `burningToo` asks whether it would be offered
+   * but for a fire, as the Inspect card does to say why there is no button.
+   */
+  upgradeFor(b: Building, burningToo = false): Upgrade | undefined {
     const up = this.mode === 'city' ? nextUpgrade(b) : undefined;
     // Undo and redo put back a copy of the building, so one held from before them is no longer the one on the map.
     if (!up || this.world.buildings.get(b.id) !== b) return undefined;
     for (const o of this.world.buildings.values()) if (o.kind === b.kind && o.level > b.level) return undefined;
+    if (!burningToo && this.world.onFire(b)) return undefined;
     return up;
   }
 
@@ -1434,6 +1439,20 @@ export class Game {
     return true;
   }
 
+  /**
+   * Whether any tile of an entry's area is on fire. Undo and redo wait for it to go out, as the bulldozer does: putting
+   * back what stood before would otherwise put the fire out for free. The editor's whole-map entries never burn.
+   */
+  private burning(s: WorldSnapshot | AreaSnapshot | World): boolean {
+    if (!('x0' in s) || s.n !== this.world.n) return false;
+    const { w, fire } = this.world;
+    const bw = s.x1 - s.x0 + 1;
+    for (let y = s.y0; y <= s.y1; y++) {
+      for (let x = s.x0; x <= s.x1; x++) if (s.mask[(y - s.y0) * bw + x - s.x0] && fire[y * w + x]) return true;
+    }
+    return false;
+  }
+
   /** What an area holds now, after an undo or redo put it back, for the entry on the other stack. */
   private afterOf(s: WorldSnapshot | AreaSnapshot | World): AreaSnapshot | undefined {
     return 'x0' in s ? this.world.areaSnapshot(s) : undefined;
@@ -1463,6 +1482,12 @@ export class Game {
       this.ui.toast('Nothing to undo.');
       return;
     }
+    // A fire goes out in time, so the entry stays, and so does the redo list.
+    if (this.mode === 'city' && this.burning(e.snap)) {
+      this.undoStack.push(e);
+      this.ui.toast('That is on fire. Undo it once the fire is out.', 'warn');
+      return;
+    }
     if (this.overtaken(e, 'undone')) return;
     const city = this.mode === 'city';
     // Money back only for a quick change of mind, or undo would be free rental.
@@ -1485,6 +1510,11 @@ export class Game {
     this.ui.flushRegen();
     const e = this.redoStack.pop();
     if (!e) return;
+    if (this.mode === 'city' && this.burning(e.snap)) {
+      this.redoStack.push(e);
+      this.ui.toast('That is on fire. Redo it once the fire is out.', 'warn');
+      return;
+    }
     if (this.overtaken(e, 'redone')) return;
     if (this.mode === 'city' && e.cost > this.world.city.funds) {
       this.redoStack.push(e);

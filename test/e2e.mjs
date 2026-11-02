@@ -2366,6 +2366,39 @@ try {
     await ctx.close();
   });
 
+  await test('undo waits for a fire to go out, and a burning landmark offers its upgrade once the fire is out', async () => {
+    const ctx = await profile(DESK);
+    const { page, problems } = await open(ctx);
+    await found(page);
+    const at = await page.evaluate(() => {
+      const g = window.__terraville;
+      const w = g.world;
+      w.city.funds = 50000;
+      const spot = (k) => {
+        for (let y = 2; y < w.h - 6; y++) for (let x = 2; x < w.w - 6; x++) if (w.canPlace(k, x, y).ok && w.canPlace(k, x + 6, y).ok) return { x, y };
+      };
+      const s = spot('police');
+      g.setTool('police');
+      g.pointerDown(s.x + 1.5, s.y + 1.5, 10, 10);
+      g.pointerUp(s.x + 1.5, s.y + 1.5, 10, 10);
+      g.sim.disasters.ignite(s.x, s.y);
+      const l = { x: s.x + 6, y: s.y };
+      g.sim.disasters.ignite(w.place('stadium', l.x, l.y).x, l.y);
+      return { station: s, stadium: l };
+    });
+    await page.keyboard.press('Control+z');
+    assert.equal(await page.textContent('#toast'), 'That is on fire. Undo it once the fire is out.');
+    assert.deepEqual(await page.evaluate(({ x, y }) => {
+      const w = window.__terraville.world;
+      return [w.buildingAt(x, y)?.kind, w.fire[y * w.w + x] > 0];
+    }, at.station), ['police', true], 'the station is still there, burning');
+    await page.evaluate(({ x, y }) => window.__terraville.ui.inspect(x, y), at.stadium);
+    assert.equal((await page.textContent('#inspect .upgrade')).trim(), 'It can be upgraded once the fire is out.');
+    assert.equal(await page.$('#inUpgrade'), null);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('a city in debt can still bulldoze, though it cannot build', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

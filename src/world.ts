@@ -246,6 +246,12 @@ export class World {
     return id ? this.buildings.get(id) : undefined;
   }
 
+  /** Whether any tile of a building is on fire. */
+  onFire(b: Building): boolean {
+    for (let dy = 0; dy < b.size; dy++) for (let dx = 0; dx < b.size; dx++) if (this.fire[(b.y + dy) * this.w + b.x + dx]) return true;
+    return false;
+  }
+
   /**
    * Whether a lot has a road along one of its sides (a corner touching diagonally doesn't count), as growth asks: looked
    * at now, where the simulation's own verdict waits for the month's end.

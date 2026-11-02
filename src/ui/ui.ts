@@ -1374,9 +1374,12 @@ export class UI {
     }
     const d = sim.describe(x, y);
     const b = this.game.world.buildingAt(x, y);
-    const up = b && this.game.upgradeFor(b);
+    // An upgrade waits while the landmark burns: it would be offered but for the fire.
+    const offer = b && this.game.upgradeFor(b, true);
+    const burning = !!offer && this.game.world.onFire(b);
+    const up = burning ? undefined : offer;
     // A second stadium, say, can't add anything: only the most upgraded one of each kind counts.
-    const outdone = b && !up && nextUpgrade(b) && this.game.mode === 'city';
+    const outdone = b && !offer && nextUpgrade(b) && this.game.mode === 'city';
     // A station's reach, or a plant's grid, is a layer away.
     const layer: Overlay | undefined = !b ? undefined
       : b.kind === 'police' ? 'police' : b.kind === 'fire' ? 'fire' : b.kind === 'school' || b.kind === 'hospital' ? 'service'
@@ -1387,7 +1390,8 @@ export class UI {
     const prose = new Set(['Does', 'Land value it adds']);
     card.innerHTML = `<button class="iconbtn close" aria-label="Close">${ICONS.close}</button><h3 id="inspectTitle">${esc(d.title)}</h3><dl>${d.rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd${prose.has(k) ? ' class="text"' : ''}>${esc(v)}</dd>`).join('')}</dl>${showLayer}${d.note ? `<p class="note why">${esc(d.note)}</p>` : ''}${up ? `
       <div class="upgrade"><p class="note">Upgrade to ${article(up.name)} <b>${esc(up.name.toLowerCase())}</b>: land value rises by <span class="num">${money(UPGRADE_LV * 40)}</span>/acre across the whole city, and upkeep by <span class="num">${money(up.upkeep)}</span>/mo.</p>
-      <button class="btn small primary" id="inUpgrade">Upgrade for ${money(up.cost)}</button></div>` : outdone ? `
+      <button class="btn small primary" id="inUpgrade">Upgrade for ${money(up.cost)}</button></div>` : burning ? `
+      <div class="upgrade"><p class="note">It can be upgraded once the fire is out.</p></div>` : outdone ? `
       <div class="upgrade"><p class="note">Only the city's most upgraded ${esc(BUILDINGS[b.kind].name.toLowerCase())} raises land value, so this one has no upgrade.</p></div>` : ''}`;
     $(card, '.close').onclick = () => this.hideInspect();
     const lb = card.querySelector<HTMLButtonElement>('#inLayer');

@@ -1638,7 +1638,7 @@ await test('undo leaves alone what a disaster has wrecked since, and refunds not
   assert.deepEqual([w.occ[park], g.toasts.at(-1)], [0, "That spot has been wrecked since, so it can't be redone."]);
 }));
 
-await test('nothing is left burning on bare ground when a burning lot is undone, and a burning lot cannot be bulldozed', () => seeded(42, () => {
+await test('undo and redo wait for a fire to go out, then leave no fire on bare ground; a burning lot cannot be bulldozed', () => seeded(42, () => {
   const g = town();
   const w = g.world;
   const bare = () => {
@@ -1646,27 +1646,83 @@ await test('nothing is left burning on bare ground when a burning lot is undone,
     for (let i = 0; i < w.n; i++) if (w.fire[i] && !w.occ[i] && !w.trees[i] && !w.rubble[i]) n++;
     return n;
   };
+  const burning = (b: any) => {
+    let n = 0;
+    for (let dy = 0; dy < b.size; dy++) for (let dx = 0; dx < b.size; dx++) if (w.fire[(b.y + dy) * w.w + b.x + dx]) n++;
+    return n;
+  };
+  const putOut = (b: any) => {
+    for (let dy = 0; dy < b.size; dy++) for (let dx = 0; dx < b.size; dx++) w.fire[(b.y + dy) * w.w + b.x + dx] = 0;
+  };
   drag(g, 'res', 53, 12);
   const lot = w.buildingAt(53, 12);
   g.sim.disasters.ignite(lot.x, lot.y);
-  assert.ok(w.fire[12 * w.w + 53] > 0);
+  const funds = w.city.funds;
+  g.undo();
+  // Refused, as bulldozing it would be: the lot stays, still burning, and the undo waits for the fire.
+  assert.equal(g.toasts.at(-1), 'That is on fire. Undo it once the fire is out.');
+  assert.equal(w.buildingAt(53, 12)?.id, lot.id);
+  assert.equal(burning(lot), 9);
+  assert.deepEqual([w.city.funds, g.canUndo(), g.canRedo()], [funds, true, false]);
+  // Once the fire is out, the undo goes ahead and leaves cold, bare ground.
+  putOut(lot);
   g.undo();
   assert.ok(!w.buildingAt(53, 12));
-  assert.equal(bare(), 0, 'undoing a lot that caught fire left the ground burning');
+  assert.equal(bare(), 0, 'undoing a lot that had burned left the ground burning');
   g.redo();
   assert.equal(w.buildingAt(53, 12)?.kind, 'res');
-  assert.equal(w.fire[12 * w.w + 53], 0, 'redo put the lot back burning');
+  assert.equal(w.fire[12 * w.w + 53], 0);
+  // A station built six months ago and set alight: undo then redo can't bring it back standing and cold.
+  drag(g, 'police', 54, 20);
+  const station = w.buildingAt(54, 20);
+  weeks(g, 24);
+  g.sim.disasters.ignite(station.x, station.y);
+  g.undo();
+  g.redo();
+  const now = w.buildingAt(54, 20);
+  assert.ok(now && burning(now) > 0, `${now?.kind} standing with ${now ? burning(now) : 0} tiles burning`);
+  // Redo waits too: a lot bulldozed, put back by undo, then set alight.
+  putOut(now);
+  const home = [...w.buildings.values()].find((b: any) => b.kind === 'res' && b.level > 0)!;
+  drag(g, 'bulldoze', home.x + 1, home.y + 1);
+  assert.equal(w.buildings.has(home.id), false);
+  g.undo();
+  g.sim.disasters.ignite(home.x, home.y);
+  g.redo();
+  assert.equal(g.toasts.at(-1), 'That is on fire. Redo it once the fire is out.');
+  assert.ok(w.buildings.has(home.id) && burning(home) === 9, 'the burning lot is still there');
+  assert.equal(g.canRedo(), true);
+  putOut(home);
+  g.redo();
+  assert.equal(w.buildings.has(home.id), false);
   // Bulldozing a burning lot is refused, as building on burning ground is; clearing a gap beside it still works.
   const homes = [...w.buildings.values()].filter((b: any) => b.kind === 'res' && b.level > 0 && b.x >= 16 && b.x <= 40 && b.y >= 14);
-  const [burning, beside] = [homes[0], homes.find((b: any) => b.y === homes[0].y && b.x === homes[0].x + 4)];
-  assert.ok(burning && beside, 'two homes side by side');
-  g.sim.disasters.ignite(burning.x, burning.y);
-  const plan = planBulldoze(w, [[burning.x + 1, burning.y + 1]]);
+  const [alight, beside] = [homes[0], homes.find((b: any) => b.y === homes[0].y && b.x === homes[0].x + 4)];
+  assert.ok(alight && beside, 'two homes side by side');
+  g.sim.disasters.ignite(alight.x, alight.y);
+  const plan = planBulldoze(w, [[alight.x + 1, alight.y + 1]]);
   assert.deepEqual([plan.count, plan.reason], [0, 'On fire']);
-  drag(g, 'bulldoze', burning.x, burning.y, beside.x + 2, beside.y + 2);
-  assert.ok(w.buildings.has(burning.id), 'the burning lot is still there');
+  drag(g, 'bulldoze', alight.x, alight.y, beside.x + 2, beside.y + 2);
+  assert.ok(w.buildings.has(alight.id), 'the burning lot is still there');
   assert.equal(w.buildings.has(beside.id), false, 'the lot beside it was cleared');
   assert.equal(bare(), 0);
+}));
+
+await test('a landmark on fire is not offered an upgrade, and cannot be sold one', () => seeded(42, () => {
+  const g = town();
+  const w = g.world;
+  drag(g, 'stadium', 55, 30);
+  const stadium = [...w.buildings.values()].find((b) => b.kind === 'stadium')!;
+  assert.ok(g.upgradeFor(stadium), 'offered before the fire');
+  g.sim.disasters.ignite(stadium.x, stadium.y);
+  const funds = w.city.funds;
+  assert.equal(g.upgradeFor(stadium), undefined);
+  assert.equal(g.upgrade(stadium), false);
+  assert.deepEqual([w.city.funds, stadium.level], [funds, 1]);
+  // The card's own question: would it be offered but for the fire? It would.
+  assert.ok(g.upgradeFor(stadium, true));
+  for (let dy = 0; dy < 4; dy++) for (let dx = 0; dx < 4; dx++) w.fire[(stadium.y + dy) * w.w + stadium.x + dx] = 0;
+  assert.ok(g.upgradeFor(stadium), 'offered again once the fire is out');
 }));
 
 await test('the cost tip says what part of a price is bridges, and what part clears trees or rubble', () => {
