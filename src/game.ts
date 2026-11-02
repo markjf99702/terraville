@@ -525,7 +525,11 @@ export class Game {
     this.renderer.resize();
     this.renderer.cam.zoom = n ? 13 : Math.max(this.renderer.minZoom(), 9);
     this.renderer.centerOn(n ? cx / n : this.world.w / 2, n ? cy / n : this.world.h / 2);
+    // The goal opens the news, ahead of whatever the challenge sets off.
+    sim.say('goal', `${s.goal} You have until ${s.year + s.years}.`, 'info', undefined, 0);
     s.start?.(sim);
+    // The top bar's monthly balance is real from the first frame, not +$0 until a month has closed.
+    sim.estimateBudget();
     this.minimap.markDirty();
     this.showGoal();
     this.ui.scenarioIntro(s);

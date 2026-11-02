@@ -877,14 +877,13 @@ export class Sim {
 
   // ---- money ----------------------------------------------------------------
 
-  budget(): void {
+  /** A month's taxes and costs as the city stands, without charging them. */
+  private reckon(): Budget {
     const world = this.world;
     const city = world.city;
-    const s = this.stats;
-    const taxIncome = this.projectTax(city.tax);
     const counts = world.countNet();
     const b = emptyBudget();
-    b.taxIncome = taxIncome;
+    b.taxIncome = this.projectTax(city.tax);
     b.transport = (counts.road * NET_UPKEEP.road + counts.rail * NET_UPKEEP.rail + counts.bridge * NET_UPKEEP.bridge) * city.funding.transport;
     for (const bd of world.buildings.values()) {
       const def = BUILDINGS[bd.kind];
@@ -894,8 +893,21 @@ export class Sim {
       else b.services += upkeepOf(bd);
     }
     b.interest = city.loan * 0.07 / 12;
+    return b;
+  }
+
+  /** Show what a month brings in and costs for a city that opens with no month behind it, such as a challenge's. */
+  estimateBudget(): void {
+    this.stats.lastBudget = this.reckon();
+  }
+
+  budget(): void {
+    const world = this.world;
+    const city = world.city;
+    const s = this.stats;
+    const b = this.reckon();
     const spend = b.transport + b.police + b.fire + b.services + b.power + b.interest;
-    city.funds += taxIncome - spend;
+    city.funds += b.taxIncome - spend;
     s.lastBudget = b;
     const yb = s.yearBudget;
     for (const k of Object.keys(b) as (keyof Budget)[]) yb[k] += b[k];

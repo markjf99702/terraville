@@ -12,7 +12,7 @@ import { DRIVE_HOME, DriveCopy } from '../drive';
 import { SaveFile, SlotMeta, decode, deleteSlot, encode, listSlots, loadSlot, storageAvailable } from '../save';
 import type { Message } from '../sim';
 import { STYLE_NAMES, TerrainStyle, hasSea } from '../terrain';
-import { GoalState, SCENARIOS, Scenario } from '../scenarios';
+import { GoalState, SCENARIOS, Scenario, successLine } from '../scenarios';
 import { World } from '../world';
 import { hasKeyboardFocus, watchFocus } from '../focus';
 import { lineChart } from './charts';
@@ -1382,8 +1382,9 @@ export class UI {
   }
 
   scenarioResult(s: Scenario, st: GoalState, won: boolean): void {
+    const city = this.game.world.city;
     const body = el(`<div style="display:flex;flex-direction:column;gap:10px">
-      <p style="margin:0;font-size:15px">${won ? `${esc(s.name)} is a success. The council is already naming a street after you.` : `The deadline for ${esc(s.name)} has passed without reaching the goal.`}</p>
+      <p style="margin:0;font-size:15px">${won ? `${esc(successLine(s, city.month, city.scenario?.end ?? city.month))} The council is already naming a street after you.` : `The deadline for ${esc(s.name)} has passed without reaching the goal.`}</p>
       <p class="note num" style="margin:0">${esc(st.status)}</p>
       <p class="note" style="margin:0">You can keep playing this city as long as you like.</p>
     </div>`);

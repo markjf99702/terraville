@@ -8,7 +8,7 @@ import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST, UPGRADE_LV, Kind, buildingNam
 import { DAMAGED_CODE, encode, encodeNow, decode, listSlots, pushSaved, saveCode, SlotMeta } from '../src/save';
 import { Drive, GisOAuth2 } from '../src/drive';
 import { makeRng } from '../src/rng';
-import { SCENARIOS, buildScenario, openScenario, scenarioMonth } from '../src/scenarios';
+import { SCENARIOS, buildScenario, openScenario, scenarioMonth, successLine } from '../src/scenarios';
 import { Game } from '../src/game';
 
 let passed = 0;
@@ -1167,6 +1167,27 @@ await test('passing a size class is news, a toast and a fanfare; an upgrade is n
   weeks(g, 48);
   assert.match(g.sim.messages.filter((m: any) => m.text.startsWith('1901')).at(-1).text, /^1901 closes with a deficit/);
   assert.equal(played.filter((s) => s === 'coin').length, 1);
+}));
+
+await test('a challenge opens with its goal in the news and its real monthly balance, and a win says when', () => seeded(4, () => {
+  const g = headless(flat(40, 30));
+  for (const id of ['gridlock', 'aftershock']) {
+    const s = SCENARIOS.find((x) => x.id === id)!;
+    g.startScenario(id);
+    const sim = g.sim;
+    assert.deepEqual([sim.messages[0].text, sim.messages[0].kind], [`${s.goal} You have until ${s.year + s.years}.`, 'info']);
+    const b = sim.stats.lastBudget;
+    const net = b.taxIncome - (b.transport + b.police + b.fire + b.services + b.power + b.interest);
+    assert.ok(b.taxIncome > 500 && net > 0, `${id} opens at ${net}/mo`);
+    assert.equal(g.world.city.funds, s.funds, 'the reckoning charged the city');
+  }
+  assert.ok(g.sim.messages.some((m: any) => m.kind === 'alert'), "Aftershock's earthquake is news after the goal");
+  const aftershock = SCENARIOS.find((x) => x.id === 'aftershock')!;
+  const end = (aftershock.year - 1900 + aftershock.years) * 12;
+  assert.equal(successLine(aftershock, (1993 - 1900) * 12, end), 'Aftershock is a success in 1993, four years early.');
+  assert.equal(successLine(aftershock, end - 12, end), 'Aftershock is a success in 1996, one year early.');
+  assert.equal(successLine(aftershock, end - 5, end), 'Aftershock is a success in 1996, five months early.');
+  assert.equal(successLine(aftershock, end, end), 'Aftershock is a success in 1997.');
 }));
 
 await test('undo leaves alone what a disaster has wrecked since, and refunds nothing for it', () => seeded(42, () => {
