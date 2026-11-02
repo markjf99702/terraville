@@ -3126,6 +3126,21 @@ try {
       s = await state();
       assert.equal(s.toast, 'That is on fire. Bulldoze a gap around it to stop it spreading.');
       assert.equal(s.card, 'Bulldoze for $9', 'the card stays');
+      // On Ultra the card is drawn again every month, a quarter of a second: the first tap still waits for the second.
+      await page.evaluate(() => {
+        const g = window.__terraville;
+        g.world.fire.fill(0);
+        g.setSpeed(4);
+      });
+      await tapTile(spot.cx - 3, spot.cy);
+      await page.tap('#inBulldoze');
+      const month = await page.evaluate(() => window.__terraville.world.city.month);
+      await page.waitForTimeout(700);
+      assert.notEqual(await page.evaluate(() => window.__terraville.world.city.month), month, 'a month went by between the taps');
+      assert.equal((await state()).card, 'Tap again to bulldoze', 'the card drawn again still waits for the second tap');
+      await page.tap('#inBulldoze');
+      s = await state();
+      assert.deepEqual([s.card, s.homes], ['', 0], 'and the second tap clears it');
       assert.deepEqual(problems, []);
       await ctx.close();
     }
@@ -3219,6 +3234,18 @@ try {
     await page.click('#inUpgrade');
     await page.click('#inUpgrade');
     assert.deepEqual(await stadium(), [2, 35000]);
+    // On Ultra the card is drawn again every month, a quarter of a second: the first click still waits for the second.
+    await page.evaluate(() => {
+      window.__terraville.world.city.funds = 100000;
+      window.__terraville.setSpeed(4);
+    });
+    await page.click('#inUpgrade');
+    const month = await page.evaluate(() => window.__terraville.world.city.month);
+    await page.waitForTimeout(700);
+    assert.notEqual(await page.evaluate(() => window.__terraville.world.city.month), month, 'a month went by between the clicks');
+    assert.equal(await page.textContent('#inUpgrade'), 'Click again to pay $40,000', 'the card drawn again still waits for the second click');
+    await page.click('#inUpgrade');
+    assert.equal((await stadium())[0], 3, 'and the second click upgrades it');
     assert.deepEqual(problems, []);
     await ctx.close();
   });

@@ -1493,6 +1493,9 @@ export class UI {
     // Figures stay in the card's mono, lined up on the right. Words are set as text, and a phrase longer than the
     // column holds runs under its label, the card's whole width, rather than wrapping into a ragged stack.
     const value = (v: string) => (FIGURE.test(v) ? '' : v.length > 18 ? ' class="text long"' : ' class="text"');
+    // A button waiting for its second tap stays waiting when the card is drawn again for the same thing, as it is every
+    // month: on Ultra a month passes in a quarter of a second, between one tap and the next.
+    const sure = refresh ? { up: card.querySelector<HTMLElement>('#inUpgrade')?.dataset.sure, clear: card.querySelector<HTMLElement>('#inBulldoze')?.dataset.sure } : {};
     card.innerHTML = `<button class="iconbtn close" aria-label="Close">${ICONS.close}</button><h3 id="inspectTitle">${esc(d.title)}</h3>${d.does ? `<p class="does">${esc(d.does)}.</p>` : ''}<dl>${d.rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd${value(v)}>${esc(v)}</dd>`).join('')}</dl>${showLayer}${d.note ? `<p class="note why">${esc(d.note)}</p>` : ''}${up ? `
       <div class="upgrade"><p class="note">Upgrade to ${article(up.name)} <b>${esc(up.name.toLowerCase())}</b>: land value rises by <span class="num">${money(UPGRADE_LV * 40)}</span>/acre across the whole city, and upkeep by <span class="num">${money(up.upkeep)}</span>/mo.</p>
       <button class="btn small primary" id="inUpgrade">Upgrade for ${money(up.cost)}</button></div>` : burning ? `
@@ -1509,15 +1512,17 @@ export class UI {
     }
     const ub = card.querySelector<HTMLButtonElement>('#inUpgrade');
     if (ub && b && up) {
+      const key = `${b.id} ${up.name}`;
+      const arm = () => {
+        ub.dataset.sure = key;
+        ub.textContent = `${again()} to pay ${money(up.cost)}`;
+      };
+      if (sure.up === key) arm();
       ub.onclick = () => {
         // Undo or a disaster may have changed the landmark since the card was drawn: show it as it is now instead.
         if (this.game.upgradeFor(b) !== up) return this.inspect(x, y, true);
         // A big purchase: the second tap pays.
-        if (!ub.dataset.sure) {
-          ub.dataset.sure = '1';
-          ub.textContent = `${again()} to pay ${money(up.cost)}`;
-          return;
-        }
+        if (!ub.dataset.sure) return arm();
         if (!this.game.upgrade(b)) return;
         this.inspect(x, y, true);
       };
@@ -1525,6 +1530,12 @@ export class UI {
     const db = card.querySelector<HTMLButtonElement>('#inBulldoze');
     card.classList.toggle('can-clear', !!db);
     if (db) {
+      const key = String(b?.id ?? 0);
+      const arm = () => {
+        db.dataset.sure = key;
+        db.textContent = `${again()} to bulldoze`;
+      };
+      if (sure.clear === key && clear?.count) arm();
       db.onclick = () => {
         // Something may have changed there since the card was drawn: show it as it is now instead.
         const now = this.game.clearPlan(x, y);
@@ -1532,11 +1543,7 @@ export class UI {
         // A burning building is refused, in the bulldozer's words, and the card stays.
         if (!now.count) return this.game.bulldozeTile(x, y);
         // The second tap clears it, as the Upgrade button's second tap pays.
-        if (!db.dataset.sure) {
-          db.dataset.sure = '1';
-          db.textContent = `${again()} to bulldoze`;
-          return;
-        }
+        if (!db.dataset.sure) return arm();
         this.hideInspect();
         this.game.bulldozeTile(x, y);
       };
