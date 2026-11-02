@@ -752,8 +752,10 @@ try {
       const g = window.__terraville;
       const w = g.world;
       for (let y = 10; y < w.h - 10; y++) for (let x = 10; x < w.w - 20; x++) {
+        // The lots are centred on the drag, so they start a tile up and to the left of it: check that row and
+        // column too, or water or a steep tile there blocks a lot that should go down.
         let ok = true;
-        for (let dx = 0; dx < 12 && ok; dx++) for (let dy = 0; dy < 3 && ok; dy++) {
+        for (let dx = -1; dx < 12 && ok; dx++) for (let dy = -1; dy < 3 && ok; dy++) {
           const i = (y + dy) * w.w + x + dx;
           if (w.water[i] || w.occ[i] || w.net[i] || w.slope(x + dx, y + dy) > 1.5) ok = false;
         }
