@@ -762,8 +762,14 @@ export class Renderer {
 
   private buildOverlay(): void {
     const world = this.world;
+    // The power layer is drawn at 4 pixels a tile, for the hatching on an overloaded grid; the rest at one.
+    const S = this.overlay === 'power' ? POWER_PX : 1;
+    if (this.overlayCanvas.width !== world.w * S || this.overlayCanvas.height !== world.h * S) {
+      this.overlayCanvas.width = world.w * S;
+      this.overlayCanvas.height = world.h * S;
+    }
     const oc = this.overlayCanvas.getContext('2d')!;
-    const img = oc.createImageData(world.w, world.h);
+    const img = oc.createImageData(world.w * S, world.h * S);
     const d = img.data;
     const def = OVERLAYS.find((o) => o.id === this.overlay)!;
     const base = parseInt(def.color.slice(1), 16);
@@ -792,14 +798,27 @@ export class Renderer {
       }
       if (this.overlay === 'power') {
         const id = world.occ[i];
-        if (world.powered[i]) {
-          d[o] = 242; d[o + 1] = 201; d[o + 2] = 76; d[o + 3] = 200;
-        } else if (id && world.buildings.get(id)?.kind !== 'park') {
-          // Connected to a plant but its grid is short, or not connected at all.
-          if (this.sim?.gridAt(i)) { d[o] = 240; d[o + 1] = 138; d[o + 2] = 60; d[o + 3] = 220; }
-          else { d[o] = 227; d[o + 1] = 73; d[o + 2] = 72; d[o + 3] = 220; }
-        } else if (world.net[i] & 4) {
-          d[o] = 120; d[o + 1] = 110; d[o + 2] = 90; d[o + 3] = 200;
+        let c: number[] | null = null;
+        let hatch = false;
+        if (world.powered[i]) c = [242, 201, 76, 200];
+        else if (id && world.buildings.get(id)?.kind !== 'park') {
+          // Connected to a plant but its grid is short (hatched, so it differs from the next without colour), or not
+          // connected at all.
+          if (this.sim?.gridAt(i)) {
+            c = [240, 138, 60, 220];
+            hatch = true;
+          } else c = [227, 73, 72, 220];
+        } else if (world.net[i] & 4) c = [120, 110, 90, 200];
+        if (!c) continue;
+        const tx = (i % world.w) * S;
+        const ty = ((i / world.w) | 0) * S;
+        for (let py = ty; py < ty + S; py++) {
+          for (let px = tx; px < tx + S; px++) {
+            const p = (py * world.w * S + px) * 4;
+            d[p] = c[0]; d[p + 1] = c[1]; d[p + 2] = c[2];
+            // Every other diagonal at a lower alpha, running on across the tiles.
+            d[p + 3] = hatch && (px + py) % 4 >= 2 ? 90 : c[3];
+          }
         }
         continue;
       }
@@ -819,6 +838,9 @@ export class Renderer {
     oc.putImageData(img, 0, 0);
   }
 }
+
+/** Pixels a tile in the power layer's picture, enough for its hatching. */
+const POWER_PX = 4;
 
 function flame(ctx: CanvasRenderingContext2D, x: number, y: number, s: number): void {
   ctx.fillStyle = '#FF6A00';

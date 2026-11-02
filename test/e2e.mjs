@@ -1136,6 +1136,40 @@ try {
     await ctx.close();
   });
 
+  await test('the Power grid layer hatches an overloaded grid, on the map and in its legend, so it differs from no power without colour', async () => {
+    const ctx = await profile(DESK);
+    const { page, problems } = await open(ctx);
+    await found(page);
+    const alphas = await page.evaluate(() => {
+      const g = window.__terraville;
+      const w = g.world;
+      const fits = (x0, y0) => { for (let y = y0; y < y0 + 3; y++) for (let x = x0; x < x0 + 16; x++) if (!w.isEmptyLand(w.idx(x, y)) || w.slope(x, y) > 2) return false; return true; };
+      let at = null;
+      for (let y = 6; y < w.h - 6 && !at; y++) for (let x = 2; x < w.w - 18 && !at; x++) if (fits(x, y)) at = [x, y];
+      const [x, y] = at;
+      // An 18 MW turbine and 27 MW of lots it can't all power, and a lot on its own.
+      w.place('wind', x, y);
+      const lots = [1, 4, 7].map((dx) => w.place('res', x + dx, y));
+      const alone = w.place('res', x + 13, y);
+      g.sim.computePower();
+      g.ui.setOverlay('power');
+      g.renderer.buildOverlay();
+      const short = lots.find((b) => !b.powered);
+      const c = g.renderer.overlayCanvas.getContext('2d');
+      const px = (b, dx) => c.getImageData((b.x + 1) * 4 + dx, (b.y + 1) * 4, 1, 1).data[3];
+      return { short: !!short, hatched: [px(short, 0), px(short, 2)], plain: [px(alone, 0), px(alone, 2)] };
+    });
+    assert.equal(alphas.short, true, 'the turbine powers only some of the lots');
+    assert.notEqual(alphas.hatched[0], alphas.hatched[1], 'an overloaded lot is hatched');
+    assert.equal(alphas.plain[0], alphas.plain[1], 'a lot with no plant is solid');
+    const swatches = await page.$$eval('#legend i', (i) => i.map((x) => getComputedStyle(x).backgroundImage));
+    assert.equal(swatches.length, 3);
+    assert.match(swatches[1], /repeating-linear-gradient/);
+    assert.equal(swatches[2], 'none');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('menus tell a screen reader which layer is showing, whether disasters are on, and that they are menus', async () => {
     const ctx = await profile(DESK);
     const { page, problems } = await open(ctx);

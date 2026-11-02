@@ -905,8 +905,9 @@ export class UI {
     if (o === 'power') {
       const sw = (c: string, label: string, title: string) => `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:8px" title="${title}"><i style="width:10px;height:10px;border-radius:3px;display:inline-block;background:${c}"></i>${label}</span>`;
       leg.style.flexWrap = 'wrap';
+      // Overloaded is hatched, on the map and here, so it differs from Not connected without its colour.
       leg.innerHTML = sw('#f2c94c', 'Powered', 'Buildings and lines with power') +
-        sw('#f08a3c', 'Grid overloaded', 'Connected, but this grid needs more power than its plants make') +
+        sw('repeating-linear-gradient(135deg, #f08a3c 0 2px, rgba(240, 138, 60, 0.35) 2px 4px)', 'Grid overloaded', 'Connected, but this grid needs more power than its plants make') +
         sw('#e34948', 'Not connected', 'No power plant reaches this');
       return;
     }
