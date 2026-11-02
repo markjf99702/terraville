@@ -1981,9 +1981,22 @@ try {
     const ctx = await profile(DESK);
     const { page, problems } = await open(ctx);
     await found(page);
+    // A plant with one lot on its grid, and one lot no plant reaches: the power line counts that lot apart.
+    await page.evaluate(() => {
+      const w = window.__terraville.world;
+      const fits = (x, y) => w.canPlace('coal', x, y).ok && w.canPlace('res', x + 4, y).ok;
+      const at = (ok) => { for (let y = 2; y < w.h - 6; y++) for (let x = 2; x < w.w - 10; x++) if (ok(x, y)) return { x, y }; };
+      const p = at(fits);
+      w.place('coal', p.x, p.y);
+      w.place('res', p.x + 4, p.y);
+      const q = at((x, y) => w.canPlace('res', x, y).ok && Math.abs(x - p.x) > 12);
+      w.place('res', q.x, q.y);
+      window.__terraville.sim.computePower();
+    });
     await page.click('#citySign');
     assert.match(await page.textContent('.modal .body'), /Nobody lives here yet\. The report fills in once people move in\./);
     assert.equal(await page.$$eval('.modal .worry, .modal .big', (e) => e.length), 0, 'no approval figure and no worries for nobody');
+    assert.equal(await page.textContent('.modal .kv dt:text-is("Power") + dd'), '9 of 700 MW (9 MW not connected)');
     await page.click('.modal footer .btn');
     await page.evaluate(() => { window.__terraville.startScenario('gridlock'); window.__terraville.ui.closeModal(); });
     await page.click('#citySign');

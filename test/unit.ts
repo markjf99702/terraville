@@ -312,6 +312,31 @@ await test('separate grids do not share power, and a line across a road joins th
   assert.equal(sim.gridAt(3 * w.w + 42)!.demand, 18);
 });
 
+await test('a burning plant makes nothing, and Inspect and the news put a brownout down to the fire', () => seeded(6, () => {
+  // Two turbines on one grid, kept apart by lines so the fire can't jump, for four lots: 36 MW for 36.
+  const w = flat(60, 20);
+  const burning = w.place('wind', 1, 1);
+  applyLine(w, POWER, planLine(w, POWER, linePath(2, 1, 4, 1)));
+  const lots = [w.place('res', 5, 0), w.place('res', 8, 0), w.place('res', 11, 0), w.place('res', 14, 0)];
+  applyLine(w, POWER, planLine(w, POWER, linePath(17, 1, 19, 1)));
+  w.place('wind', 20, 1);
+  const sim = new Sim(w);
+  sim.disasters.ignite(1, 1);
+  sim.computePower();
+  const row = (x: number, y: number, k: string) => sim.describe(x, y).rows.find((r) => r[0] === k)?.[1];
+  assert.equal(row(1, 1, 'Power'), 'None: on fire');
+  assert.equal(row(20, 1, 'Power'), 'Generating');
+  const dark = lots.filter((b) => !b.powered);
+  assert.equal(dark.length, 2);
+  assert.equal(row(dark[0].x + 1, dark[0].y + 1, 'Power'), 'None: its power plant is on fire');
+  assert.equal(row(dark[0].x + 1, dark[0].y + 1, 'Its grid'), 'Overloaded: needs 36 MW, makes 18; a plant is on fire');
+  for (let k = 0; k < 4; k++) sim.step();
+  assert.ok(w.fire[1 * w.w + 1] > 0, 'still burning at the month end');
+  const brownout = sim.messages.filter((m) => m.text.startsWith('Brownouts'));
+  assert.deepEqual(brownout.map((m) => m.text), ['Brownouts: the grid needs 36 MW but the plants make 18 MW while the wind turbine is on fire. The power comes back once the fire is out.']);
+  void burning;
+}));
+
 await test('area undo puts back only what the action touched', () => {
   const w = flat();
   const other = w.place('res', 20, 20);
@@ -1569,6 +1594,37 @@ await test('on a device too slow for the speed, a frame runs one week of the clo
   g.frame(0.3);
   assert.equal(steps, 4);
 });
+
+await test('with its only plant on fire, the city says so instead of asking for a power plant; with none and no money, it says how to pay for one', () => seeded(42, () => {
+  const g = town();
+  const w = g.world;
+  const sim = g.sim;
+  const plant = [...w.buildings.values()].find((b: any) => b.kind === 'coal');
+  const home = [...w.buildings.values()].find((b: any) => b.kind === 'res' && b.level > 0);
+  const from = sim.messages.length;
+  sim.disasters.ignite(plant.x, plant.y);
+  sim.computePower();
+  const row = (b: any, k: string) => sim.describe(b.x + 1, b.y + 1).rows.find((r: string[]) => r[0] === k)?.[1];
+  assert.equal(row(plant, 'Power'), 'None: on fire');
+  assert.equal(row(home, 'Power'), 'None: its power plant is on fire');
+  assert.match(row(home, 'Its grid'), /^Overloaded: needs \d+ MW, makes 0; a plant is on fire$/);
+  weeks(g, 4);
+  assert.ok(w.fire[plant.y * w.w + plant.x] > 0, 'still burning at the month end');
+  const news = sim.messages.slice(from).map((m: any) => m.text);
+  assert.equal(news.find((t: string) => /Build a power plant/.test(t)), undefined);
+  assert.ok(news.includes('The coal plant is on fire, so nothing has power until it is out. A fire station within reach puts fires out sooner.'), news.join(' | '));
+  // With no plant at all and $43 in the bank, the no-power line says how the city could pay for one.
+  w.remove(plant.id);
+  w.city.funds = 43;
+  sim.computePower();
+  weeks(g, 16);
+  assert.match(sim.messages.filter((m: any) => m.text.startsWith('Zones are waiting')).at(-1).text, /Build a power plant and connect it\. The city has \$\d+: a loan from the Budget would pay for one\.$/);
+  // Borrowed to the limit, it doesn't promise a loan.
+  w.city.loan = 30000;
+  w.city.funds = 43;
+  weeks(g, 20);
+  assert.equal(sim.messages.filter((m: any) => m.text.startsWith('Zones are waiting')).at(-1).text, 'Zones are waiting for electricity. Build a power plant and connect it.');
+}));
 
 await test('undo refunds only within three months of the action, however often it was undone and redone since', () => seeded(42, () => {
   const g = town();

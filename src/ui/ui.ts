@@ -2290,6 +2290,9 @@ export class UI {
     // The score at the month end a year before the last one, once there is a year of history.
     const scores = g.world.city.history.score;
     const yearAgo = scores.length > 12 ? scores[scores.length - 13] : undefined;
+    // What the grids' plants are asked for, beside what they make; lots no plant reaches are counted apart.
+    const linked = sim.grids.reduce((a, gr) => a + gr.demand, 0);
+    const unlinked = s.powerDemand - linked;
     // A finished challenge keeps its result here, after its tracker is closed.
     const sc = g.world.city.scenario;
     const chal = sc?.done ? SCENARIOS.find((x) => x.id === sc.id) : undefined;
@@ -2334,7 +2337,7 @@ export class UI {
           <dt>Zones (R/C/I)</dt><dd>${s.zones.res} / ${s.zones.com} / ${s.zones.ind}</dd>
         </dl>
         <dl class="kv">
-          <dt>Power</dt><dd>${s.powerDemand.toLocaleString()} of ${s.powerSupply.toLocaleString()} MW</dd>
+          <dt>Power</dt><dd>${linked.toLocaleString()} of ${s.powerSupply.toLocaleString()} MW${unlinked > 0 ? ` <span class="kv-words">(${unlinked.toLocaleString()} MW not connected)</span>` : ''}</dd>
           <dt>Power grids</dt><dd>${s.powerGrids}${s.gridsShort ? `, <span style="color:var(--critical-ink)">${s.gridsShort} overloaded</span>` : ''}</dd>
           <dt>Unpowered zones</dt><dd>${s.unpowered}</dd>
           <dt>Average land value</dt><dd>${money(s.avgLandValue * 40)}/acre</dd>

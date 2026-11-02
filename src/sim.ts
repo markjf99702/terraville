@@ -123,6 +123,8 @@ export class Sim {
   lastPop = 0;
   /** Kinds held at a landmark limit: no lot of that kind grows until the landmark is built. */
   capped = { res: false, com: false, ind: false };
+  /** The month the city's last power plant was lost, which the news has said: no other word on power that month. */
+  plantLost = -1;
 
   constructor(world: World) {
     this.world = world;
@@ -338,6 +340,7 @@ export class Sim {
       const order: Building[] = [];
       const seen = new Set<number>();
       let supply = 0;
+      let burning = 0;
       while (head < tail) {
         const i = queue[head++];
         const id = world.occ[i];
@@ -348,6 +351,7 @@ export class Sim {
           if (bd.capacity) {
             // A burning plant produces nothing.
             if (!world.fire[b.y * w + b.x]) supply += bd.capacity;
+            else burning += bd.capacity;
             b.powered = true;
           } else {
             order.push(b);
@@ -371,7 +375,7 @@ export class Sim {
           left -= need;
         }
       }
-      this.grids.push({ supply, demand });
+      this.grids.push({ supply, demand, burning });
       // Line tiles light up on the overlay if the component has any supply.
       if (supply > 0) {
         for (let k = 0; k < tail; k++) {
@@ -1052,15 +1056,33 @@ export class Sim {
     const city = world.city;
     const zones = s.zones.res + s.zones.com + s.zones.ind;
     const month = city.month;
-    if (zones > 0 && s.powerSupply === 0) {
-      this.say('noplant', 'Zones are waiting for electricity. Build a power plant and connect it.', 'warn', undefined, 4);
+    const plants = [...world.buildings.values()].filter((b) => BUILDINGS[b.kind].capacity);
+    const onFire = (b: Building) => world.fire[b.y * world.w + b.x] > 0;
+    if (zones > 0 && s.powerSupply === 0 && plants.length) {
+      // Every plant is burning: the city has its power back once the fires are out.
+      const covered = plants.some((b) => world.fireCov[(b.y + 1) * world.w + b.x + 1] > 0);
+      const lead = plants.length === 1
+        ? `The ${buildingName(plants[0]).toLowerCase()} is on fire, so nothing has power until it is out.`
+        : 'Every power plant is on fire, so nothing has power until the fires are out.';
+      this.say('plantfire', `${lead} ${covered ? 'Firefighters are on the way.' : 'A fire station within reach puts fires out sooner.'}`, 'warn', plants[0] && { x: plants[0].x + 1, y: plants[0].y + 1 }, 2);
+    } else if (zones > 0 && s.powerSupply === 0) {
+      // A plant lost this month has said so already, and that every zone is dark.
+      if (this.plantLost !== month) this.say('noplant', `Zones are waiting for electricity. Build a power plant and connect it.${this.loanFor('coal')}`, 'warn', undefined, 4);
     } else if (s.gridsShort > 0) {
       // Judge each grid on its own: two plants only share if their grids join.
       let worst = this.grids[0];
       for (const g of this.grids) if (g.demand - g.supply > worst.demand - worst.supply) worst = g;
-      const text = this.grids.length > 1
-        ? `Brownouts: one of your ${this.grids.length} separate power grids needs ${worst.demand} MW but its plants make ${worst.supply} MW. Join it to a grid with power to spare, or build a plant on it.`
-        : `Brownouts: the grid needs ${worst.demand} MW but the plants make ${worst.supply} MW. Build another plant.`;
+      const burning = worst.burning ? plants.find((b) => onFire(b) && this.gridAt(b.y * world.w + b.x) === worst) : undefined;
+      let text: string;
+      if (burning) {
+        // Short because a plant on it is burning: more plants may not be what it needs.
+        const which = `${this.grids.length > 1 ? `one of your ${this.grids.length} separate power grids needs ${worst.demand} MW but its plants make` : `the grid needs ${worst.demand} MW but the plants make`} ${worst.supply} MW while the ${buildingName(burning).toLowerCase()} is on fire`;
+        text = `Brownouts: ${which}. ${worst.demand <= worst.supply + worst.burning ? 'The power comes back once the fire is out.' : 'Even with it, the grid would be short: build another plant.'}`;
+      } else {
+        text = this.grids.length > 1
+          ? `Brownouts: one of your ${this.grids.length} separate power grids needs ${worst.demand} MW but its plants make ${worst.supply} MW. Join it to a grid with power to spare, or build a plant on it.`
+          : `Brownouts: the grid needs ${worst.demand} MW but the plants make ${worst.supply} MW. Build another plant.`;
+      }
       this.say('brownout', text, 'warn', this.findUnpowered(true), 6);
     } else if (s.unpowered > 0 && month > 2) {
       this.say('unconnected', `${s.unpowered} zone${s.unpowered > 1 ? 's are' : ' is'} not connected to a power plant.`, 'warn', this.findUnpowered(false), 8);
@@ -1110,6 +1132,18 @@ export class Sim {
       this.say('class' + idx, text, 'good', undefined, 0);
       this.emit({ type: 'class', text });
     }
+  }
+
+  /**
+   * For a city that can't afford a building: how a loan would pay for it, when one would. Empty when the city has
+   * the money, or has borrowed all it can.
+   */
+  private loanFor(k: Kind): string {
+    const city = this.world.city;
+    const cost = BUILDINGS[k].cost;
+    if (city.funds >= cost || city.loan + 10000 > 30000 || city.funds + 10000 < cost) return '';
+    const has = Math.round(city.funds) < 0 ? `is $${Math.round(-city.funds).toLocaleString()} in debt` : `has $${Math.round(city.funds).toLocaleString()}`;
+    return ` The city ${has}: a loan from the Budget would pay for one.`;
   }
 
   /**
@@ -1217,9 +1251,11 @@ export class Sim {
       if (def.capacity) rows.push(['Output', `${def.capacity} MW`]);
       const grid = this.gridAt(b.y * world.w + b.x);
       rows.push(['Power',
-        def.capacity ? 'Generating' :
+        def.capacity ? (world.fire[b.y * world.w + b.x] ? 'None: on fire' : 'Generating') :
         b.kind === 'park' ? 'Not needed' :
         b.powered ? 'Connected' :
+        // Short only because a plant is burning: the power comes back when the fire is out.
+        grid && grid.demand <= grid.supply + grid.burning ? 'None: its power plant is on fire' :
         grid ? 'None: its grid is overloaded' : 'None: no plant connected']);
       if (grid) rows.push(['Its grid', gridLoad(grid)]);
       if (def.upkeep) rows.push(['Upkeep', `$${upkeepOf(b)}/mo`]);
@@ -1303,12 +1339,15 @@ export interface Growth {
 export interface PowerGrid {
   supply: number;
   demand: number;
+  /** What its plants on fire would make, in MW: a burning plant makes nothing. */
+  burning: number;
 }
 
 function gridLoad(g: PowerGrid): string {
-  return g.demand > g.supply
+  const load = g.demand > g.supply
     ? `Overloaded: needs ${g.demand.toLocaleString()} MW, makes ${g.supply.toLocaleString()}`
     : `${g.demand.toLocaleString()} of ${g.supply.toLocaleString()} MW used`;
+  return g.burning ? `${load}; a plant is on fire` : load;
 }
 
 export function zoneTitle(k: 'res' | 'com' | 'ind', level: number): string {
