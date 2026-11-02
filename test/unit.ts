@@ -1194,7 +1194,7 @@ await test('a challenge opens with its goal in the news and its real monthly bal
 await test('undo leaves alone what a disaster has wrecked since, and refunds nothing for it', () => seeded(42, () => {
   const g = town();
   const w = g.world;
-  const refused = "A disaster has changed that spot since, so it can't be undone.";
+  const refused = "That spot has been wrecked since, so it can't be undone.";
   drag(g, 'stadium', 54, 30);
   const stadium = [...w.buildings.values()].find((b) => b.kind === 'stadium')!;
   g.upgrade(stadium);
@@ -1231,7 +1231,7 @@ await test('undo leaves alone what a disaster has wrecked since, and refunds not
   const park = 2 * w.w + 58;
   w.rubble[park] = 1; // as a wreck leaves it
   g.redo();
-  assert.deepEqual([w.occ[park], g.toasts.at(-1)], [0, "A disaster has changed that spot since, so it can't be redone."]);
+  assert.deepEqual([w.occ[park], g.toasts.at(-1)], [0, "That spot has been wrecked since, so it can't be redone."]);
 }));
 
 await test('nothing is left burning on bare ground when a burning lot is undone, and a burning lot cannot be bulldozed', () => seeded(42, () => {

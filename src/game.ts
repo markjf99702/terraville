@@ -36,7 +36,7 @@ interface UndoEntry {
   within?: Box | null;
   /** A landmark upgrade, which changes land value across the city. */
   upgrade?: boolean;
-  /** In a city, the area as the action left it: undo (or redo) is refused once a disaster has changed it since. */
+  /** In a city, the area as the action left it: undo (or redo) is refused once it has been wrecked since. */
   after?: AreaSnapshot;
 }
 
@@ -1359,14 +1359,15 @@ export class Game {
   }
 
   /**
-   * Whether a disaster has changed an entry's area since it was made: a wrecked landmark can't be bought back, nor
-   * its price refunded. Then the entry goes, and so does the redo list, which may build on it.
+   * Whether an entry's area has been wrecked since it was made, by a disaster or by underfunded roads crumbling: a
+   * wrecked landmark can't be bought back, nor its price refunded. Then the entry goes, and so does the redo list,
+   * which may build on it.
    */
   private overtaken(e: UndoEntry, verb: string): boolean {
     if (!e.after || this.world.sameTiles(e.after)) return false;
     this.redoStack = [];
     this.ui.syncUndo();
-    this.ui.toast(`A disaster has changed that spot since, so it can't be ${verb}.`, 'warn');
+    this.ui.toast(`That spot has been wrecked since, so it can't be ${verb}.`, 'warn');
     return true;
   }
 
