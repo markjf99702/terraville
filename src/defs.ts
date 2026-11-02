@@ -23,6 +23,22 @@ export const LANDMARK_NEEDS = {
   seaport: `Needed before industry passes ${limit('ind')} jobs. Must touch water.`,
 };
 
+/** What each building that isn't a zone does, as the guide's table and the Inspect card say it. */
+export const DOES: Record<Exclude<Kind, 'res' | 'com' | 'ind'>, string> = {
+  police: 'Cuts crime within about 18 tiles',
+  fire: 'Prevents and fights fires within about 18 tiles',
+  school: 'Raises land value within about 15 tiles',
+  hospital: 'Raises land value within about 18 tiles',
+  park: 'Raises land value nearby, soaks up a little pollution',
+  stadium: LANDMARK_NEEDS.stadium.slice(0, -1),
+  airport: LANDMARK_NEEDS.airport.slice(0, -1),
+  seaport: LANDMARK_NEEDS.seaport.slice(0, -1),
+  coal: 'Powers the zones its grid reaches, and pollutes heavily',
+  nuclear: 'Powers the zones its grid reaches, with clean air',
+  wind: 'Powers the zones its grid reaches',
+  solar: 'Powers the zones its grid reaches',
+};
+
 /** 'a' or 'an', as said before `word`. */
 export function article(word: string): 'a' | 'an' {
   return /^[aeiou]/i.test(word) ? 'an' : 'a';

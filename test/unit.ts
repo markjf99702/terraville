@@ -473,6 +473,29 @@ await test('the Budget puts the stadium, seaport and airport on a line of their 
   assert.ok(Math.abs(sim.crumbling(0.4) - 50 * 0.5 * 0.012) < 1e-9);
 });
 
+await test('Inspect says what a service does, and what land value a landmark adds across the city', () => {
+  const w = flat(60, 40);
+  const police = w.place('police', 1, 1);
+  const coal = w.place('coal', 6, 1);
+  const big = w.place('stadium', 12, 1);
+  const small = w.place('stadium', 18, 1);
+  const port = w.place('seaport', 24, 1);
+  const sim = new Sim(w);
+  const row = (b: { x: number; y: number }, k: string) => sim.describe(b.x, b.y).rows.find((r) => r[0] === k)?.[1];
+  assert.equal(row(police, 'Does'), 'Cuts crime within about 18 tiles');
+  assert.equal(row(coal, 'Does'), 'Powers the zones its grid reaches, and pollutes heavily');
+  assert.equal(row(big, 'Does'), 'Needed before housing passes 18,000 residents');
+  assert.equal(row(police, 'Land value it adds'), undefined);
+  assert.equal(row(big, 'Land value it adds'), 'None until it is upgraded');
+  w.setLevel(big, 3);
+  assert.equal(row(big, 'Land value it adds'), `+$${2 * UPGRADE_LV * 40}/acre across the city`);
+  assert.equal(row(small, 'Land value it adds'), 'None: only the most upgraded counts');
+  assert.equal(row(port, 'Land value it adds'), 'None until it is upgraded', 'each kind counts on its own');
+  assert.equal(sim.landmarkValue(), 2 * UPGRADE_LV, 'the same sum the city adds');
+  const zone = w.place('res', 30, 10);
+  assert.equal(row(zone, 'Does'), undefined, 'a zone says what it holds instead');
+});
+
 await test('past its limit, industry stops growing until a seaport opens', () => {
   const w = flat(60, 40);
   w.place('coal', 1, 1);

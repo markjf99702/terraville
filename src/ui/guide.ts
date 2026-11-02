@@ -2,7 +2,7 @@
 // Tables pull from the game's own data so the numbers cannot drift, and the
 // pictures are drawn with the game's renderer.
 import {
-  AUTO_GRADE, BRIDGE_COST, BUILDINGS, CITY_CLASSES, DISASTER_POP, GRADE_COST, Kind, LANDMARK_LIMITS, LANDMARK_NEEDS, NET_COST,
+  AUTO_GRADE, BRIDGE_COST, BUILDINGS, CITY_CLASSES, DISASTER_POP, DOES, GRADE_COST, Kind, LANDMARK_LIMITS, NET_COST,
   NET_MAX_SLOPE, NET_UPKEEP, POWER, ROAD, UPGRADES, UPGRADE_LV, ZONE_LV_GATE, ZONE_POP,
 } from '../defs';
 import { lessMotion } from '../motion';
@@ -33,16 +33,8 @@ const tip = (text: string) => `<p class="tip"><span class="caution" aria-hidden=
 function sections(): Section[] {
   const b = BUILDINGS;
   const plants: Kind[] = ['coal', 'nuclear', 'wind', 'solar'];
-  const civic: [Kind, string][] = [
-    ['police', 'Cuts crime within about 18 tiles'],
-    ['fire', 'Prevents and fights fires within about 18 tiles'],
-    ['school', 'Raises land value within about 15 tiles'],
-    ['hospital', 'Raises land value within about 18 tiles'],
-    ['park', 'Raises land value nearby, soaks up a little pollution'],
-    ['stadium', LANDMARK_NEEDS.stadium.slice(0, -1)],
-    ['airport', LANDMARK_NEEDS.airport.slice(0, -1)],
-    ['seaport', LANDMARK_NEEDS.seaport.slice(0, -1)],
-  ];
+  const civic: [Kind, string][] = (['police', 'fire', 'school', 'hospital', 'park', 'stadium', 'airport', 'seaport'] as const)
+    .map((k) => [k, DOES[k]]);
   return [
     {
       id: 'start',

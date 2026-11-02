@@ -430,6 +430,7 @@ input[type="range"] { width: 100%; accent-color: var(--sign-hi); margin: 0; }
 #inspect dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; font-size: 13px; }
 #inspect dt { color: var(--muted); }
 #inspect dd { margin: 0; text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+#inspect dd.text { font-family: var(--font); text-align: left; }
 #inspect .why { margin-top: 8px; line-height: 1.4; }
 #inspect .close { position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; }
 #inspect .upgrade { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }

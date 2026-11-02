@@ -172,6 +172,8 @@ export class UI {
   /** The tool button whose tooltip is up. */
   private tipOwner: HTMLElement | null = null;
   private inspectAt: { x: number; y: number } | null = null;
+  /** The layer the Inspect card showed (a station's reach, a plant's grid), and the one to put back when it closes. */
+  private inspectLayer: { shown: Overlay; was: Overlay } | null = null;
   private modalClose: (() => void) | null = null;
   /** Where focus goes back to when the dialog closes: what opened it, if the keyboard had put focus there. */
   private modalOpener: HTMLElement | null = null;
@@ -1117,11 +1119,27 @@ export class UI {
     const up = b && this.game.upgradeFor(b);
     // A second stadium, say, can't add anything: only the most upgraded one of each kind counts.
     const outdone = b && !up && nextUpgrade(b) && this.game.mode === 'city';
-    card.innerHTML = `<button class="iconbtn close" aria-label="Close">${ICONS.close}</button><h3>${esc(d.title)}</h3><dl>${d.rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>${d.note ? `<p class="note why">${esc(d.note)}</p>` : ''}${up ? `
+    // A station's reach, or a plant's grid, is a layer away.
+    const layer: Overlay | undefined = !b ? undefined
+      : b.kind === 'police' ? 'police' : b.kind === 'fire' ? 'fire' : b.kind === 'school' || b.kind === 'hospital' ? 'service'
+        : BUILDINGS[b.kind].capacity ? 'power' : undefined;
+    const showLayer = layer && this.game.renderer.overlay !== layer
+      ? `<button class="btn small" id="inLayer" style="margin-top:10px">${layer === 'power' ? 'Show the power grid' : 'Show its reach'}</button>` : '';
+    // Sentences read as text; figures stay in the card's mono.
+    const prose = new Set(['Does', 'Land value it adds']);
+    card.innerHTML = `<button class="iconbtn close" aria-label="Close">${ICONS.close}</button><h3>${esc(d.title)}</h3><dl>${d.rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd${prose.has(k) ? ' class="text"' : ''}>${esc(v)}</dd>`).join('')}</dl>${showLayer}${d.note ? `<p class="note why">${esc(d.note)}</p>` : ''}${up ? `
       <div class="upgrade"><p class="note">Upgrade to ${article(up.name)} <b>${esc(up.name.toLowerCase())}</b>: land value rises by <span class="num">${money(UPGRADE_LV * 40)}</span>/acre across the whole city, and upkeep by <span class="num">${money(up.upkeep)}</span>/mo.</p>
       <button class="btn small primary" id="inUpgrade">Upgrade for ${money(up.cost)}</button></div>` : outdone ? `
       <div class="upgrade"><p class="note">Only the city's most upgraded ${esc(BUILDINGS[b.kind].name.toLowerCase())} raises land value, so this one has no upgrade.</p></div>` : ''}`;
     $(card, '.close').onclick = () => this.hideInspect();
+    const lb = card.querySelector<HTMLButtonElement>('#inLayer');
+    if (lb && layer) {
+      lb.onclick = () => {
+        this.inspectLayer = { shown: layer, was: this.inspectLayer?.was ?? this.game.renderer.overlay };
+        this.setOverlay(layer);
+        this.inspect(x, y, true);
+      };
+    }
     const ub = card.querySelector<HTMLButtonElement>('#inUpgrade');
     if (ub && b && up) {
       ub.onclick = () => {
@@ -1159,6 +1177,10 @@ export class UI {
     $(this.root, '#inspect').hidden = true;
     this.root.classList.remove('inspecting');
     this.inspectAt = null;
+    // The layer the card put up goes back to the one before, unless someone has picked another since.
+    const l = this.inspectLayer;
+    this.inspectLayer = null;
+    if (l && this.game.renderer.overlay === l.shown) this.setOverlay(l.was);
   }
 
   /** Whether the starter checklist is on screen. */

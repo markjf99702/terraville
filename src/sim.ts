@@ -2,8 +2,8 @@
 // Zones are re-evaluated a quarter at a time each week, and the expensive
 // map passes (traffic, pollution, crime, land value) run at month end.
 import {
-  BUILDINGS, DIFFICULTIES, DISASTER_POP, Kind, LANDMARK_LIMITS, NET_UPKEEP, POWER, RAIL, ROAD, UPGRADE_LV, ZONE_LV_GATE, ZONE_POP, buildingName, cityClass,
-  CITY_CLASSES, dateLabel, isZone, upkeepOf,
+  BUILDINGS, DIFFICULTIES, DISASTER_POP, DOES, Kind, LANDMARK_LIMITS, NET_UPKEEP, POWER, RAIL, ROAD, UPGRADE_LV, ZONE_LV_GATE,
+  ZONE_POP, buildingName, cityClass, CITY_CLASSES, dateLabel, isZone, upkeepOf,
 } from './defs';
 import { MinHeap } from './heap';
 import { clamp } from './rng';
@@ -975,6 +975,17 @@ export class Sim {
     return v;
   }
 
+  /**
+   * What a landmark adds to every tile's land value: its upgrades, when it is the city's most upgraded of its kind (the
+   * first, if two are level). 0 when none of its kind is upgraded yet, and null when another of its kind counts instead.
+   */
+  landmarkAdds(b: Building): number | null {
+    let top: Building | undefined;
+    for (const o of this.world.buildings.values()) if (o.kind === b.kind && (!top || o.level > top.level)) top = o;
+    if (!top || top.level <= 1) return 0;
+    return top === b ? (b.level - 1) * UPGRADE_LV : null;
+  }
+
   /** Monthly tax income the city would collect at a given rate. */
   projectTax(tax: number): number {
     const s = this.stats;
@@ -1198,6 +1209,7 @@ export class Sim {
         if (g.maxLevel < top) note = this.densityNote(b, g.maxLevel);
         at = (b.y + 1) * world.w + b.x + 1;
       }
+      if (!isZone(b.kind)) rows.push(['Does', DOES[b.kind as keyof typeof DOES]]);
       if (def.capacity) rows.push(['Output', `${def.capacity} MW`]);
       const grid = this.gridAt(b.y * world.w + b.x);
       rows.push(['Power',
@@ -1207,6 +1219,10 @@ export class Sim {
         grid ? 'None: its grid is overloaded' : 'None: no plant connected']);
       if (grid) rows.push(['Its grid', gridLoad(grid)]);
       if (def.upkeep) rows.push(['Upkeep', `$${upkeepOf(b)}/mo`]);
+      if (b.kind === 'stadium' || b.kind === 'seaport' || b.kind === 'airport') {
+        const adds = this.landmarkAdds(b);
+        rows.push(['Land value it adds', adds === null ? 'None: only the most upgraded counts' : adds ? `+$${(adds * 40).toLocaleString()}/acre across the city` : 'None until it is upgraded']);
+      }
     } else if (world.water[i]) {
       title = net & ROAD ? 'Road bridge' : net & RAIL ? 'Rail bridge' : net & POWER ? 'Power line' : 'Water';
       if (net & POWER) {

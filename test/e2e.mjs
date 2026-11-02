@@ -1422,6 +1422,34 @@ try {
     await ctx.close();
   });
 
+  await test('Inspect on a station shows its reach on the map, and closing the card puts the layer back', async () => {
+    const ctx = await profile(DESK);
+    const { page, problems } = await open(ctx);
+    await found(page);
+    const at = await page.evaluate(() => {
+      const g = window.__terraville;
+      const w = g.world;
+      let at = null;
+      for (let y = 10; y < w.h - 10 && !at; y++) for (let x = 10; x < w.w - 10 && !at; x++) if (w.canPlace('fire', x, y).ok) at = [x, y];
+      w.place('fire', at[0], at[1]);
+      g.ui.setOverlay('landValue');
+      g.ui.inspect(at[0] + 1, at[1] + 1);
+      return at;
+    });
+    assert.match(await page.textContent('#inspect dl'), /DoesPrevents and fights fires within about 18 tiles/);
+    await page.click('#inLayer');
+    assert.equal(await page.evaluate(() => window.__terraville.renderer.overlay), 'fire');
+    assert.equal(await page.locator('#inLayer').count(), 0, 'no button for the layer already up');
+    // Another tile keeps the layer; closing the card puts back the one from before.
+    await page.evaluate(([x, y]) => window.__terraville.ui.inspect(x + 5, y + 5), at);
+    assert.equal(await page.evaluate(() => window.__terraville.renderer.overlay), 'fire');
+    await page.click('#inspect .close');
+    assert.equal(await page.evaluate(() => window.__terraville.renderer.overlay), 'landValue');
+    assert.equal(await page.inputValue('#overlaySel'), 'landValue');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('on a phone, Inspect takes the bottom slot from the map layer card and the news log', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);
