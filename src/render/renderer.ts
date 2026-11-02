@@ -761,37 +761,58 @@ export class Renderer {
   private drawHazards(ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number): void {
     const world = this.world;
     const t = this.time;
+    // Flood water first, a run of tiles to a fill, and its ripples in one stroke, only close enough in to see them: a
+    // high tide can cover a thousand tiles and more, and a fill and a stroke for each cost a slow phone most of a frame.
+    let ripples = false;
+    ctx.fillStyle = 'rgba(64,122,170,0.78)';
+    let run = -1;
+    let runX = 0;
+    let runY = 0;
     for (const i of this.hazards) {
       const x = i % world.w;
       const y = (i / world.w) | 0;
-      if (x < x0 || x > x1 || y < y0 || y > y1) continue;
-      {
-        if (world.flood[i]) {
-          ctx.fillStyle = 'rgba(64,122,170,0.78)';
-          ctx.fillRect(x, y, 1, 1);
-          ctx.strokeStyle = 'rgba(220,240,250,0.5)';
-          ctx.lineWidth = 0.04;
-          ctx.beginPath();
-          const ph = (t * 0.8 + hash3(x, y, 1)) % 1;
-          ctx.arc(x + 0.5, y + 0.5, 0.15 + ph * 0.3, 0, Math.PI * 2);
-          ctx.stroke();
-        }
-        if (world.fire[i]) {
-          ctx.fillStyle = 'rgba(40,18,8,0.4)';
-          ctx.fillRect(x, y, 1, 1);
-          for (let k = 0; k < 3; k++) {
-            const fx = x + 0.2 + hash3(x, y, k) * 0.6;
-            const fy = y + 0.35 + hash3(x, y, k + 5) * 0.5;
-            const fl = 0.22 + 0.08 * Math.sin(t * 11 + k * 2 + x);
-            flame(ctx, fx, fy, fl);
-          }
-          const ph = (t * 0.5 + hash3(x, y, 9)) % 1;
-          ctx.fillStyle = `rgba(60,55,50,${0.45 * (1 - ph)})`;
-          ctx.beginPath();
-          ctx.arc(x + 0.5 + ph * 0.6, y + 0.2 - ph * 1.2, 0.2 + ph * 0.5, 0, Math.PI * 2);
-          ctx.fill();
-        }
+      if (x < x0 || x > x1 || y < y0 || y > y1 || !world.flood[i]) continue;
+      if (run >= 0 && y === runY && x === runX + run) run++;
+      else {
+        if (run > 0) ctx.fillRect(runX, runY, run, 1);
+        run = 1;
+        runX = x;
+        runY = y;
       }
+      ripples = true;
+    }
+    if (run > 0) ctx.fillRect(runX, runY, run, 1);
+    if (ripples && this.cam.zoom >= 10) {
+      ctx.strokeStyle = 'rgba(220,240,250,0.5)';
+      ctx.lineWidth = 0.04;
+      ctx.beginPath();
+      for (const i of this.hazards) {
+        const x = i % world.w;
+        const y = (i / world.w) | 0;
+        if (x < x0 || x > x1 || y < y0 || y > y1 || !world.flood[i]) continue;
+        const r = 0.15 + ((t * 0.8 + hash3(x, y, 1)) % 1) * 0.3;
+        ctx.moveTo(x + 0.5 + r, y + 0.5);
+        ctx.arc(x + 0.5, y + 0.5, r, 0, Math.PI * 2);
+      }
+      ctx.stroke();
+    }
+    for (const i of this.hazards) {
+      const x = i % world.w;
+      const y = (i / world.w) | 0;
+      if (x < x0 || x > x1 || y < y0 || y > y1 || !world.fire[i]) continue;
+      ctx.fillStyle = 'rgba(40,18,8,0.4)';
+      ctx.fillRect(x, y, 1, 1);
+      for (let k = 0; k < 3; k++) {
+        const fx = x + 0.2 + hash3(x, y, k) * 0.6;
+        const fy = y + 0.35 + hash3(x, y, k + 5) * 0.5;
+        const fl = 0.22 + 0.08 * Math.sin(t * 11 + k * 2 + x);
+        flame(ctx, fx, fy, fl);
+      }
+      const ph = (t * 0.5 + hash3(x, y, 9)) % 1;
+      ctx.fillStyle = `rgba(60,55,50,${0.45 * (1 - ph)})`;
+      ctx.beginPath();
+      ctx.arc(x + 0.5 + ph * 0.6, y + 0.2 - ph * 1.2, 0.2 + ph * 0.5, 0, Math.PI * 2);
+      ctx.fill();
     }
   }
 
