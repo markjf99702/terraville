@@ -23,6 +23,11 @@ export interface TerrainParams {
   lakes: number;
   /** 0-100: forest cover. */
   forest: number;
+  /**
+   * Not a setting the generator reads: the land has been shaped by hand (a brush or a spring) since it was generated,
+   * so the seed and sliders alone no longer make it.
+   */
+  shaped?: boolean;
 }
 
 export const DEFAULT_TERRAIN: Omit<TerrainParams, 'seed' | 'w' | 'h'> = {
@@ -67,6 +72,7 @@ export function cleanTerrain(raw: unknown, base: TerrainParams): TerrainParams {
     rivers: pick('rivers', 6),
     lakes: pick('lakes', 100),
     forest: pick('forest', 100),
+    shaped: s.shaped === true,
   };
 }
 

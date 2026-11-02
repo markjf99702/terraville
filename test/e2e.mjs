@@ -845,6 +845,74 @@ try {
     await ctx.close();
   });
 
+  await test("undo in the terrain editor puts back the sliders, the seed and the sign, and the next change starts from them", async () => {
+    const ctx = await profile(DESK);
+    const { page, problems } = await open(ctx);
+    await page.click('[data-act="editor"]');
+    await page.waitForFunction(() => window.__terraville.mode === 'editor');
+    await page.click('[data-style="coast"]');
+    await page.fill('#edSeed', 'amber-isle-11');
+    await page.press('#edSeed', 'Enter');
+    await page.waitForFunction(() => window.__terraville.terrain.seed === 'amber-isle-11' && window.__terraville.terrain.style === 'coast');
+    const hash = () => page.evaluate(() => { const w = window.__terraville.world; let h = 0; for (let i = 0; i < w.n; i++) h = (h * 31 + Math.round(w.height[i] * 10) + w.water[i] * 7 + w.trees[i]) | 0; return h; });
+    const peak = () => page.evaluate(() => { const w = window.__terraville.world; let m = 0; for (let i = 0; i < w.n; i++) if (!w.water[i]) m = Math.max(m, w.height[i]); return m; });
+    const panel = () => page.evaluate(() => ({
+      hills: document.querySelector('#edHills').value, shown: document.querySelector('#edHillsVal').textContent, set: window.__terraville.terrain.hills,
+      seed: document.querySelector('#edSeed').value, sign: document.querySelector('#signSub').textContent, style: document.querySelector('#edStyle [aria-pressed="true"]').dataset.style,
+    }));
+    const slide = async (id, v) => {
+      const n = await page.evaluate(() => window.__terraville.undoStack.length);
+      await page.$eval('#' + id, (s, v) => { s.value = String(v); s.dispatchEvent(new Event('input', { bubbles: true })); s.dispatchEvent(new Event('change', { bubbles: true })); }, v);
+      await page.waitForFunction((n) => window.__terraville.undoStack.length > n, n);
+    };
+    const start = await hash();
+    const low = await peak();
+
+    await slide('edHills', 90);
+    assert.ok((await peak()) > low + 40, 'Mountains 90 raises the peaks');
+    await page.click('#btnUndo');
+    assert.equal(await hash(), start, 'the land is back');
+    assert.deepEqual(await panel(), { hills: '45', shown: '45', set: 45, seed: 'amber-isle-11', sign: 'amber-isle-11', style: 'coast' }, 'and so is Mountains, in the panel and the settings');
+    await page.click('#btnRedo');
+    assert.equal((await panel()).hills, '90', 'redo puts Mountains 90 back too');
+    await page.click('#btnUndo');
+    await slide('edForest', 46);
+    assert.ok((await peak()) < low + 20, 'the next change regenerates with Mountains 45, not the undone 90');
+    await page.click('#btnUndo');
+    assert.equal(await hash(), start);
+
+    // A typed seed and a style, undone, are gone from the seed box, the sign and the founding dialog.
+    await page.fill('#edSeed', 'other-seed-22');
+    await page.press('#edSeed', 'Enter');
+    await page.waitForFunction(() => window.__terraville.terrain.seed === 'other-seed-22');
+    await page.click('[data-style="island"]');
+    await page.waitForFunction(() => window.__terraville.terrain.style === 'island');
+    await page.click('#btnUndo');
+    await page.click('#btnUndo');
+    assert.equal(await hash(), start);
+    assert.deepEqual(await panel(), { hills: '45', shown: '45', set: 45, seed: 'amber-isle-11', sign: 'amber-isle-11', style: 'coast' });
+    await page.click('[data-act="found"]');
+    assert.equal(await page.textContent('.modal .sub'), 'On coastline land, seed amber-isle-11');
+    await page.keyboard.press('Escape');
+
+    // Shaped by hand, the land is no longer the seed's alone, and the dialog says so until the stroke is undone.
+    await page.keyboard.press('r');
+    const a = await page.evaluate(() => { const r = window.__terraville.renderer; return [r.tileToScreen(60, 50), r.tileToScreen(66, 56)]; });
+    await page.mouse.move(a[0].x, a[0].y);
+    await page.mouse.down();
+    await page.mouse.move(a[1].x, a[1].y, { steps: 6 });
+    await page.mouse.up();
+    await page.click('[data-act="found"]');
+    assert.equal(await page.textContent('.modal .sub'), 'On coastline land, seed amber-isle-11, reshaped by hand');
+    await page.keyboard.press('Escape');
+    await page.click('#btnUndo');
+    await page.click('[data-act="found"]');
+    assert.equal(await page.textContent('.modal .sub'), 'On coastline land, seed amber-isle-11');
+    await page.keyboard.press('Escape');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('the cost tip draws its middle dots and says why lots are blocked', async () => {
     const ctx = await profile(DESK);
     const { page, problems } = await open(ctx);

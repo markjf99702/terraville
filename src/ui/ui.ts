@@ -13,7 +13,7 @@ import { DRIVE_HOME, DriveCopy } from '../drive';
 import { SaveFile, SlotMeta, decode, deleteSlot, encode, listSlots, loadSlot, storageAvailable } from '../save';
 import { spending } from '../sim';
 import type { Message } from '../sim';
-import { STYLE_NAMES, TerrainStyle, hasSea } from '../terrain';
+import { STYLE_NAMES, TerrainParams, TerrainStyle, hasSea } from '../terrain';
 import { GoalState, SCENARIOS, Scenario, successLine } from '../scenarios';
 import { World } from '../world';
 import { focusFromKeyboard, hasKeyboardFocus, watchFocus } from '../focus';
@@ -159,6 +159,11 @@ interface ModalSpec {
   locked?: boolean;
 }
 
+/** The terrain editor's sliders, by id, and the setting each one sets. */
+const EDITOR_SLIDERS: [string, 'water' | 'hills' | 'rough' | 'rivers' | 'lakes' | 'forest'][] = [
+  ['edWater', 'water'], ['edHills', 'hills'], ['edRough', 'rough'], ['edRivers', 'rivers'], ['edLakes', 'lakes'], ['edForest', 'forest'],
+];
+
 export class UI {
   modalOpen = false;
   /** The open dialog closes only from its own buttons. */
@@ -183,6 +188,8 @@ export class UI {
   private dropdownBtn: HTMLElement | null = null;
   private lastMessage: Message | null = null;
   private regenTimer = 0;
+  /** A regeneration waiting for its slider to rest: the settings changed so far. */
+  private regenPending: Partial<TerrainParams> | null = null;
   private guideDismissed = false;
   private guideTimer = 0;
   /** The menu asked for the checklist: it stays until its close button, even with every step done. */
@@ -797,59 +804,91 @@ export class UI {
     $(p, '#edHead').onclick = () => {
       if (this.compact()) p.classList.toggle('collapsed');
     };
-    const regen = (params: Record<string, unknown>) => {
-      window.clearTimeout(this.regenTimer);
-      this.regenTimer = window.setTimeout(() => {
-        this.game.regenerate(params);
-        $(this.root, '#signSub').textContent = this.game.terrain.seed;
-        this.syncUndo();
-      }, 90);
-    };
-    const bind = (id: string, key: string) => {
+    const bind = (id: string, key: (typeof EDITOR_SLIDERS)[number][1]) => {
       const input = $<HTMLInputElement>(p, '#' + id);
       input.oninput = () => {
         $(p, `#${id}Val`).textContent = input.value;
-        regen({ [key]: Number(input.value) });
+        this.regen({ [key]: Number(input.value) });
       };
     };
-    bind('edWater', 'water');
-    bind('edHills', 'hills');
-    bind('edRough', 'rough');
-    bind('edRivers', 'rivers');
-    bind('edLakes', 'lakes');
-    bind('edForest', 'forest');
-    const syncSea = () => {
-      const on = hasSea(this.game.terrain.style);
-      const input = $<HTMLInputElement>(p, '#edWater');
-      input.disabled = !on;
-      input.closest('.field')!.setAttribute('style', on ? '' : 'opacity:.45');
-    };
-    syncSea();
+    for (const [id, key] of EDITOR_SLIDERS) bind(id, key);
     $(p, '#edStyle').onclick = (e) => {
       const b = (e.target as HTMLElement).closest<HTMLElement>('[data-style]');
       if (!b) return;
+      const style = b.dataset.style as TerrainStyle;
       for (const x of p.querySelectorAll('[data-style]')) x.setAttribute('aria-pressed', String(x === b));
-      this.game.terrain.style = b.dataset.style as TerrainStyle;
-      syncSea();
-      regen({ style: b.dataset.style });
+      // The settings change only when the land does, so the undo step taken then still holds the style before.
+      this.syncSea(style);
+      this.regen({ style });
     };
     $(p, '#edSize').onclick = (e) => {
       const b = (e.target as HTMLElement).closest<HTMLElement>('[data-size]');
       if (!b) return;
       const m = MAP_SIZES.find((s) => s.id === b.dataset.size)!;
       for (const x of p.querySelectorAll('[data-size]')) x.setAttribute('aria-pressed', String(x === b));
+      this.flushRegen();
       this.game.regenerate({ w: m.w, h: m.h });
       this.syncUndo();
     };
     const seed = $<HTMLInputElement>(p, '#edSeed');
-    seed.onchange = () => regen({ seed: seed.value.trim() || randomSeedName() });
+    seed.onchange = () => this.regen({ seed: seed.value.trim() || randomSeedName() });
     seed.onkeydown = (e) => {
       if (e.key === 'Enter') seed.blur();
     };
     $(p, '#edDice').onclick = () => {
       seed.value = randomSeedName();
-      regen({ seed: seed.value });
+      this.regen({ seed: seed.value });
     };
+    this.syncEditorPanel();
+  }
+
+  /** Regenerate the land once the control has rested a moment, with every setting changed meanwhile. */
+  private regen(params: Partial<TerrainParams>): void {
+    window.clearTimeout(this.regenTimer);
+    this.regenPending = { ...this.regenPending, ...params };
+    this.regenTimer = window.setTimeout(() => this.flushRegen(), 90);
+  }
+
+  /** Carry out a regeneration still waiting, now: before an undo or redo, so they act on the latest change. */
+  flushRegen(): void {
+    const params = this.regenPending;
+    if (!params) return;
+    window.clearTimeout(this.regenTimer);
+    this.regenPending = null;
+    this.game.regenerate(params);
+    const sub = this.root.querySelector('#signSub');
+    if (sub) sub.textContent = this.game.terrain.seed;
+    this.syncUndo();
+  }
+
+  /** Show the editor's settings in its panel and the sign: after an undo or a redo, they are the settings undone to. */
+  syncEditorPanel(): void {
+    const p = $(this.root, '#editorPanel');
+    if (this.game.mode !== 'editor' || !p.querySelector('#edSeed')) return;
+    const t = this.game.terrain;
+    for (const [id, key] of EDITOR_SLIDERS) {
+      const input = $<HTMLInputElement>(p, '#' + id);
+      input.value = String(t[key]);
+      $(p, `#${id}Val`).textContent = input.value;
+    }
+    for (const x of p.querySelectorAll<HTMLElement>('[data-style]')) x.setAttribute('aria-pressed', String(x.dataset.style === t.style));
+    for (const x of p.querySelectorAll<HTMLElement>('[data-size]')) {
+      const m = MAP_SIZES.find((s) => s.id === x.dataset.size)!;
+      x.setAttribute('aria-pressed', String(m.w === t.w && m.h === t.h));
+    }
+    $<HTMLInputElement>(p, '#edSeed').value = t.seed;
+    this.syncSea(t.style);
+    const sub = this.root.querySelector('#signSub');
+    if (sub) sub.textContent = t.seed;
+  }
+
+  /** The Sea slider works only for the styles with a sea. */
+  private syncSea(style: TerrainStyle): void {
+    const input = this.root.querySelector<HTMLInputElement>('#edWater');
+    if (!input) return;
+    const on = hasSea(style);
+    input.disabled = !on;
+    input.closest('.field')!.setAttribute('style', on ? '' : 'opacity:.45');
   }
 
   // ---- minimap and overlays --------------------------------------------------------
@@ -1616,7 +1655,8 @@ export class UI {
     }) : null;
     this.openModal({
       title: 'Found a new city',
-      sub: `On ${esc(STYLE_NAMES[this.game.terrain.style].toLowerCase())} land, seed <span class="num">${esc(this.game.terrain.seed)}</span>`,
+      // The seed alone makes the land only until a brush or a spring has changed it.
+      sub: `On ${esc(STYLE_NAMES[this.game.terrain.style].toLowerCase())} land, seed <span class="num">${esc(this.game.terrain.seed)}</span>${this.game.terrain.shaped ? ', reshaped by hand' : ''}`,
       body,
       foot: [...(reroll ? [reroll] : []), other, found],
     });

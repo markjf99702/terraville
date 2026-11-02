@@ -1503,9 +1503,11 @@ await test("the mayor's approval is saved with the city, and older saves open at
 await test('terrain settings from a code are numbers in their sliders\' range', () => {
   const base = { ...DEFAULT_TERRAIN, seed: 'harbor-pine-42', w: 120, h: 100 };
   const t = cleanTerrain({ water: '<img src=x onerror="alert(1)">', hills: 250, rivers: '3', style: 'volcano', seed: 7, forest: 12 }, base);
-  assert.deepEqual(t, { ...base, hills: 100, rivers: 3, forest: 12 });
-  const real = { ...base, style: 'island' as const, water: 45, hills: 30, rough: 0, rivers: 6, lakes: 100, seed: 'monster-bay-2' };
+  assert.deepEqual(t, { ...base, hills: 100, rivers: 3, forest: 12, shaped: false });
+  const real = { ...base, style: 'island' as const, water: 45, hills: 30, rough: 0, rivers: 6, lakes: 100, seed: 'monster-bay-2', shaped: true };
   assert.deepEqual(cleanTerrain(JSON.parse(JSON.stringify(real)), base), real);
+  // Land shaped by hand says so only when the code says exactly that, whatever the settings it replaces said.
+  assert.equal(cleanTerrain({ shaped: 'yes' }, { ...base, shaped: true }).shaped, false);
 });
 
 await test('a damaged list of saves keeps every save it can read', () => {

@@ -39,6 +39,8 @@ interface UndoEntry {
   upgrade?: boolean;
   /** In a city, the area as the action left it: undo (or redo) is refused once it has been wrecked since. */
   after?: AreaSnapshot;
+  /** In the editor, the generator's settings that went with the map, so the panel and the next regeneration follow it. */
+  terrain?: TerrainParams;
 }
 
 /** Undo refunds an action's cost for this many game months after it (always while paused). */
@@ -363,7 +365,7 @@ export class Game {
     this.mode = 'editor';
     this.setSim(null);
     this.renderer.setOverlay('none');
-    this.terrain = { ...this.terrain, ...params };
+    this.terrain = { ...this.terrain, ...params, shaped: false };
     this.world = generateTerrain(this.terrain);
     this.renderer.setWorld(this.world, null);
     this.fitMap();
@@ -395,18 +397,21 @@ export class Game {
   }
 
   regenerate(params: Partial<TerrainParams>): void {
-    const next = { ...this.terrain, ...params };
+    // Fresh land is the seed's alone again.
+    const next = { ...this.terrain, ...params, shaped: false };
     const sizeChanged = next.w !== this.terrain.w || next.h !== this.terrain.h;
-    this.terrain = next;
     const fresh = generateTerrain(next);
     if (!sizeChanged && this.world && this.world.w === fresh.w && this.world.h === fresh.h) {
+      // The undo step keeps the settings from before, with the land.
       this.pushUndo();
+      this.terrain = next;
       this.world.height.set(fresh.height);
       this.world.water.set(fresh.water);
       this.world.trees.set(fresh.trees);
       this.world.city.seed = next.seed;
       this.world.dirtyAll(true);
     } else {
+      this.terrain = next;
       this.world = fresh;
       this.renderer.setWorld(fresh, null);
       this.fitMap();
@@ -916,7 +921,10 @@ export class Game {
         if (area) this.world.restoreArea(this.world.areaSnapshot(area, full));
         this.world.city.funds += this.brushSpent;
         this.ui.onFunds();
-      } else this.world.restore(top.snap as WorldSnapshot);
+      } else {
+        this.world.restore(top.snap as WorldSnapshot);
+        if (top.terrain) this.terrain = top.terrain;
+      }
       this.redoStack = this.strokeRedo;
     }
     this.brushSpent = 0;
@@ -1090,6 +1098,7 @@ export class Game {
         this.strokeRedo = this.redoStack;
         this.pushUndo();
         if (this.mode === 'city') this.undoStack[this.undoStack.length - 1].within = null;
+        else this.terrain.shaped = true;
         this.brushOn = true;
         this.brushAt = { x: fx, y: fy };
         this.brushSpent = 0;
@@ -1149,6 +1158,7 @@ export class Game {
     this.pushUndo();
     const n = addSpring(this.world, tx, ty);
     if (n) {
+      this.terrain.shaped = true;
       this.audio.play('terrain');
       this.minimap.markDirty();
     } else {
@@ -1358,6 +1368,7 @@ export class Game {
     this.sealUndo();
     this.undoStack.push({
       snap: this.world.snapshot(), cost: 0, month: this.world.city.month, open: this.mode === 'city',
+      terrain: this.mode === 'editor' ? { ...this.terrain } : undefined,
     });
     if (this.undoStack.length > (this.mode === 'editor' ? 40 : 25)) this.undoStack.shift();
     this.redoStack = [];
@@ -1420,6 +1431,8 @@ export class Game {
   }
 
   undo(): void {
+    // A slider change still waiting to regenerate is the latest change: it goes ahead, and this undoes it.
+    this.ui.flushRegen();
     this.sealUndo();
     const e = this.undoStack.pop();
     if (!e) {
@@ -1433,7 +1446,7 @@ export class Game {
     const back = this.copyLike(e.snap);
     if (!this.restore(e.snap)) return;
     // Both stacks keep the month of the action itself, so undoing and redoing never restarts the refund clock.
-    this.redoStack.push({ snap: back, cost: refund, month: e.month, upgrade: e.upgrade, after: this.afterOf(e.snap) });
+    this.redoStack.push({ snap: back, cost: refund, month: e.month, upgrade: e.upgrade, after: this.afterOf(e.snap), terrain: this.swapTerrain(e) });
     if (e.upgrade) this.sim?.computeMaps();
     this.ui.syncUndo();
     if (city) {
@@ -1445,6 +1458,7 @@ export class Game {
   }
 
   redo(): void {
+    this.ui.flushRegen();
     const e = this.redoStack.pop();
     if (!e) return;
     if (this.overtaken(e, 'redone')) return;
@@ -1455,12 +1469,24 @@ export class Game {
     }
     const back = this.copyLike(e.snap);
     if (!this.restore(e.snap)) return;
-    this.undoStack.push({ snap: back, cost: e.cost, month: e.month, upgrade: e.upgrade, after: this.afterOf(e.snap) });
+    this.undoStack.push({ snap: back, cost: e.cost, month: e.month, upgrade: e.upgrade, after: this.afterOf(e.snap), terrain: this.swapTerrain(e) });
     if (e.upgrade) this.sim?.computeMaps();
     this.ui.syncUndo();
     if (this.mode === 'city') this.world.city.funds -= e.cost;
     this.ui.onFunds();
     this.ui.refreshInspect();
+  }
+
+  /**
+   * Put back the editor's settings an entry kept, and show them in the panel. Returns the settings it replaced, for
+   * the entry on the other stack.
+   */
+  private swapTerrain(e: UndoEntry): TerrainParams | undefined {
+    if (!e.terrain) return undefined;
+    const now = { ...this.terrain };
+    this.terrain = { ...e.terrain };
+    this.ui.syncEditorPanel();
+    return now;
   }
 
   private restore(s: WorldSnapshot | AreaSnapshot): boolean {
