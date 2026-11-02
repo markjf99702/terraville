@@ -57,6 +57,11 @@ function difficultyNote(d: Difficulty): string {
   return text[0].toUpperCase() + text.slice(1);
 }
 
+/** The second press that confirms a purchase or a deletion: a click with a mouse, a tap on a touch screen. */
+function again(): string {
+  return matchMedia('(pointer: fine)').matches ? 'Click again' : 'Tap again';
+}
+
 /** How long ago a moment was, briefly. */
 export function ago(t: number): string {
   const s = Math.max(0, (Date.now() - t) / 1000);
@@ -96,7 +101,7 @@ export function buildShell(root: HTMLElement): { map: HTMLCanvasElement; minimap
     <div id="tooltip" class="panel" hidden></div>
     <div id="cursorTip" hidden></div>
     <div id="toast" class="panel hide" role="status" aria-live="polite"></div>
-    <button id="pausedPill" class="panel" hidden title="Resume (Space)">${ICONS.pause}<b>Paused</b><span>Space to resume</span></button>
+    <button id="pausedPill" class="panel" hidden title="Resume (Space)">${ICONS.pause}<b>Paused</b><span class="by-key">Space to resume</span><span class="by-touch">Tap to resume</span></button>
     <div id="dropRoot"></div>
     <div id="modalRoot" hidden></div>
     <section id="title" hidden></section>`;
@@ -1044,7 +1049,7 @@ export class UI {
         // A big purchase: the second tap pays.
         if (!ub.dataset.sure) {
           ub.dataset.sure = '1';
-          ub.textContent = `Tap again to pay ${money(up.cost)}`;
+          ub.textContent = `${again()} to pay ${money(up.cost)}`;
           return;
         }
         if (!this.game.upgrade(b)) return;
@@ -1112,7 +1117,7 @@ export class UI {
       [res && com && ind, 'Zone residential, commercial and industrial lots.'],
       [roads >= 6, 'Lay roads so each zone touches one.'],
       [powered, 'Run power lines from the plant to the zones.'],
-      [grown, 'Unpause and watch the first buildings go up.'],
+      [grown, 'Press play and watch the first buildings go up.'],
     ];
     if (items.every(([ok]) => ok) && !force) {
       this.guideDismissed = true;
@@ -1834,7 +1839,7 @@ export class UI {
           const everywhere = !!r.remote && drive.hasToken();
           if (!del.dataset.sure) {
             del.dataset.sure = '1';
-            del.textContent = everywhere ? 'Tap again to delete everywhere' : 'Tap again to delete';
+            del.textContent = everywhere ? `${again()} to delete everywhere` : `${again()} to delete`;
             return;
           }
           if (r.local) deleteSlot(r.local.id);

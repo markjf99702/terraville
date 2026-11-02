@@ -80,6 +80,10 @@ type TabNote =
 /** How long opening a city waits for the tab playing it to save and stop, should that tab not answer. */
 const HANDOVER_WAIT = 2000; // ms
 
+/** The terrain editor's opening toast. On a phone the brushes are along the bottom. */
+const EDITOR_HINT = () =>
+  `Drag to move the map, scroll or pinch to zoom. Pick a brush ${window.innerWidth <= 820 ? 'below' : 'on the left'} to shape the land.`;
+
 function fmtMoney(n: number): string {
   return '$' + Math.round(n).toLocaleString();
 }
@@ -363,7 +367,7 @@ export class Game {
     this.setTool('pan');
     this.minimap.markDirty();
     this.ui.enterEditor();
-    this.ui.toast('Drag to move the map, scroll or pinch to zoom. Pick a brush on the left to shape the land.');
+    this.ui.toast(EDITOR_HINT());
   }
 
   /** Continue editing the land already on screen (from the title or a quick start). */
@@ -381,7 +385,7 @@ export class Game {
     this.setTool('pan');
     this.minimap.markDirty();
     this.ui.enterEditor();
-    this.ui.toast('Drag to move the map, scroll or pinch to zoom. Pick a brush on the left to shape the land.');
+    this.ui.toast(EDITOR_HINT());
   }
 
   regenerate(params: Partial<TerrainParams>): void {
@@ -437,7 +441,9 @@ export class Game {
     w.city.seed = this.terrain.seed;
     this.startSim();
     this.mode = 'city';
-    this.speed = 2;
+    // A new city waits for the player: nothing costs upkeep or happens until they press play (Space resumes Normal).
+    this.speed = 0;
+    this.lastSpeed = 2;
     this.clearUndo();
     this.slotId = null;
     this.world.city.id = newCityId();

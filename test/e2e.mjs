@@ -59,12 +59,11 @@ async function open(ctx) {
 
 const titleUp = (page) => page.waitForFunction(() => !!window.__terraville && !document.querySelector('#title').hidden, null, { timeout: 30000 });
 
-/** Found a city on random land, with the clock stopped. */
+/** Found a city on random land. A new city opens with the clock stopped. */
 async function found(page) {
   await page.click('[data-act="quick"]');
   await page.click('.modal footer .btn.primary');
   await page.waitForFunction(() => window.__terraville.mode === 'city');
-  await page.evaluate(() => window.__terraville.setSpeed(0));
 }
 
 /** The page's current save as a city code, after `change` (a function's source) has edited it. */
@@ -826,6 +825,31 @@ try {
     await ctx.close();
   });
 
+  await test('a new city opens paused, and says how to start the clock with a key or a tap', async () => {
+    const ctx = await profile(DESK);
+    const { page, problems } = await open(ctx);
+    await found(page);
+    assert.equal(await page.evaluate(() => window.__terraville.speed), 0, 'the clock is stopped');
+    assert.equal(await page.textContent('#stDateLabel'), 'Paused');
+    assert.equal(await page.textContent('#pausedPill'), 'PausedSpace to resumeTap to resume');
+    assert.deepEqual(await page.$$eval('#pausedPill span', (s) => s.map((x) => getComputedStyle(x).display !== 'none')), [true, false], 'Space with a keyboard');
+    assert.match(await page.textContent('#guide li:last-child'), /Press play and watch the first buildings go up\./);
+    const month = await page.evaluate(() => window.__terraville.world.city.month);
+    await page.waitForTimeout(3000);
+    assert.equal(await page.evaluate(() => window.__terraville.world.city.month), month, 'no month passes until play');
+    await page.keyboard.press('Space');
+    assert.equal(await page.evaluate(() => window.__terraville.speed), 2, 'Space starts it at Normal');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+    const tablet = await profile({ viewport: { width: 1024, height: 768 }, isMobile: true, hasTouch: true });
+    const { page: t } = await open(tablet);
+    await found(t);
+    assert.deepEqual(await t.$$eval('#pausedPill span', (s) => s.map((x) => getComputedStyle(x).display !== 'none')), [false, true], 'a tap on a touch screen');
+    await t.tap('#pausedPill');
+    assert.equal(await t.evaluate(() => window.__terraville.speed), 2, 'and a tap on the pill starts it');
+    await tablet.close();
+  });
+
   await test('on a phone, Inspect takes the bottom slot from the map layer card and the news log', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);
@@ -862,7 +886,7 @@ try {
     assert.match(await page.textContent('#inspect .upgrade'), /^\s*Upgrade to a big-league stadium: land value rises by \$120\/acre across the whole city, and upkeep by \$60\/mo\.\s*Upgrade for \$15,000\s*$/);
     await page.click('#inUpgrade');
     assert.deepEqual(await stadium(), [1, 50000], 'one tap paid');
-    assert.equal(await page.textContent('#inUpgrade'), 'Tap again to pay $15,000');
+    assert.equal(await page.textContent('#inUpgrade'), 'Click again to pay $15,000', 'with a mouse it says click');
     await page.click('#inUpgrade');
     assert.deepEqual(await stadium(), [2, 35000]);
     assert.equal(await page.textContent('#toast'), 'The stadium is now a big-league stadium. Land value is up across the city.');
