@@ -393,6 +393,10 @@ input[type="range"] { width: 100%; accent-color: var(--sign-hi); margin: 0; touc
 #zoomFit svg { width: 16px; height: 16px; }
 .legend { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
 .legend .ramp { flex: 1; height: 8px; border-radius: 4px; }
+/* The Traffic layer's legend has a row for the roads and one for the track. */
+.legend.rows { flex-direction: column; align-items: stretch; gap: 4px; }
+.legend .leg-row { display: flex; align-items: center; gap: 6px; }
+.legend .leg-name { flex: none; width: 62px; color: var(--text); }
 
 /* ---- ticker -------------------------------------------------------------- */
 #ticker {

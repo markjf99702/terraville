@@ -48,6 +48,9 @@ export class Vehicles {
   private planeTimer = 8;
   private scanTimer = 0;
   private railTiles: number[] = [];
+  /** The riders on each tile of track (see Sim.riders), when the world has a city; and their sum over the track. */
+  riders: Uint8Array | null = null;
+  private rideSum = 0;
   private airports: { x: number; y: number }[] = [];
   private ports: number[] = [];
 
@@ -69,7 +72,12 @@ export class Vehicles {
   private scan(): void {
     const world = this.world;
     this.railTiles = [];
-    for (let i = 0; i < world.n; i++) if (world.net[i] & RAIL) this.railTiles.push(i);
+    this.rideSum = 0;
+    for (let i = 0; i < world.n; i++) {
+      if (!(world.net[i] & RAIL)) continue;
+      this.railTiles.push(i);
+      this.rideSum += this.riders?.[i] ?? 0;
+    }
     this.airports = [];
     this.ports = [];
     for (const b of world.buildings.values()) {
@@ -99,16 +107,30 @@ export class Vehicles {
     this.dust = this.dust.filter((d) => d.age < d.life);
     if (!running) return;
 
-    // Trains.
-    const want = Math.min(8, Math.floor(this.railTiles.length / 28));
+    // Trains: more of them, and longer, where more people ride. Track nobody rides gets one short train at most, so a
+    // line in use is busy and an unused one looks it.
+    const riders = this.riders;
+    const want = this.rideSum > 0 ? Math.min(12, 1 + Math.round(this.rideSum / 4000)) : this.railTiles.length >= 28 ? 1 : 0;
     this.trains = this.trains.filter((t) => t.trail.length && world.net[t.trail[0]] & RAIL);
     while (this.trains.length < want && this.railTiles.length) {
-      const start = this.railTiles[Math.floor(Math.random() * this.railTiles.length)];
+      // Each starts somewhere people ride, by how many do.
+      let start = this.railTiles[Math.floor(Math.random() * this.railTiles.length)];
+      if (riders && this.rideSum > 0) {
+        let r = Math.random() * this.rideSum;
+        for (const i of this.railTiles) {
+          r -= riders[i];
+          if (r < 0) {
+            start = i;
+            break;
+          }
+        }
+      }
+      const full = (riders?.[start] ?? 0) / 255;
       this.trains.push({
         trail: [start],
         progress: 0,
         speed: 2.2 + Math.random() * 1.2,
-        cars: 3 + Math.floor(Math.random() * 3),
+        cars: 2 + Math.round(full * 4),
         color: Math.random() < 0.5 ? '#C0392B' : Math.random() < 0.5 ? '#2C3E50' : '#1F6F8B',
       });
     }
@@ -185,19 +207,28 @@ export class Vehicles {
     const x = head % world.w;
     const y = (head / world.w) | 0;
     const opts: number[] = [];
-    let straight = -1;
+    const weights: number[] = [];
+    let total = 0;
     for (const [dx, dy] of DIRS) {
       const nx = x + dx;
       const ny = y + dy;
       if (!world.inBounds(nx, ny)) continue;
       const j = ny * world.w + nx;
       if (j === prev || !(world.net[j] & RAIL)) continue;
+      // At a junction a train mostly runs on straight, and mostly takes the branch more people ride: a spur nobody
+      // uses sees a train now and then.
+      const wt = ((this.riders?.[j] ?? 0) + 8) * (prev >= 0 && j - head === head - prev ? 3 : 1);
       opts.push(j);
-      if (prev >= 0 && j - head === head - prev) straight = j;
+      weights.push(wt);
+      total += wt;
     }
     if (!opts.length) return -1;
-    if (straight >= 0 && Math.random() < 0.75) return straight;
-    return opts[Math.floor(Math.random() * opts.length)];
+    let r = Math.random() * total;
+    for (let k = 0; k < opts.length; k++) {
+      r -= weights[k];
+      if (r < 0) return opts[k];
+    }
+    return opts[opts.length - 1];
   }
 
   /** Draw in tile coordinates (the context is already scaled). */

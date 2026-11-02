@@ -5,7 +5,7 @@ import {
 } from '../defs';
 import { DISASTER_NAMES, DisasterKind } from '../disasters';
 import { Game, SPEED_NAMES, randomCityName } from '../game';
-import { OVERLAYS, Overlay, SLOPE_CLASSES } from '../render/renderer';
+import { OVERLAYS, Overlay, RIDERS_COLOR, SLOPE_CLASSES } from '../render/renderer';
 import { ZONE_COLORS } from '../render/color';
 import { drawBuilding } from '../render/sprites';
 import { randomSeedName } from '../rng';
@@ -1207,6 +1207,7 @@ export class UI {
     this.syncOverview();
     const leg = $(this.root, '#legend');
     leg.classList.toggle('slope', o === 'slope');
+    leg.classList.toggle('rows', o === 'traffic');
     if (o === 'none') {
       leg.hidden = true;
       return;
@@ -1227,7 +1228,14 @@ export class UI {
         sw('#e34948', 'Not connected', 'No power plant reaches this');
       return;
     }
-    leg.innerHTML = `<span>${def.low}</span><span class="ramp" style="background:linear-gradient(90deg, ${def.color}33, ${def.color})"></span><span>${def.high}</span>`;
+    const ramp = (c: string) => `<span class="ramp" style="background:linear-gradient(90deg, ${c}33, ${c})"></span>`;
+    if (o === 'traffic') {
+      // Cars on the roads, and riders on the track, in a colour of its own.
+      leg.innerHTML = `<span class="leg-row"><span class="leg-name">Roads</span><span>${def.low}</span>${ramp(def.color)}<span>${def.high}</span></span>`
+        + `<span class="leg-row"><span class="leg-name">Rail riders</span><span>None</span>${ramp(RIDERS_COLOR)}<span>Packed</span></span>`;
+      return;
+    }
+    leg.innerHTML = `<span>${def.low}</span>${ramp(def.color)}<span>${def.high}</span>`;
   }
 
   /**

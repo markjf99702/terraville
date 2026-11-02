@@ -24,7 +24,7 @@ Play it at [terraville.junkdrawer.works](https://terraville.junkdrawer.works/), 
 - Roads, rail (trips by rail add no car traffic) and power lines, drawn by dragging. Straight bridges over water. Zones pass power to neighbours, as in the original.
 - Coal, nuclear, wind and solar power, each with a capacity in MW. Each connected grid has to power itself, and brownouts cut off its far end first. Inspect and the Power grid layer show which grid is short.
 - Police, fire, schools, hospitals, parks, a stadium, a seaport and an airport. Big cities stall without the last three, like they used to. A rich city can upgrade each of the three twice, which raises land value across the whole city.
-- Pollution, crime, land value, traffic, density and service coverage maps, viewable as overlays.
+- Pollution, crime, land value, traffic, density and service coverage maps, viewable as overlays. The Traffic layer shades rail by its riders, and busy lines run more trains.
 - Monthly budget with tax rate, funding sliders for police, fire and roads (underfunded roads crumble), and loans.
 - Fires that spread, floods on low shores, tornadoes, earthquakes, a monster drawn to pollution, and nuclear meltdowns. Toggle random disasters or set one off yourself.
 - History charts (residents and jobs, funds, income and spending, crime, pollution and traffic, approval, power), a city report with approval, a score out of 1,000 and residents' top worries, and a news ticker that can jump to the scene.

@@ -1,7 +1,7 @@
 // Unit checks for the core rules. Run with: npm test
 import assert from 'node:assert/strict';
 import { World, encodeArray, decodeArray } from '../src/world';
-import { Sim, spending } from '../src/sim';
+import { Sim, ridersWord, spending } from '../src/sim';
 import { generateTerrain, cleanTerrain, DEFAULT_TERRAIN, applyBrush } from '../src/terrain';
 import { linePath, planLine, applyLine, planZones, applyBuildings, planBulldoze, levelCost } from '../src/tools';
 import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST, UPGRADE_LV, Kind, BUILDINGS, article, buildingName, cityClass, isZone, num, upkeepOf } from '../src/defs';
@@ -12,6 +12,7 @@ import { SCENARIOS, buildScenario, goalRowText, goalState, openScenario, scenari
 import { Game, priceIncludes } from '../src/game';
 import { chartAxis, spreadLabels, tickLabel } from '../src/ui/charts';
 import { cutOff } from '../src/render/renderer';
+import { Vehicles } from '../src/render/vehicles';
 import { ago, demandWords, worryWord } from '../src/ui/ui';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -496,6 +497,63 @@ await test('trains through a level crossing add no cars to it, and rail laid alo
     applyLine(w, RAIL, planLine(w, RAIL, linePath(5, 5, 49, 5)));
   });
   for (let x = 6; x <= 48; x++) assert.equal(tram.traffic[5 * tram.w + x], 0, `cars at x ${x}`);
+});
+
+await test('riders are counted on the track they ride, from where they board to where they get off, and a spur nobody uses has none', async () => {
+  const w = flat(60, 30);
+  const home = w.place('res', 2, 2);
+  w.setLevel(w.place('com', 40, 2), 3);
+  w.setLevel(home, 8);
+  applyLine(w, ROAD, planLine(w, ROAD, linePath(2, 5, 4, 5)));
+  applyLine(w, RAIL, planLine(w, RAIL, linePath(5, 5, 39, 5)));
+  applyLine(w, RAIL, planLine(w, RAIL, linePath(20, 6, 20, 20))); // a spur off to nowhere
+  applyLine(w, ROAD, planLine(w, ROAD, linePath(40, 5, 42, 5)));
+  const sim = new Sim(w);
+  sim.computeTraffic(false);
+  const at = (x: number, y: number) => sim.riders[y * w.w + x];
+  for (let x = 5; x <= 39; x++) assert.ok(at(x, 5) > 0, `no riders at x ${x}`);
+  for (let y = 6; y <= 20; y++) assert.equal(at(20, y), 0, `riders on the spur at y ${y}`);
+  assert.equal(at(4, 5), 0, 'the road to the station carries cars, not riders');
+  const rows = (x: number, y: number) => Object.fromEntries(sim.describe(x, y).rows);
+  // 2,200 residents, 1,100 of them commuting, all by train: Busy on the riders' scale.
+  assert.equal(rows(12, 5).Riders, 'Busy');
+  assert.equal(rows(20, 12).Riders, 'None');
+  assert.equal(rows(4, 5).Riders, undefined);
+  // Eased from month to month like the traffic, and not saved: a city opened again counts them afresh.
+  const before = at(12, 5);
+  const back = await reopen(sim);
+  assert.equal(back.riders[5 * w.w + 12], before);
+  assert.deepEqual([0, 1, 59, 60, 169, 170, 255].map(ridersWord), ['None', 'Light', 'Light', 'Busy', 'Busy', 'Packed', 'Packed']);
+});
+
+await test('more trains, and longer ones, run where more people ride, and a spur nobody rides sees few', () => {
+  const w = flat(70, 40);
+  applyLine(w, RAIL, planLine(w, RAIL, linePath(5, 10, 64, 10)));
+  applyLine(w, RAIL, planLine(w, RAIL, linePath(30, 11, 30, 35))); // a spur off the middle of the line
+  const riders = new Uint8Array(w.n);
+  for (let x = 5; x <= 64; x++) riders[10 * w.w + x] = 200;
+  const trains = (ride: Uint8Array | null) => seeded(5, () => {
+    const v = new Vehicles(w);
+    v.riders = ride;
+    let onSpur = 0;
+    let heads = 0;
+    for (let k = 0; k < 600; k++) {
+      v.update(0.1, true);
+      for (const t of v.trains) {
+        heads++;
+        if (t.trail[0] % w.w === 30 && t.trail[0] > 10 * w.w + 30) onSpur++;
+      }
+    }
+    return { n: v.trains.length, cars: v.trains.map((t) => t.cars), spur: onSpur / heads };
+  });
+  const busy = trains(riders);
+  // 60 tiles at 200 riders: four trains of five cars, where the empty track gets one.
+  assert.equal(busy.n, 4);
+  assert.deepEqual(busy.cars, [5, 5, 5, 5]);
+  assert.ok(busy.spur < 0.08, `trains spent ${(busy.spur * 100).toFixed(0)}% of their time on the empty spur`);
+  // Nobody riding yet: one short train keeps the track alive.
+  const empty = trains(new Uint8Array(w.n));
+  assert.equal(empty.n, 1);
 });
 
 await test('homes with no road to any job stay empty, however strong demand is', () => {

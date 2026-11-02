@@ -2426,6 +2426,51 @@ try {
     await ctx.close();
   });
 
+  await test('the Traffic layer shades track by its riders in a colour of its own, and its legend has a row for each', async () => {
+    const ctx = await profile(DESK);
+    const { page, problems } = await open(ctx);
+    await found(page);
+    // Flat open land, a road and a line of track beside it: the track's west half packed with riders, its east half empty.
+    const at = await page.evaluate(() => {
+      const g = window.__terraville;
+      const w = g.world;
+      for (let i = 0; i < w.n; i++) {
+        if (w.occ[i]) w.remove(w.occ[i]);
+        w.water[i] = 0;
+        w.height[i] = 6;
+        w.trees[i] = 0;
+        w.net[i] = 0;
+      }
+      const y = Math.floor(w.h / 2);
+      for (let x = 20; x < 60; x++) {
+        w.net[y * w.w + x] = 2;
+        w.net[(y + 2) * w.w + x] = 1;
+        g.sim.riders[y * w.w + x] = x < 40 ? 255 : 0;
+        w.traffic[(y + 2) * w.w + x] = 255;
+      }
+      w.dirtyAll(true);
+      g.ui.setOverlay('traffic');
+      g.renderer.cam.zoom = 12;
+      g.renderer.centerOn(40, y + 1);
+      return y;
+    });
+    assert.deepEqual(await page.$$eval('#legend .leg-row', (rows) => rows.map((r) => r.textContent)), ['RoadsLightJammed', 'Rail ridersNonePacked']);
+    await page.waitForTimeout(400);
+    const colour = (x, y) => page.evaluate(([x, y]) => {
+      const r = window.__terraville.renderer;
+      const p = r.tileToScreen(x + 0.5, y + 0.5);
+      return [...r.ctx.getImageData(Math.round(p.x * r.dpr), Math.round(p.y * r.dpr), 1, 1).data].slice(0, 3);
+    }, [x, y]);
+    const [rr, rg, rb] = await colour(30, at);
+    assert.ok(rb > rr + 60 && rb > rg, `packed track is blue: ${[rr, rg, rb]}`);
+    const [er, eg, eb] = await colour(50, at);
+    assert.ok(eb >= er && eb + eg + er < rr + rg + rb, `empty track is a faint blue: ${[er, eg, eb]}`);
+    const [cr, , cb] = await colour(30, at + 2);
+    assert.ok(cr > cb + 60, `a jammed road is red: ${[cr, cb]}`);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('a touch screen gets touch help: no key letters, no right-click in the tips, and a Touch list in Settings', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

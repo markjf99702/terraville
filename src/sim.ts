@@ -98,6 +98,12 @@ export type SimEvent =
 
 const MAX_TRIP = 80;
 const MAX_HUBS = 24;
+/**
+ * The riders map is the trips carried along each tile of track, 0-255. A train carries far more than a road: one line
+ * can take most of a 12,000-person town's commuters, about 1,900 trips at its busiest, so the scale is a sixth of the
+ * traffic map's and a line fills it at about 1,300.
+ */
+const RIDE_SCALE = 0.2;
 
 function emptyBudget(): Budget {
   return { taxIncome: 0, transport: 0, police: 0, fire: 0, services: 0, landmarks: 0, power: 0, interest: 0 };
@@ -125,6 +131,12 @@ export class Sim {
   capped = { res: false, com: false, ind: false };
   /** The month the city's last power plant was lost, which the news has said: no other word on power that month. */
   plantLost = -1;
+  /**
+   * The commuters riding along each tile of track, 0-255 on the traffic map's scale, eased from month to month as the
+   * traffic is. Counted with the traffic, and like the land value it is not saved: a city opened from a save counts
+   * them afresh.
+   */
+  riders: Uint8Array;
 
   constructor(world: World) {
     this.world = world;
@@ -132,6 +144,7 @@ export class Sim {
     this.distRes = new Float32Array(world.n);
     this.heap = new MinHeap(4096);
     this.terrainAppeal = new Float32Array(world.n);
+    this.riders = new Uint8Array(world.n);
     this.stats = this.blankStats();
     this.stats.approval = world.city.approval ?? 50;
     this.disasters = new Disasters(this);
@@ -476,15 +489,18 @@ export class Sim {
   }
 
   /**
-   * Follow a distance field downhill from tile i, adding vol to every road tile driven along. A train passing through
-   * a level crossing adds no cars to it, and commuters who board or leave the train on a crossing don't either.
+   * Follow a distance field downhill from tile i, adding vol to every road tile driven along, and to `ride` for every
+   * tile of track ridden along, from where the trip boards the train to where it gets off. A train passing through a
+   * level crossing adds no cars to it, and commuters who board or leave the train on a crossing don't either.
    */
-  private trace(field: Float32Array, i: number, vol: number, flow: Float32Array): void {
+  private trace(field: Float32Array, i: number, vol: number, flow: Float32Array, ride: Float32Array): void {
     const { w, h } = this.world;
     const net = this.world.net;
     let steps = 0;
     // Whether the trip came onto tile i by rail; at the start, whether it can board a train there.
     let byRail = !!(net[i] & RAIL);
+    // Whether it came onto tile i on a train (at the start it hasn't boarded one yet).
+    let aboard = false;
     while (i >= 0 && field[i] > 0 && steps++ < MAX_TRIP * 2) {
       const x = i % w;
       const y = (i / w) | 0;
@@ -496,10 +512,12 @@ export class Sim {
       if (y < h - 1 && field[i + w] < nd) { nd = field[i + w]; nxt = i + w; }
       const onRail = nxt >= 0 && !!(net[i] & RAIL) && !!(net[nxt] & RAIL);
       if (net[i] & ROAD && !(byRail && onRail)) flow[i] += vol;
-      byRail = onRail;
+      if (onRail || aboard) ride[i] += vol;
+      byRail = aboard = onRail;
       i = nxt;
     }
     if (i >= 0 && net[i] & ROAD && !byRail) flow[i] += vol;
+    if (i >= 0 && aboard) ride[i] += vol;
   }
 
   /**
@@ -555,6 +573,7 @@ export class Sim {
     }
 
     const flow = new Float32Array(world.n);
+    const ride = new Float32Array(world.n);
     const net = world.net;
     const cand: { k: number; w: number; start: number }[] = [];
     for (const b of world.buildings.values()) {
@@ -585,7 +604,7 @@ export class Sim {
       if (!b.trip || b.pop <= 0) continue;
       if (b.kind !== 'res') {
         // Deliveries and customers: short hops to the nearest homes.
-        this.trace(field, best, b.pop / 30, flow);
+        this.trace(field, best, b.pop / 30, flow, ride);
         continue;
       }
       const vol = b.pop / 7;
@@ -599,14 +618,20 @@ export class Sim {
         cand.push({ k, w: hubs[k].jobs / ((d + 6) * (d + 6)), start: s });
       }
       if (!cand.length) {
-        this.trace(field, best, vol, flow);
+        this.trace(field, best, vol, flow, ride);
         continue;
       }
       cand.sort((a, c) => c.w - a.w);
       const n = Math.min(3, cand.length);
       let tw = 0;
       for (let k = 0; k < n; k++) tw += cand[k].w;
-      for (let k = 0; k < n; k++) this.trace(this.hubFields[cand[k].k], cand[k].start, (vol * cand[k].w) / tw, flow);
+      for (let k = 0; k < n; k++) this.trace(this.hubFields[cand[k].k], cand[k].start, (vol * cand[k].w) / tw, flow, ride);
+    }
+    // Riders are eased in as the traffic is, and a city opened from a save counts them afresh: they are not saved.
+    const riders = this.riders;
+    for (let i = 0; i < world.n; i++) {
+      const target = net[i] & RAIL ? Math.min(255, ride[i] * RIDE_SCALE) : 0;
+      riders[i] = Math.round(blend ? riders[i] * 0.4 + target * 0.6 : target);
     }
     if (!blend) return;
     const traffic = world.traffic;
@@ -1297,6 +1322,8 @@ export class Sim {
       }
     } else if (world.water[i]) {
       title = net & ROAD ? 'Road bridge' : net & RAIL ? 'Rail bridge' : net & POWER ? 'Power line' : 'Water';
+      if (net & ROAD) rows.push(['Traffic', level5(world.traffic[i])]);
+      if (net & RAIL) rows.push(['Riders', ridersWord(this.riders[i])]);
       if (net & POWER) {
         const grid = this.gridAt(i);
         rows.push(['Its grid', grid ? gridLoad(grid) : 'No plant connected']);
@@ -1308,6 +1335,7 @@ export class Sim {
       if (net & POWER) parts.push('Power line');
       title = parts.join(' + ');
       if (net & ROAD) rows.push(['Traffic', level5(world.traffic[i])]);
+      if (net & RAIL) rows.push(['Riders', ridersWord(this.riders[i])]);
       if (net & POWER) {
         const grid = this.gridAt(i);
         rows.push(['Its grid', grid ? gridLoad(grid) : 'No plant connected']);
@@ -1389,6 +1417,11 @@ export function zoneTitle(k: 'res' | 'com' | 'ind', level: number): string {
   if (k === 'res') return level <= 2 ? 'Cottages' : level <= 4 ? 'Houses' : level === 5 ? 'Row apartments' : level <= 7 ? 'Apartment blocks' : 'Residential towers';
   if (k === 'com') return ['', 'Corner shops', 'Main street', 'Offices', 'Office towers', 'Downtown skyscrapers'][level];
   return ['', 'Workshops', 'Warehouses', 'Factories', 'Heavy industry'][level];
+}
+
+/** How full the trains are along a tile of track, from the riders map. */
+export function ridersWord(v: number): 'None' | 'Light' | 'Busy' | 'Packed' {
+  return v <= 0 ? 'None' : v < 60 ? 'Light' : v < 170 ? 'Busy' : 'Packed';
 }
 
 function level5(v: number): string {

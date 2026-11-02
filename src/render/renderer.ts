@@ -2,7 +2,7 @@
 // 16x16-tile chunk canvases at one of four detail levels and cached; moving
 // things (traffic, smoke, fire, disasters, tool previews) are drawn fresh
 // every frame on top.
-import { BUILDINGS, ROAD, isZone } from '../defs';
+import { BUILDINGS, RAIL, ROAD, isZone } from '../defs';
 import type { Sim } from '../sim';
 import type { Building, World } from '../world';
 import { lessMotion } from '../motion';
@@ -86,6 +86,9 @@ export const OVERLAYS: { id: Overlay; name: string; color: string; low: string; 
   { id: 'service', name: 'Schools & health', color: '#1baf7a', low: 'None', high: 'Full' },
   { id: 'slope', name: 'Steepness', color: '#eb6834', low: 'Flat', high: 'Cliff' },
 ];
+
+/** The Traffic layer shades track by its riders, in a colour of its own: see Sim.riders. */
+export const RIDERS_COLOR = '#3f8fe8';
 
 /** Steepness classes for the slope layer, by the largest height step to a dry neighbour. */
 export const SLOPE_CLASSES = [
@@ -220,6 +223,7 @@ export class Renderer {
     this.field = new TerrainField(world);
     if (!this.vehicles) this.vehicles = new Vehicles(world);
     else this.vehicles.setWorld(world);
+    this.vehicles.riders = sim?.riders ?? null;
     this.releaseChunks();
     this.releaseLights();
     this.emitters.clear();
@@ -1188,6 +1192,10 @@ export class Renderer {
     const cr = (base >> 16) & 255;
     const cg = (base >> 8) & 255;
     const cb = base & 255;
+    const rail = parseInt(RIDERS_COLOR.slice(1), 16);
+    const rr = (rail >> 16) & 255;
+    const rg = (rail >> 8) & 255;
+    const rb = rail & 255;
     const src: Uint8Array | null =
       this.overlay === 'traffic' ? world.traffic :
       this.overlay === 'pollution' ? world.pollution :
@@ -1236,8 +1244,21 @@ export class Renderer {
       }
       if (!src) continue;
       let v = src[i] / 255;
-      if (this.overlay === 'traffic' && !(world.net[i] & ROAD)) continue;
-      if (world.water[i] && this.overlay !== 'pollution') continue;
+      if (this.overlay === 'traffic') {
+        const net = world.net[i];
+        // Track carries riders, not cars: it has its own colour, and a line nobody rides still shows, faintly.
+        if (net & RAIL && !(net & ROAD)) {
+          const r = Math.min(1, (this.sim?.riders[i] ?? 0) / 255);
+          const k = 1 - r * 0.45;
+          d[o] = rr + (255 - rr) * (1 - r) * 0.55 * k;
+          d[o + 1] = rg + (255 - rg) * (1 - r) * 0.55 * k;
+          d[o + 2] = rb + (255 - rb) * (1 - r) * 0.55 * k;
+          d[o + 3] = 50 + Math.sqrt(r) * 205;
+          continue;
+        }
+        // Roads, bridges among them.
+        if (!(net & ROAD)) continue;
+      } else if (world.water[i] && this.overlay !== 'pollution') continue;
       if (this.overlay === 'landValue') v = Math.max(0, (v - 0.1) / 0.8);
       v = Math.min(1, v);
       // One hue, light to dark, with opacity rising with the value.
