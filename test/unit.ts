@@ -1422,6 +1422,35 @@ await test('challenge cities open with only the factories and shops their people
   }
 });
 
+await test("Monster Bay's monster comes ashore only while the pollution index is 9 or more, and the news says so six months ahead", () => seeded(5, () => {
+  const s = SCENARIOS.find((x) => x.id === 'monster')!;
+  const w = buildScenario(s, 120, 100);
+  const sim = new Sim(w);
+  openScenario(sim);
+  const start = w.city.scenario!.end - 10 * 12;
+  const news: string[] = [];
+  sim.on((e) => {
+    if (e.type === 'message') news.push(e.message.text);
+  });
+  /** A month end `since` months into the challenge, with the pollution index at `index`. */
+  const at = (since: number, index: number) => {
+    news.length = 0;
+    w.city.month = start + since;
+    sim.stats.avgPollution = index * 2.55;
+    scenarioMonth(s, sim);
+    return news.slice();
+  };
+  assert.deepEqual(at(3, 8), []);
+  // Clean air: it shows itself, and leaves. It came every two years whatever the air was like.
+  assert.deepEqual(at(9, 8), ['The monster surfaced in the bay, found the air clean and went back under.']);
+  assert.equal(sim.disasters.roamers.length, 0);
+  assert.deepEqual(at(27, 9), ['The monster surfaces in six months. Pollution index 9: at 9 or more, it comes ashore.']);
+  assert.deepEqual(at(32, 9), []);
+  assert.deepEqual(at(33, 9), ['A monster is coming ashore!']);
+  assert.deepEqual(sim.disasters.roamers.map((r) => r.kind), ['monster']);
+  assert.equal(s.check(Object.assign(sim, { stats: { ...sim.stats, residents: 18000, approval: 61 } })).met, true, '18,000 residents and approval over 60% is the goal');
+}));
+
 await test("Smog Valley's four coal plants stand among its homes, so their smoke counts where people live", () => seeded(1, () => {
   const smog = SCENARIOS.find((x) => x.id === 'smog')!;
   const w = buildScenario(smog, 120, 100);
@@ -1571,7 +1600,7 @@ await test('each challenge lists its conditions as rows, ticked when met, withou
   assert.deepEqual(rows('gridlock'), [['Traffic index 25 · under 28', true], ['Residents 17,544 / 20,000', false], ['Jobs 14,960 / 10,000', true]]);
   assert.deepEqual(rows('smog'), [['Pollution index 13 · under 12', false], ['Residents 17,544 / 20,000', false], ['Jobs 14,960 / 9,000', true]]);
   assert.deepEqual(rows('aftershock'), [['Residents 17,544 / 55,000', false]]);
-  assert.deepEqual(rows('monster'), [['Approval 58% · over 60%', false], ['Residents 17,544 / 25,000', false]]);
+  assert.deepEqual(rows('monster'), [['Approval 58% · over 60%', false], ['Residents 17,544 / 18,000', false]]);
   // The goal is met when every row is, and the bar and the one-line status are as they were.
   assert.deepEqual([goal('gridlock').met, goal('gridlock').progress], [false, 0.5]);
   assert.equal(goal('gridlock').status, 'Traffic 25 (goal under 28) · 17,544 of 20,000 residents · 14,960 of 10,000 jobs');
@@ -1672,7 +1701,8 @@ await test("the advisor names a challenge's own problem every six months while i
   const rampage = play('monster', 30, 20, (sim, left) => {
     if (left === 26) sim.disasters.roamers.push({ kind: 'monster', x: 5, y: 5, px: 5, py: 5, vx: 0, vy: 0, weeks: 30, heading: 0 });
   });
-  assert.deepEqual(rampage, ['The monster heads for the smokiest spot in town.']);
+  // Then, with the index still at 13, the news six months before it next surfaces.
+  assert.deepEqual(rampage, ['The monster heads for the smokiest spot in town.', 'The monster surfaces in six months. Pollution index 13: at 9 or more, it comes ashore.']);
   // Once the challenge is decided, the advisor lets it be.
   const quiet = play('gridlock', 13, 2, () => {
     w.city.scenario!.done = 'won';

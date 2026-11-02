@@ -36,7 +36,7 @@ Play it at [terraville.junkdrawer.works](https://terraville.junkdrawer.works/), 
 - *Gridlock* (1955): grow downtown without the traffic grinding to a halt.
 - *Smog Valley* (1968): clean the air without killing the jobs.
 - *Aftershock* (1989): rebuild after an earthquake and keep growing.
-- *Monster Bay* (1957): something in the bay is drawn to smoke, and it keeps coming back.
+- *Monster Bay* (1957): something in the bay comes ashore whenever the air is smoky.
 
 **Modern bits**
 - Smooth zoom from the whole map down to street level, with detail that adapts to the zoom.

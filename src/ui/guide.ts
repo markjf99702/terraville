@@ -198,7 +198,7 @@ function sections(): Section[] {
           ['Flood', 'Starts on low shoreline and spreads over land a few metres above the water. Keep valuable buildings on higher ground.'],
           ['Tornado', 'Wanders near the town centre. You cannot stop it, so keep money in reserve to rebuild.'],
           ['Earthquake', 'Wrecks buildings and roads within about 16 tiles and starts fires. Good fire cover limits the damage.'],
-          ['Monster', 'Appears only when pollution is high, comes out of the water, and heads for the most polluted spot, leaving fires in what it wrecks. Clean air keeps it away.'],
+          ['Monster', 'Comes out of the water only when the air is dirty, at a pollution index of 24 or more (9 in Monster Bay), heads for the most polluted spot, and leaves fires in what it wrecks. Clean air keeps it away.'],
           ['Meltdown', 'Only with a nuclear plant: a small chance each month, or if the plant is destroyed. It contaminates the area for years.'],
         ])}
         ${tip('Every message in the news ticker with a location has a Go there button.')}`,
@@ -212,7 +212,7 @@ function sections(): Section[] {
           ['Gridlock', 'The city opens with about 17,500 people and 8,000 jobs, its factories already past the 4,000 jobs industry reaches without a seaport. Build a seaport so they can grow toward the 10,000 jobs the council wants, and an airport before shops reach 5,000. Every new job and resident brings more cars, though, so run rail from the outer housing into downtown, add parallel roads beside the busy ones, and zone pockets of commerce inside the residential rings. Schools, hospitals and parks raise land value, which lets the city grow denser, and busier.'],
           ['Smog Valley', 'The four coal plants stand among the homes, and while they run the air where people live usually stays at 12 or worse. Replace them with nuclear, solar or wind away from the houses, and zone homes where they stood; parks round a coal plant are not enough. Housing stops at 18,000 residents until you build a stadium. The goal has to hold at every month end of the last year, so get there with time to spare.'],
           ['Aftershock', 'Put the fires out first: check fire cover and bulldoze firebreaks. Then clear rubble, reconnect roads and power, push land value up with hospitals and schools, and build a seaport so industry can grow, to reach 55,000.'],
-          ['Monster Bay', 'The monster returns about every two years and makes for the smoke, which here means the coal plants. Switch to solar or wind: a nuclear plant the monster smashes melts down. Keep fire cover up for the fires it starts, and keep taxes near 7% to hold approval above 60%. Housing stops at 18,000 residents until you build a stadium.'],
+          ['Monster Bay', 'The monster surfaces every two years and comes ashore only while the pollution index is 9 or more, then heads for the smokiest spot. The city opens at about 6 and gets smokier as it grows, mostly from the factories among its homes and its traffic. Replace the coal plants with a nuclear plant, the cheapest clean power: it melts down only if the monster comes ashore and smashes it. Keep fire cover up for the fires the monster starts, and taxes near 7% to hold approval above 60%. Housing stops at 18,000 residents without a stadium, which is all the goal asks.'],
         ])}`,
     },
     {

@@ -85,6 +85,13 @@ interface CityPlan {
 }
 
 
+/**
+ * Monster Bay's monster surfaces every two years and comes ashore only while the pollution index is this or more.
+ * Left alone the city gets there within three years; on 24 test cities, growing with a nuclear plant in place of the
+ * coal won 20, and growing with the coal kept won 9.
+ */
+export const MONSTER_LINE = 9;
+
 export const SCENARIOS: Scenario[] = [
   {
     id: 'boomtown',
@@ -227,10 +234,10 @@ export const SCENARIOS: Scenario[] = [
     year: 1957,
     years: 10,
     funds: 30000,
-    blurb: 'Something lives in the bay, and it is drawn to smoke. It keeps coming back. Keep the people on your side.',
-    goal: 'After 10 years, have at least 25,000 residents and approval above 60%.',
-    win: 'The monster still comes, and the city stands with you.',
-    lose: 'The monster wore the city down before the deadline.',
+    blurb: 'Something lives in the bay. Every two years it surfaces, and if the air is smoky it comes ashore. Keep the people on your side.',
+    goal: 'After 10 years, have at least 18,000 residents and approval above 60%.',
+    win: 'Whatever lives in the bay, the city stands with you.',
+    lose: 'The city never won its people over, and the bay is still watching.',
     kind: 'hold',
     terrain: { seed: 'monster-bay-2', style: 'island', hills: 30, water: 45 },
     city: {
@@ -246,16 +253,23 @@ export const SCENARIOS: Scenario[] = [
       const sc = sim.world.city.scenario;
       if (!sc) return;
       const since = sim.world.city.month - (sc.end - 10 * 12);
-      if (since % 24 === 9) sim.disasters.trigger('monster');
+      const p = idx(sim.stats.avgPollution);
+      // It surfaces every two years, and comes ashore only to dirty air: six months ahead, the news says if it would.
+      if (since % 24 === 3 && p >= MONSTER_LINE) {
+        sim.say('monster-soon', `The monster surfaces in six months. Pollution index ${p}: at ${MONSTER_LINE} or more, it comes ashore.`, 'warn', undefined, 0);
+      }
+      if (since % 24 !== 9) return;
+      if (p >= MONSTER_LINE) sim.disasters.trigger('monster');
+      else sim.say('monster', 'The monster surfaced in the bay, found the air clean and went back under.', 'good', undefined, 0);
     },
     check: (sim) => {
       const a = Math.round(sim.stats.approval);
       const r = sim.stats.residents;
       return {
-        progress: Math.min(1, r / 25000) * Math.min(1, a / 60),
-        status: `Approval ${a}% (goal over 60%) · ${num(r)} of 25,000 residents`,
-        met: a > 60 && r >= 25000,
-        rows: [{ label: 'Approval', value: `${a}%`, goal: 'over 60%', met: a > 60 }, atLeast('Residents', r, 25000)],
+        progress: Math.min(1, r / 18000) * Math.min(1, a / 60),
+        status: `Approval ${a}% (goal over 60%) · ${num(r)} of 18,000 residents`,
+        met: a > 60 && r >= 18000,
+        rows: [{ label: 'Approval', value: `${a}%`, goal: 'over 60%', met: a > 60 }, atLeast('Residents', r, 18000)],
       };
     },
     // Said as it comes ashore (it stays about 30 weeks, so within the last month), once a visit.
