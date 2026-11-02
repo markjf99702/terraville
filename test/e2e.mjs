@@ -1465,7 +1465,7 @@ try {
     await page.waitForTimeout(500);
     const held = await tip();
     await touch('touchEnd', []);
-    assert.match(held.text ?? '', /^Levelling \$\d+ · /, 'a finger held still shows what the levelling costs so far');
+    assert.match(held.text ?? '', /^Levelling \$[\d,]+ · /, 'a finger held still shows what the levelling costs so far');
     assert.equal(held.ring, true, 'and the brush ring');
     assert.ok(held.bottom < at[1] - 30, 'above the finger');
     // A zone drag across rough ground makes a long tip.
