@@ -1140,6 +1140,49 @@ await test('undo refunds only within three months of the action, however often i
   assert.equal(g.world.city.funds, f + 3000);
 }));
 
+await test('undo leaves alone what a disaster has wrecked since, and refunds nothing for it', () => seeded(42, () => {
+  const g = town();
+  const w = g.world;
+  const refused = "A disaster has changed that spot since, so it can't be undone.";
+  drag(g, 'stadium', 54, 30);
+  const stadium = [...w.buildings.values()].find((b) => b.kind === 'stadium')!;
+  g.upgrade(stadium);
+  weeks(g, 4);
+  g.sim.disasters.destroy(w.buildings.get(stadium.id)!, 'tornado');
+  const funds = w.city.funds;
+  g.undo(); // the upgrade
+  g.undo(); // the stadium
+  assert.equal([...w.buildings.values()].some((b) => b.kind === 'stadium'), false, 'the stadium is back');
+  assert.equal(w.city.funds, funds, 'refunded');
+  assert.deepEqual(g.toasts.slice(-2), [refused, refused]);
+  assert.equal(g.canRedo(), false);
+  // A lot that burns down while Level land is held stays down when the stroke is undone, and the ground goes back.
+  for (let y = 4; y < 20; y++) for (let x = 52; x < 60; x++) w.height[y * w.w + x] = 3 + ((x * 7 + y * 3) % 5);
+  const lot = w.place('res', 55, 11);
+  w.setLevel(lot, 2);
+  const ground = w.height.slice();
+  g.setTool('level');
+  g.brush.radius = 5;
+  g.pointerDown(54.5, 9.5, 0, 0);
+  for (let t = 0; t < 10; t++) g.brushTick(1 / 30);
+  g.sim.disasters.destroy(lot, 'fire');
+  for (let t = 0; t < 10; t++) g.brushTick(1 / 30);
+  g.pointerUp(54.5, 9.5, 0, 0);
+  g.sealUndo();
+  assert.notDeepEqual(w.height, ground, 'the stroke moved no earth');
+  g.undo();
+  assert.equal(w.buildings.has(lot.id), false, 'the burnt lot is back');
+  assert.equal(w.rubble[12 * w.w + 56], 1);
+  assert.deepEqual(w.height, ground);
+  // Redo is refused too once a disaster has been at the spot since the undo.
+  drag(g, 'park', 58, 2);
+  g.undo();
+  const park = 2 * w.w + 58;
+  w.rubble[park] = 1; // as a wreck leaves it
+  g.redo();
+  assert.deepEqual([w.occ[park], g.toasts.at(-1)], [0, "A disaster has changed that spot since, so it can't be redone."]);
+}));
+
 await test('nothing is left burning on bare ground when a burning lot is undone, and a burning lot cannot be bulldozed', () => seeded(42, () => {
   const g = town();
   const w = g.world;

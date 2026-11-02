@@ -640,6 +640,38 @@ export class World {
     return a;
   }
 
+  /** Whether the buildings, roads, rail, power lines and rubble on an area are as `a` has them. Levels may differ. */
+  sameTiles(a: AreaSnapshot): boolean {
+    if (a.n !== this.n) return false;
+    const bw = a.x1 - a.x0 + 1;
+    for (let y = a.y0; y <= a.y1; y++) {
+      for (let x = a.x0; x <= a.x1; x++) {
+        const k = (y - a.y0) * bw + x - a.x0;
+        if (!a.mask[k]) continue;
+        const i = y * this.w + x;
+        if (this.occ[i] !== a.occ[k] || this.net[i] !== a.net[k] || this.rubble[i] !== a.rubble[k]) return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Bring a full snapshot's buildings, roads, rail, power lines and rubble inside a box up to date with the map, so
+   * that comparing it with the map shows only what a brush stroke did there, which never touches them, and not what
+   * the simulation built or wrecked meanwhile.
+   */
+  adoptBuilt(s: WorldSnapshot, box: Box): void {
+    for (let y = Math.max(0, box.y0); y <= Math.min(this.h - 1, box.y1); y++) {
+      for (let x = Math.max(0, box.x0); x <= Math.min(this.w - 1, box.x1); x++) {
+        const i = y * this.w + x;
+        s.occ[i] = this.occ[i];
+        s.net[i] = this.net[i];
+        s.rubble[i] = this.rubble[i];
+      }
+    }
+    s.buildings = s.buildings.filter((b) => this.buildings.has(b.id));
+  }
+
   /** Put an area back as it was. Returns false for a snapshot of another map. */
   restoreArea(a: AreaSnapshot): boolean {
     if (a.n !== this.n) return false;

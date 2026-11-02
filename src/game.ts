@@ -36,6 +36,8 @@ interface UndoEntry {
   within?: Box | null;
   /** A landmark upgrade, which changes land value across the city. */
   upgrade?: boolean;
+  /** In a city, the area as the action left it: undo (or redo) is refused once a disaster has changed it since. */
+  after?: AreaSnapshot;
 }
 
 /** Undo refunds an action's cost for this many game months after it (always while paused). */
@@ -861,6 +863,7 @@ export class Game {
       if (this.mode === 'city') {
         // The rest of the city kept growing meanwhile: put back only the ground the stroke touched.
         const full = top.snap as WorldSnapshot;
+        if (top.open && top.within) this.world.adoptBuilt(full, top.within);
         const area = top.open && top.within ? this.world.changedArea(full, top.within) : null;
         if (area) this.world.restoreArea(this.world.areaSnapshot(area, full));
         this.world.city.funds += this.brushSpent;
@@ -1139,11 +1142,13 @@ export class Game {
     }
     this.sealUndo();
     const area = { x0: b.x, y0: b.y, x1: b.x + b.size - 1, y1: b.y + b.size - 1, mask: new Uint8Array(b.size * b.size).fill(1) };
-    this.undoStack.push({ snap: this.world.areaSnapshot(area), cost: up.cost, month: city.month, upgrade: true });
+    const entry: UndoEntry = { snap: this.world.areaSnapshot(area), cost: up.cost, month: city.month, upgrade: true };
+    this.undoStack.push(entry);
     if (this.undoStack.length > 25) this.undoStack.shift();
     this.redoStack = [];
     city.funds -= up.cost;
     this.world.setLevel(b, b.level + 1);
+    entry.after = this.world.areaSnapshot(area);
     // Land value rises at once rather than at the month's end.
     this.sim?.computeMaps();
     this.renderer.refreshOverlay();
@@ -1230,6 +1235,8 @@ export class Game {
     if (!top?.open) return;
     top.open = false;
     const full = top.snap as WorldSnapshot;
+    // A brush stroke stays open while the clock runs: a lot that burned down under it meanwhile is no part of it.
+    if (top.within) this.world.adoptBuilt(full, top.within);
     const area = top.within === null ? null : this.world.changedArea(full, top.within);
     if (!area) {
       this.undoStack.pop();
@@ -1237,6 +1244,24 @@ export class Game {
       return;
     }
     top.snap = this.world.areaSnapshot(area, full);
+    top.after = this.world.areaSnapshot(area);
+  }
+
+  /**
+   * Whether a disaster has changed an entry's area since it was made: a wrecked landmark can't be bought back, nor
+   * its price refunded. Then the entry goes, and so does the redo list, which may build on it.
+   */
+  private overtaken(e: UndoEntry, verb: string): boolean {
+    if (!e.after || this.world.sameTiles(e.after)) return false;
+    this.redoStack = [];
+    this.ui.syncUndo();
+    this.ui.toast(`A disaster has changed that spot since, so it can't be ${verb}.`, 'warn');
+    return true;
+  }
+
+  /** What an area holds now, after an undo or redo put it back, for the entry on the other stack. */
+  private afterOf(s: WorldSnapshot | AreaSnapshot): AreaSnapshot | undefined {
+    return 'x0' in s ? this.world.areaSnapshot(s) : undefined;
   }
 
   private refundable(e: UndoEntry): boolean {
@@ -1261,13 +1286,14 @@ export class Game {
       this.ui.toast('Nothing to undo.');
       return;
     }
+    if (this.overtaken(e, 'undone')) return;
     const city = this.mode === 'city';
     // Money back only for a quick change of mind, or undo would be free rental.
     const refund = city && this.refundable(e) ? e.cost : 0;
     const back = this.copyLike(e.snap);
     if (!this.restore(e.snap)) return;
     // Both stacks keep the month of the action itself, so undoing and redoing never restarts the refund clock.
-    this.redoStack.push({ snap: back, cost: refund, month: e.month, upgrade: e.upgrade });
+    this.redoStack.push({ snap: back, cost: refund, month: e.month, upgrade: e.upgrade, after: this.afterOf(e.snap) });
     if (e.upgrade) this.sim?.computeMaps();
     this.ui.syncUndo();
     if (city) {
@@ -1281,6 +1307,7 @@ export class Game {
   redo(): void {
     const e = this.redoStack.pop();
     if (!e) return;
+    if (this.overtaken(e, 'redone')) return;
     if (this.mode === 'city' && e.cost > this.world.city.funds) {
       this.redoStack.push(e);
       this.ui.toast('Not enough money to redo that.', 'warn');
@@ -1288,7 +1315,7 @@ export class Game {
     }
     const back = this.copyLike(e.snap);
     if (!this.restore(e.snap)) return;
-    this.undoStack.push({ snap: back, cost: e.cost, month: e.month, upgrade: e.upgrade });
+    this.undoStack.push({ snap: back, cost: e.cost, month: e.month, upgrade: e.upgrade, after: this.afterOf(e.snap) });
     if (e.upgrade) this.sim?.computeMaps();
     this.ui.syncUndo();
     if (this.mode === 'city') this.world.city.funds -= e.cost;
