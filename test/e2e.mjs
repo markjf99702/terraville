@@ -2332,6 +2332,57 @@ try {
     await ctx.close();
   });
 
+  await test('a swipe that starts on a slider scrolls past it and leaves it as it was, in the Budget and the terrain editor; a sideways drag still moves it', async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    const cdp = await ctx.newCDPSession(page);
+    const touch = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map(([x, y], id) => ({ x, y, id })) });
+    // A finger lands `along` the way across the slider and moves by (dx, dy) in ten steps, as a quick swipe does.
+    const swipe = async (sel, along, dx, dy) => {
+      const [x, y] = await page.$eval(sel, (e, along) => { const r = e.getBoundingClientRect(); return [r.x + r.width * along, r.y + r.height / 2]; }, along);
+      await touch('touchStart', [[x, y]]);
+      for (let i = 1; i <= 10; i++) {
+        await touch('touchMove', [[x + (dx * i) / 10, y + (dy * i) / 10]]);
+        await page.waitForTimeout(16);
+      }
+      await touch('touchEnd', []);
+      await page.waitForTimeout(300);
+    };
+    await page.evaluate(() => window.__terraville.startScenario('gridlock'));
+    await page.click('.modal footer .btn.primary');
+    await page.tap('#topbar [data-act="budget"]');
+    const scrolled = () => page.$eval('.modal .body', (b) => b.scrollTop);
+    // The Budget is taller than a phone: a swipe up that starts 45% along Police, or on the tax, scrolls it.
+    await swipe('#bFpolice', 0.45, 4, -120);
+    assert.equal(await page.evaluate(() => window.__terraville.world.city.funding.police), 1, 'police funding stays at 100%');
+    assert.equal(await page.textContent('#bFpoliceV'), '100%');
+    assert.ok((await scrolled()) > 20, 'and the Budget scrolled');
+    await page.$eval('.modal .body', (b) => { b.scrollTop = 0; });
+    await swipe('#bTax', 0.45, 4, -120);
+    assert.equal(await page.evaluate(() => window.__terraville.world.city.tax), 7, 'the tax stays at 7%');
+    assert.ok((await scrolled()) > 20, 'and the Budget scrolled');
+    await page.$eval('.modal .body', (b) => { b.scrollTop = 0; });
+    // Slid sideways, the tax slider moves as before.
+    await swipe('#bTax', 0.36, 120, 0);
+    assert.notEqual(await page.evaluate(() => window.__terraville.world.city.tax), 7, 'a sideways drag changes the tax');
+    await page.click('.modal footer .btn.primary');
+    // The terrain editor's panel scrolls on a phone: a swipe that starts on Mountains makes no new land and no undo step.
+    await page.goto(base);
+    await titleUp(page);
+    await page.tap('[data-act="editor"]');
+    await page.waitForFunction(() => window.__terraville.mode === 'editor');
+    await page.tap('#edHead');
+    await page.$eval('#editorPanel', (p) => { p.scrollTop = 0; });
+    const land = () => page.evaluate(() => { const g = window.__terraville; let h = 0; for (const v of g.world.height) h += v; return { h, hills: g.terrain.hills, undo: g.canUndo() }; });
+    const was = await land();
+    await page.$eval('#edHills', (e) => e.scrollIntoView({ block: 'center' }));
+    await swipe('#edHills', 0.15, 3, -100);
+    assert.deepEqual(await land(), was, 'the land, Mountains and the undo list are as they were');
+    assert.equal(await page.inputValue('#edHills'), String(was.hills));
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('a pinch with a brush selected leaves the land, the undo list and the money as they were', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

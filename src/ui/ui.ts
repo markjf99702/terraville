@@ -76,6 +76,53 @@ const TOUCH_HELP = `<h3 class="touch-h">Touch</h3>
     <dt>Bulldoze</dt><dd>Pick the bulldozer and drag over what to clear</dd>
   </dl>`;
 
+/**
+ * A finger that lands on a slider to scroll the dialog or the panel past it leaves the slider as it was. The browser
+ * moves the thumb to the finger as it lands and only then takes the gesture for a scroll (pointercancel): the slider
+ * goes back, with an 'input' so whatever shows its value follows, and the 'change' after it is swallowed. Until the
+ * finger slides sideways or lifts, the slider carries data-held, for one whose every change costs something (the
+ * terrain editor's, which make new land) to wait on.
+ */
+function guardSlider(input: HTMLInputElement): void {
+  let was: string | null = null;
+  let from = { x: 0, y: 0 };
+  let cancelled = false;
+  // The finger is sliding it, or has let go of it: a change after all.
+  const settle = () => {
+    if (was === null) return;
+    was = null;
+    if (!input.dataset.held) return;
+    delete input.dataset.held;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  input.addEventListener('pointerdown', (e) => {
+    cancelled = false;
+    if (e.pointerType !== 'touch') return;
+    was = input.value;
+    from = { x: e.clientX, y: e.clientY };
+    input.dataset.held = '1';
+  });
+  input.addEventListener('pointermove', (e) => {
+    const dx = Math.abs(e.clientX - from.x);
+    if (was !== null && dx > 6 && dx > Math.abs(e.clientY - from.y)) settle();
+  });
+  input.addEventListener('pointerup', settle);
+  input.addEventListener('pointercancel', () => {
+    if (was === null) return;
+    cancelled = true;
+    delete input.dataset.held;
+    const moved = input.value !== was;
+    input.value = was;
+    was = null;
+    if (moved) input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  input.addEventListener('change', (e) => {
+    if (!cancelled) return;
+    cancelled = false;
+    e.stopImmediatePropagation();
+  }, true);
+}
+
 /** The second press that confirms a purchase or a deletion: a click with a mouse, a tap on a touch screen. */
 function again(): string {
   return matchMedia('(pointer: fine)').matches ? 'Click again' : 'Tap again';
@@ -740,6 +787,7 @@ export class UI {
       this.game.brush.radius = Number(size.value);
       this.syncBrushSize();
     };
+    guardSlider(size);
     if (editor) {
       const str = $<HTMLInputElement>(bb, '#brushStrength');
       const pct = $(bb, '#brushPct');
@@ -749,6 +797,7 @@ export class UI {
         this.game.brush.strength = Number(str.value);
         show();
       };
+      guardSlider(str);
       show();
     }
     box.appendChild(bb);
@@ -893,10 +942,15 @@ export class UI {
       input.addEventListener('keydown', next);
       input.oninput = () => {
         $(p, `#${id}Val`).textContent = input.value;
+        // A finger that has only just landed may be scrolling the panel: the land waits until it slides or lifts.
+        if (input.dataset.held) return;
+        // Back where it was (a scroll that began on it, put right): no new land, and no undo step.
+        if (!this.regenPending && Number(input.value) === this.game.terrain[key]) return;
         this.regen({ [key]: Number(input.value) }, `${id}:${this.gestures.get(id) ?? 0}`);
       };
       // The slider let go (or a key changed it): whatever moves it next is a new step.
       input.onchange = next;
+      guardSlider(input);
     };
     for (const [id, key] of EDITOR_SLIDERS) bind(id, key);
     $(p, '#edStyle').onclick = (e) => {
@@ -2086,12 +2140,14 @@ export class UI {
       city.tax = Number(tax.value);
       render();
     };
+    guardSlider(tax);
     for (const k of ['police', 'fire', 'transport'] as const) {
       const s = $<HTMLInputElement>(body, `#bF${k}`);
       s.oninput = () => {
         city.funding[k] = Number(s.value) / 100;
         render();
       };
+      guardSlider(s);
     }
     render();
     this.openModal({ title: 'Budget', sub: `${dateLabel(city.month)}${SEP}the clock stops while this is open`, body, foot: [this.btn('Done', 'primary', () => this.closeModal())] });
