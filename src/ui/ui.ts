@@ -71,12 +71,12 @@ const WORRY_LAYERS: Record<string, Overlay | 'budget'> = {
 /** An Inspect card's value that is only a figure: 360, 5 of 8, $2,480/acre, 1,132 of 2,100 MW, 8 m. */
 const FIGURE = /^[−+-]?\$?\d[\d,.]*(\s?(%|MW|m|\/acre|\/mo|of [\d,]+))*$/;
 
-/** How the map works by touch, in Settings. */
-const TOUCH_HELP = `<h3 class="touch-h">Touch</h3>
+/** How the map works by touch, in Settings: in the city, or in the terrain editor, which has no bulldozer. */
+const touchHelp = (city: boolean) => `<h3 class="touch-h">Touch</h3>
   <dl class="kv touch-help">
-    <dt>One finger</dt><dd>Use the tool (with Inspect, move the map)</dd>
+    <dt>One finger</dt><dd>Use the tool (with ${city ? 'Inspect' : 'Look around'}, move the map)</dd>
     <dt>Two fingers</dt><dd>Pinch to zoom, drag to move the map</dd>
-    <dt>Bulldoze</dt><dd>Pick the bulldozer and drag over what to clear</dd>
+    ${city ? '<dt>Bulldoze</dt><dd>Pick the bulldozer and drag over what to clear</dd>' : ''}
   </dl>`;
 
 /**
@@ -1997,7 +1997,8 @@ export class UI {
     const body = buildGuide();
     const m = this.openModal({
       title: 'Strategy guide',
-      sub: 'How Terraville cities work, and how to grow one. The clock stops while this is open.',
+      // Only a city has a clock to stop: the guide also opens from the title screen and the terrain editor.
+      sub: `How Terraville cities work, and how to grow one.${this.game.mode === 'city' ? ' The clock stops while this is open.' : ''}`,
       body,
       width: 960,
     });
@@ -2762,11 +2763,11 @@ export class UI {
         ${sw('autosave', 'Autosave', 'Every 90 seconds, at the end of each year, and when you leave the page. Each city keeps its own save.')}
       </div>
       <div>
-        ${touchScreen() ? TOUCH_HELP : ''}
+        ${touchScreen() ? touchHelp(g.mode === 'city') : ''}
         <h3>Keys</h3>
         ${this.keysList()}
         <p class="note" style="margin-top:12px">Right-drag, middle-drag or Space-drag moves the map with any tool.</p>
-        ${touchScreen() ? '' : TOUCH_HELP}
+        ${touchScreen() ? '' : touchHelp(g.mode === 'city')}
       </div>
     </div>`);
     body.addEventListener('change', (e) => {

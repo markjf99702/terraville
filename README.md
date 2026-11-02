@@ -55,6 +55,8 @@ In **Menu › Save, open and share**, choose **Connect Google Drive**. From then
 
 ## Controls
 
+In a city:
+
 | Input | Action |
 |---|---|
 | Left drag | Use the current tool |
@@ -71,6 +73,17 @@ In **Menu › Save, open and share**, choose **Connect Google Drive**. From then
 | `Space` | Pause or resume |
 | `,` `.` | Slower, faster |
 | `[` `]` | Brush size (Level land, and the terrain editor's brushes) |
+| `Ctrl+Z`, `Ctrl+Shift+Z` or `Ctrl+Y` | Undo, redo |
+| `Esc` | Cancel, close |
+
+In the terrain editor the map moves and zooms the same way, and the letters pick its own tools:
+
+| Input | Action |
+|---|---|
+| `Q` | Look around (drag to move the map, click to read the height of the land) |
+| `R` `F` `S` `L` `N` | Raise, lower, smooth, flatten, roughen |
+| `W` `D` `V` `G` `C` | Water, dry land, spring, forest, clear trees |
+| `[` `]` | Brush size |
 | `Ctrl+Z`, `Ctrl+Shift+Z` or `Ctrl+Y` | Undo, redo |
 | `Esc` | Cancel, close |
 

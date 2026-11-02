@@ -1884,6 +1884,23 @@ try {
       ['Q', 'Look around'], ['R F S L N', 'Raise, lower, smooth, flatten, roughen'], ['W D V G C', 'Water, dry land, spring, forest, clear trees'],
       ['Arrows', 'Move the map'], ['+ −', 'Zoom'], ['0', 'Whole map'], ['[ ]', 'Brush size'], ['Ctrl Z', 'Undo'], ['Ctrl Shift Z or Ctrl Y', 'Redo'], ['Esc', 'Cancel or close'],
     ]);
+    // There is no clock here to stop, and no bulldozer.
+    const sub = async () => {
+      await page.evaluate(() => window.__terraville.ui.openGuide());
+      const t = await page.textContent('.modal .sub');
+      await page.keyboard.press('Escape');
+      return t;
+    };
+    assert.equal(await sub(), 'How Terraville cities work, and how to grow one.');
+    await page.click('[data-act="menu"]');
+    await page.click('.dropdown button:has-text("Settings and keys")');
+    assert.doesNotMatch(await page.textContent('.modal .touch-help'), /Bulldoze|Inspect/);
+    await page.keyboard.press('Escape');
+    await page.goto(base);
+    await titleUp(page);
+    assert.equal(await sub(), 'How Terraville cities work, and how to grow one.', 'nor on the title screen');
+    await found(page);
+    assert.equal(await sub(), 'How Terraville cities work, and how to grow one. The clock stops while this is open.');
     assert.deepEqual(problems, []);
     await ctx.close();
   });
