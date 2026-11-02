@@ -1530,6 +1530,23 @@ try {
     await page.click(`.slot button[aria-label="Shape the land of ${name} again"]`);
     await page.waitForFunction(() => window.__terraville.mode === 'editor');
     assert.equal(await page.evaluate((id) => JSON.parse(localStorage.getItem('terraville.slots')).find((s) => s.name === id).date, name), played);
+    // When that save fails (storage full), the city stays open and says so.
+    await page.evaluate(() => window.__terraville.showTitle());
+    await page.click('[data-act="continue"]');
+    await page.waitForFunction(() => window.__terraville.mode === 'city');
+    await page.evaluate(() => {
+      window.__terraville.setSpeed(0);
+      const set = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (k, v) {
+        if (k.startsWith('terraville.slot')) throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+        return set.call(this, k, v);
+      };
+    });
+    await page.click('#topbar [data-act="menu"]');
+    await page.click('[role="menu"] button:has-text("Save, open and share")');
+    await page.click(`.slot button[aria-label="Shape the land of ${name} again"]`);
+    await page.waitForFunction(() => /storage is full/.test(document.querySelector('#toast').textContent));
+    assert.equal(await page.evaluate(() => window.__terraville.mode), 'city');
     assert.deepEqual(problems, []);
     await ctx.close();
   });

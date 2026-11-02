@@ -2961,7 +2961,7 @@ export class UI {
       }
       if (!f) return this.toast('That save could not be read.', 'warn');
       this.closeModal();
-      await g.shapeLandOf(f);
+      if (!(await g.shapeLandOf(f))) return this.toast(this.saveFailedText(), 'warn');
       this.toast(`The land of ${name} is in the terrain editor, with everything built on it cleared. The city itself is kept as it was.`);
     };
     const shapeBtn = (load: () => Promise<SaveFile | null>, name: string, what: string) => {
