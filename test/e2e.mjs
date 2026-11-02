@@ -1120,6 +1120,37 @@ try {
     await ctx.close();
   });
 
+  await test('a brush held close up repaints what it changes at 16 px a tile, and sharpens it once it lifts', async () => {
+    const ctx = await profile(DESK);
+    const { page, problems } = await open(ctx);
+    await page.click('[data-act="editor"]');
+    await page.waitForFunction(() => window.__terraville.mode === 'editor');
+    await page.click('[data-size="large"]');
+    await page.evaluate(() => {
+      const g = window.__terraville;
+      const r = g.renderer;
+      r.cam.zoom = 64;
+      r.centerOn(90, 75);
+      window.painted = [];
+      const paint = r.renderChunk.bind(r);
+      r.renderChunk = (cx, cy, L) => { window.painted.push(L); return paint(cx, cy, L); };
+    });
+    await page.keyboard.press('r');
+    await page.evaluate(() => new Promise((ok) => setTimeout(ok, 500)));
+    const p = await page.evaluate(() => { const r = window.__terraville.renderer; const m = document.querySelector('#map').getBoundingClientRect(); const q = r.tileToScreen(90.5, 75.5); return { x: m.left + q.x, y: m.top + q.y }; });
+    await page.evaluate(() => { window.painted = []; });
+    await page.mouse.move(p.x, p.y);
+    await page.mouse.down();
+    for (let k = 0; k < 12; k++) await page.mouse.move(p.x + k * 6, p.y + k * 3);
+    await page.waitForTimeout(300);
+    const held = await page.evaluate(() => window.painted.splice(0));
+    await page.mouse.up();
+    await page.waitForFunction(() => window.painted.includes(64), null, { timeout: 5000 });
+    assert.ok(held.length > 3 && held.every((L) => L === 16), `while held, painted at ${[...new Set(held)].join(', ')} px a tile`);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('the cost tip draws its middle dots and says why lots are blocked', async () => {
     const ctx = await profile(DESK);
     const { page, problems } = await open(ctx);

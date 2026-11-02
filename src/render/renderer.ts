@@ -21,6 +21,11 @@ const WEBKIT = typeof navigator !== 'undefined' && (
   /^((?!chrome|chromium|android|crios|fxios|edg).)*safari/i.test(navigator.userAgent));
 const PIXEL_BUDGET = WEBKIT ? 12_000_000 : 32_000_000;
 const MAX_LOD = WEBKIT ? 32 : 64;
+/**
+ * While a brush is held, the chunks it changes are redrawn at no more than this detail, and sharpened once it lifts: a
+ * chunk takes about 8 ms to paint at 16 px a tile and 88 ms at 64.
+ */
+const BRUSH_LOD = 16;
 
 interface Chunk {
   canvas: HTMLCanvasElement;
@@ -106,6 +111,8 @@ export class Renderer {
   simTime = 0;
   /** 0-1 progress between sim steps, for smooth disaster movement. */
   stepFrac = 0;
+  /** A brush is being held down: see BRUSH_LOD. */
+  brushing = false;
   shake = 0;
 
   private chunks = new Map<number, Chunk>();
@@ -439,7 +446,6 @@ export class Renderer {
     const start = performance.now();
     const budget = 10;
     ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = zd > wantL ? 'low' : 'high';
     const todo: [number, number][] = [];
     for (let cy = cy0; cy <= cy1; cy++) for (let cx = cx0; cx <= cx1; cx++) todo.push([cx, cy]);
     // Centre chunks first so the part you are looking at sharpens first.
@@ -457,8 +463,25 @@ export class Renderer {
     for (const [cx, cy] of todo) {
       let c = this.chunks.get(this.key(cx, cy, wantL));
       const stale = !c || c.dirty || c.contours !== this.contours;
-      if (stale && (performance.now() - start < budget || !c && wantL === 8)) {
+      const L = stale && this.brushing ? Math.min(wantL, BRUSH_LOD) : wantL;
+      if (L !== wantL) {
+        // Under a brush: the coarser copy, painted again if the brush has changed it since, as time allows.
+        const low = this.chunks.get(this.key(cx, cy, L));
+        if (low && !low.dirty && low.contours === this.contours) c = low;
+        else if (performance.now() - start < budget) c = this.renderChunk(cx, cy, L) ?? c;
+        else if (low) c = low;
+      } else if (stale && (performance.now() - start < budget || !c && wantL === 8)) {
         c = this.renderChunk(cx, cy, wantL) ?? undefined;
+      } else if (stale) {
+        // Out of time for this one: a copy at another detail that shows the land as it is now (the one a brush left)
+        // rather than one from before.
+        for (const l of [...LODS].reverse()) {
+          const o = this.chunks.get(this.key(cx, cy, l));
+          if (o && !o.dirty && o.contours === this.contours) {
+            c = o;
+            break;
+          }
+        }
       }
       if (!c) {
         for (const L of [...LODS].reverse()) {
@@ -475,6 +498,8 @@ export class Renderer {
       const y0 = Math.round(oy + cy * CS * zd);
       const x1 = Math.round(ox + (cx + 1) * CS * zd);
       const y1 = Math.round(oy + (cy + 1) * CS * zd);
+      // A coarser copy blown up (under a brush, or until a sharper one is painted) is smoothed the cheap way.
+      ctx.imageSmoothingQuality = zd > c.L ? 'low' : 'high';
       ctx.drawImage(c.canvas, x0, y0, x1 - x0, y1 - y0);
     }
     ctx.restore();

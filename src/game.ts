@@ -836,6 +836,7 @@ export class Game {
         void this.autosave();
       }
     }
+    r.brushing = this.brushOn;
     r.frame(dt);
     this.minimap.draw(dt);
   }
