@@ -891,7 +891,7 @@ footer.jd-foot { display: block; margin: 0; padding: 4px 0 0; border: 0; font-si
   #minimapCard { bottom: calc(var(--bottom) + 8px); width: 200px; padding: 6px; gap: 5px; }
   #minimap { height: 96px; }
   #log { bottom: calc(var(--bottom) + 16px + var(--ticker-h, 44px)); max-height: calc(100% - var(--top) - 76px - var(--ticker-h, 44px)); }
-  #inspect { right: calc(var(--right) + 222px); bottom: calc(var(--bottom) + 16px + var(--ticker-h, 44px)); max-height: calc(100% - var(--top) - var(--bottom) - 76px - var(--ticker-h, 44px)); }
+  #inspect { right: calc(var(--right) + 222px); bottom: calc(var(--bottom) + 16px + var(--ticker-h, 44px)); max-height: calc(100% - var(--top) - var(--bottom) - 84px - var(--ticker-h, 44px)); }
   /* The editor's panel takes the right side, full height; the map layer card, when it shows, sits beside it. */
   #editorPanel { top: calc(var(--top) + 66px); max-height: calc(100% - var(--top) - var(--bottom) - 68px); }
   #editorPanel.collapsed { max-height: 46px; overflow: hidden; }
