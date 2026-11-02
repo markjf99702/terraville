@@ -1486,6 +1486,9 @@ try {
     assert.equal(await page.evaluate(() => window.__terraville.world.city.month), month, 'no month passes until play');
     // Normal, not the single arrow (Slow), is marked as the way to start it, until the clock first runs.
     assert.deepEqual(await page.$$eval('.speed .start-here', (b) => b.map((x) => x.dataset.speed)), ['2']);
+    // Slower never starts a stopped clock.
+    await page.keyboard.press(',');
+    assert.equal(await page.evaluate(() => window.__terraville.speed), 0, ', leaves it paused');
     await page.keyboard.press('Space');
     assert.equal(await page.evaluate(() => window.__terraville.speed), 2, 'Space starts it at Normal');
     assert.equal(await page.locator('.speed .start-here').count(), 0);

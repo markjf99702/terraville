@@ -300,7 +300,11 @@ export class Input {
     if (k === '0') return g.fitMap();
     if (k === '[') return g.ui.nudgeBrush(-0.5);
     if (k === ']') return g.ui.nudgeBrush(0.5);
-    if (g.mode === 'city' && (k === '<' || k === ',')) return g.setSpeed(Math.max(1, g.speed - 1));
+    // Slower stops at Slow: it never pauses, and never starts a paused clock.
+    if (g.mode === 'city' && (k === '<' || k === ',')) {
+      if (g.speed > 0) g.setSpeed(Math.max(1, g.speed - 1));
+      return;
+    }
     if (g.mode === 'city' && (k === '>' || k === '.')) return g.setSpeed(g.speed + 1);
     const tool = g.tools().find((t) => t.key === k.toLowerCase());
     if (tool) {
