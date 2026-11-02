@@ -1277,6 +1277,95 @@ try {
     await ctx.close();
   });
 
+  await test('land shaped in the terrain editor is kept as a draft across a reload, and founding a city or starting new land lets it go', async () => {
+    const ctx = await profile(DESK);
+    const { page, problems } = await open(ctx);
+    const hash = () => page.evaluate(() => { const w = window.__terraville.world; let h = w.w; for (let i = 0; i < w.n; i++) h = (h * 31 + Math.round(w.height[i] * 10) + w.water[i] * 7 + w.trees[i]) | 0; return h; });
+    const draft = () => page.evaluate(() => JSON.parse(localStorage.getItem('terraville.draft') ?? 'null'));
+    const hide = () => page.evaluate(() => {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    const stroke = async (a, b) => {
+      await page.keyboard.press('r');
+      const [p, q] = await page.evaluate(([a, b]) => { const r = window.__terraville.renderer; return [r.tileToScreen(...a), r.tileToScreen(...b)]; }, [a, b]);
+      await page.mouse.move(p.x, p.y);
+      await page.mouse.down();
+      await page.mouse.move(q.x, q.y, { steps: 6 });
+      await page.mouse.up();
+    };
+    const buttons = () => page.$$eval('#title .title-actions .btn', (bs) => bs.map((b) => `${b.classList.contains('primary') ? '*' : ''}${b.dataset.act}`));
+    assert.equal(await draft(), null);
+    await page.click('[data-act="editor"]');
+    await page.waitForFunction(() => window.__terraville.mode === 'editor');
+    await stroke([50, 40], [58, 48]);
+    await page.$eval('#edForest', (s) => { s.value = '70'; s.dispatchEvent(new Event('input')); });
+    await page.waitForFunction(() => window.__terraville.terrain.forest === 70);
+    await stroke([30, 30], [36, 34]);
+    const seed = await page.evaluate(() => window.__terraville.terrain.seed);
+    const shaped = await hash();
+    // Leaving the page keeps it, there and then.
+    await hide();
+    assert.equal((await draft()).seed, seed);
+    await page.reload();
+    await titleUp(page);
+    assert.deepEqual(await buttons(), ['*draft', 'quick', 'editor', 'challenges', 'guide', 'open']);
+    assert.equal(await page.textContent('[data-act="draft"]'), `Continue shaping the landSeed ${seed} · saved just now`);
+    assert.equal(await page.textContent('[data-act="editor"] small'), 'New land in the terrain editor');
+    await page.click('[data-act="draft"]');
+    await page.waitForFunction(() => window.__terraville.mode === 'editor');
+    assert.equal(await hash(), shaped, 'the land comes back as it was shaped');
+    assert.deepEqual(await page.evaluate(() => { const t = window.__terraville.terrain; return [t.seed, t.forest, t.shaped]; }), [seed, 70, true]);
+    assert.equal(await page.$eval('#edForest', (s) => s.value), '70');
+    // Every 90 seconds the draft is kept again, compressed.
+    await stroke([60, 60], [64, 66]);
+    const before = (await draft()).savedAt;
+    await page.evaluate(() => (window.__terraville.autoTimer = 200));
+    await page.waitForFunction((t) => JSON.parse(localStorage.getItem('terraville.draft')).savedAt > t, before);
+    assert.match((await draft()).code, /^TV1g:/);
+    const later = await hash();
+    // Back to the title screen keeps it too, and says so.
+    await page.click('#topbar [data-act="menu"]');
+    await page.click('[role="menu"] button:has-text("Back to the title screen")');
+    assert.equal(await page.textContent('.modal .body'), 'The land is kept as you leave: Continue shaping the land on the title screen brings it back.');
+    await page.click('.modal footer .btn.primary');
+    await titleUp(page);
+    await page.click('[data-act="draft"]');
+    await page.waitForFunction(() => window.__terraville.mode === 'editor');
+    assert.equal(await hash(), later);
+    // Founding a city on it lets the draft go.
+    await page.click('[data-act="found"]');
+    await page.click('.modal footer .btn.primary');
+    await page.waitForFunction(() => window.__terraville.mode === 'city');
+    assert.equal(await draft(), null);
+    await page.reload();
+    await titleUp(page);
+    assert.deepEqual(await buttons(), ['*continue', 'quick', 'editor', 'challenges', 'guide', 'open']);
+    // Land a quick start only shows doesn't take a draft's place; new land in the editor does, from the start.
+    await page.click('[data-act="editor"]');
+    await page.waitForFunction(() => window.__terraville.mode === 'editor');
+    await stroke([40, 40], [44, 44]);
+    await page.evaluate(() => window.__terraville.showTitle());
+    const kept = await draft();
+    await page.reload();
+    await titleUp(page);
+    assert.deepEqual(await buttons(), ['*draft', 'continue', 'quick', 'editor', 'challenges', 'guide', 'open'], 'the newer of the two first');
+    await page.click('[data-act="quick"]');
+    await page.keyboard.press('Escape');
+    await hide();
+    assert.deepEqual(await draft(), kept);
+    await page.reload();
+    await titleUp(page);
+    await page.click('[data-act="editor"]');
+    await page.waitForFunction(() => window.__terraville.mode === 'editor');
+    assert.equal(await draft(), null);
+    const fresh = await page.evaluate(() => window.__terraville.terrain.seed);
+    await page.evaluate(() => window.__terraville.showTitle());
+    assert.equal((await draft()).seed, fresh, 'new land is kept as it is, untouched');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('every corner tile of the map can be brought out from under the panels, on a laptop and a phone', async () => {
     for (const opts of [DESK, PHONE]) {
       const ctx = await profile(opts);

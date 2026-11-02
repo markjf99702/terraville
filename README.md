@@ -18,6 +18,7 @@ Play it at [terraville.junkdrawer.works](https://terraville.junkdrawer.works/), 
 - Sculpting brushes: raise, lower, smooth, flatten, roughen. Paint water, dry land, forest, or clear trees. Drop a spring on a hilltop and a river finds its own way downhill.
 - Real elevation with hillshading and contour lines. Beaches form on low coasts; rivers widen as they run.
 - Undo and redo through everything, including regenerations.
+- The land being shaped is kept as a draft every 90 seconds and whenever you leave the page, and **Continue shaping the land** on the title screen brings it back. Founding a city on it, or starting new land, lets the draft go.
 
 **City**
 - The classic loop: residential, commercial and industrial zones grow from vacant lots to cottages, main streets, factories and towers when they have power, road access, a workable commute and demand on the RCI meter.

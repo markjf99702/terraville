@@ -95,6 +95,45 @@ export function recordWin(id: string, year: number): void {
   }
 }
 
+const DRAFT = 'terraville.draft';
+
+/** The land being shaped in the terrain editor, kept as one draft: its seed, when it was saved, and its city code. */
+export interface Draft {
+  seed: string;
+  savedAt: number;
+  code: string;
+}
+
+/** Keep the editor's land as the draft, in place of the one before. */
+export function saveDraft(draft: Draft): boolean {
+  const s = store();
+  if (!s) return false;
+  try {
+    s.setItem(DRAFT, JSON.stringify(draft));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The draft kept in this browser, or null when there is none (or what is there isn't one). */
+export function readDraft(): Draft | null {
+  try {
+    const d = JSON.parse(store()?.getItem(DRAFT) ?? 'null');
+    return d && typeof d === 'object' && typeof d.seed === 'string' && Number.isFinite(d.savedAt) && typeof d.code === 'string' ? (d as Draft) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearDraft(): void {
+  try {
+    store()?.removeItem(DRAFT);
+  } catch {
+    /* blocked */
+  }
+}
+
 export async function saveSlot(id: string, file: SaveFile, pop: number): Promise<boolean> {
   try {
     return saveCode(await encode(file), { id, name: file.world.city.name, pop, date: file.world.city.month, savedAt: Date.now(), mode: file.mode });

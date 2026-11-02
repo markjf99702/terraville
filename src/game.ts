@@ -10,8 +10,8 @@ import { Preview, Renderer, SLOPE_CLASSES } from './render/renderer';
 import { hashString, makeRng, pick, randomSeedName } from './rng';
 import { CityMeta, Drive, DriveCopy } from './drive';
 import {
-  SaveFile, SlotMeta, citySlot, decode, deleteSlot, encode, encodeNow, listSlots, newCityId, pushSaved, readCode, recordWin, saveCode, saveSlot,
-  slotKey, thisDevice, worldFrom,
+  SaveFile, SlotMeta, citySlot, clearDraft, decode, deleteSlot, encode, encodeNow, listSlots, newCityId, pushSaved, readCode, readDraft, recordWin,
+  saveCode, saveDraft, saveSlot, slotKey, storageAvailable, thisDevice, worldFrom,
 } from './save';
 import { SCENARIOS, buildScenario, goalState, openScenario, scenarioMonth, scenarioNews, successLine, timeUpLine } from './scenarios';
 import { Paper, Sim } from './sim';
@@ -215,7 +215,14 @@ export class Game {
     // compressed save, so the city is written at once as a plain code first; the compressed save and the Drive
     // upload then replace it if the page lives on, as it does when switching apps.
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState !== 'hidden' || this.mode !== 'city' || !this.settings.autosave || this.stopped) return;
+      if (document.visibilityState !== 'hidden') return;
+      // The land being shaped is kept the same way, as the editor's draft.
+      if (this.mode === 'editor') {
+        this.saveDraftNow();
+        void this.saveDraft();
+        return;
+      }
+      if (this.mode !== 'city' || !this.settings.autosave || this.stopped) return;
       this.saveCityNow();
       void this.saveCity();
     });
@@ -390,6 +397,7 @@ export class Game {
   // ---- modes -----------------------------------------------------------------
 
   showTitle(): void {
+    this.saveDraftNow();
     this.mode = 'title';
     this.setSim(null);
     this.clearUndo();
@@ -413,6 +421,9 @@ export class Game {
   }
 
   startEditor(params?: Partial<TerrainParams>): void {
+    // New land: the draft of the land shaped before goes, and this land takes its place.
+    this.dropDraft();
+    this.draftWork = true;
     this.mode = 'editor';
     this.setSim(null);
     this.renderer.setOverlay('none');
@@ -432,6 +443,8 @@ export class Game {
 
   /** Continue editing the land already on screen (from the title or a quick start). */
   editCurrentLand(): void {
+    this.dropDraft();
+    this.draftWork = true;
     this.mode = 'editor';
     this.setSim(null);
     this.renderer.setOverlay('none');
@@ -482,6 +495,8 @@ export class Game {
     const size = MAP_SIZES[1];
     this.terrain = { ...DEFAULT_TERRAIN, style: styles[hashString(seed) % styles.length], seed, w: size.w, h: size.h };
     this.world = generateTerrain(this.terrain);
+    // Land only shown, under the dialog: it takes the draft's place once it is shaped, or founded on.
+    this.draftWork = false;
     this.mode = 'editor';
     this.setSim(null);
     this.clearUndo();
@@ -506,6 +521,7 @@ export class Game {
     w.city.disasters = disasters;
     w.city.founded = true;
     w.city.seed = this.terrain.seed;
+    this.dropDraft();
     this.startSim();
     this.mode = 'city';
     // A new city waits for the player: nothing costs upkeep or happens until they press play (Space resumes Normal).
@@ -591,6 +607,7 @@ export class Game {
     const s = SCENARIOS.find((x) => x.id === id);
     if (!s) return;
     const size = MAP_SIZES[1];
+    this.saveDraftNow();
     this.world = buildScenario(s, size.w, size.h);
     this.terrain = { ...DEFAULT_TERRAIN, ...s.terrain, seed: this.world.city.seed, w: size.w, h: size.h };
     this.startSim();
@@ -680,6 +697,8 @@ export class Game {
   }
 
   loadFile(file: SaveFile, slotId: string | null = null): void {
+    // Land being shaped is kept before another map takes its place.
+    this.saveDraftNow();
     this.world = worldFrom(file);
     // Cities saved before ids existed get one now; their saves follow it from here on.
     if (file.mode === 'city' && !this.world.city.id) this.world.city.id = newCityId();
@@ -701,6 +720,8 @@ export class Game {
       this.claimCity();
     } else {
       this.mode = 'editor';
+      // Land opened to be shaped is the draft from now on.
+      this.draftWork = true;
       this.setSim(null);
       this.renderer.setOverlay('none');
       this.renderer.setWorld(this.world, null);
@@ -852,6 +873,90 @@ export class Game {
     }
   }
 
+  // ---- the editor's draft ---------------------------------------------------------
+
+  /**
+   * The editor's land is being shaped: changed here, or opened to be. It is kept as the draft from then on. Land a quick
+   * start only shows under its dialog isn't, so it never takes a draft's place unless it is changed.
+   */
+  private draftWork = false;
+  /**
+   * Draft saves are numbered as they begin, as city saves are: a compressed one begun before the newest kept, or before
+   * the draft was cleared, stays out, so it never brings back older land or a draft that was let go.
+   */
+  private draftSeq = 0;
+  private draftKept = 0;
+  private draftFailing = false;
+
+  private draftWanted(): boolean {
+    return this.mode === 'editor' && this.draftWork && this.settings.autosave;
+  }
+
+  /** Whether leaving the editor keeps its land, for the title screen to bring back. */
+  keepsDraft(): boolean {
+    return this.draftWanted() && storageAvailable();
+  }
+
+  /** Keep the editor's land as the draft at once, as a plain code: the page may be closing. True when kept, or not wanted. */
+  saveDraftNow(): boolean {
+    if (!this.draftWanted()) return true;
+    try {
+      return this.keepDraft(encodeNow(this.makeSaveFile()), this.terrain.seed, ++this.draftSeq);
+    } catch {
+      return false;
+    }
+  }
+
+  /** Keep the editor's land as the draft, compressed. */
+  async saveDraft(): Promise<boolean> {
+    if (!this.draftWanted()) return true;
+    const seq = ++this.draftSeq;
+    const seed = this.terrain.seed;
+    let code: string;
+    try {
+      code = await encode(this.makeSaveFile());
+    } catch {
+      return false;
+    }
+    return this.keepDraft(code, seed, seq);
+  }
+
+  /** The 90-second save of the draft, which says once when it fails, as the city's does. */
+  private async autosaveDraft(): Promise<void> {
+    const ok = await this.saveDraft();
+    if (!ok && !this.draftFailing) this.ui.toast(this.ui.saveFailedText(), 'warn');
+    this.draftFailing = !ok;
+  }
+
+  private keepDraft(code: string, seed: string, seq: number): boolean {
+    if (seq < this.draftKept) return true;
+    const ok = saveDraft({ seed, savedAt: Date.now(), code });
+    if (ok) this.draftKept = seq;
+    return ok;
+  }
+
+  /** New land, or a city founded on it: the draft goes, and no save begun before now brings it back. */
+  private dropDraft(): void {
+    this.draftKept = ++this.draftSeq;
+    clearDraft();
+  }
+
+  /** Open the draft in the editor. False when it can't be read, and it goes then. */
+  async continueDraft(): Promise<boolean> {
+    const d = readDraft();
+    if (!d) return false;
+    try {
+      const f = await decode(d.code);
+      World.deserialize(f.world);
+      if (f.mode !== 'editor') throw new Error('not land');
+      this.loadFile(f);
+      return true;
+    } catch {
+      this.dropDraft();
+      return false;
+    }
+  }
+
   /** The whole map, in the room the panels leave (the Whole map button, and the 0 key). */
   fitMap(): void {
     this.renderer.resize();
@@ -943,6 +1048,12 @@ export class Game {
       if (this.autoTimer > 90) {
         this.autoTimer = 0;
         void this.autosave();
+      }
+    } else if (this.mode === 'editor' && this.draftWanted()) {
+      this.autoTimer += dt;
+      if (this.autoTimer > 90) {
+        this.autoTimer = 0;
+        void this.autosaveDraft();
       }
     }
     // A building waiting for its second tap stays shown until the map moves or the tool changes.
@@ -1632,6 +1743,8 @@ export class Game {
   }
 
   private pushEntry(e: UndoEntry): void {
+    // Any change to the editor's land makes it land being shaped, kept as the draft.
+    if (this.mode === 'editor') this.draftWork = true;
     this.undoStack.push(e);
     if (this.undoStack.length > (this.mode === 'editor' ? 40 : 25)) this.undoStack.shift();
     this.redoStack = [];

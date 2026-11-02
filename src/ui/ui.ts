@@ -10,7 +10,7 @@ import { ZONE_COLORS } from '../render/color';
 import { drawBuilding } from '../render/sprites';
 import { randomSeedName } from '../rng';
 import { DRIVE_HOME, DriveCopy } from '../drive';
-import { SaveFile, SlotMeta, challengeWins, decode, deleteSlot, encode, listSlots, loadSlot, storageAvailable } from '../save';
+import { SaveFile, SlotMeta, challengeWins, decode, deleteSlot, encode, listSlots, loadSlot, readDraft, storageAvailable } from '../save';
 import { LOAN_LIMIT, passingSentence, spending } from '../sim';
 import type { BrokeReport, Message, Paper, Passing } from '../sim';
 import { STYLE_NAMES, TerrainParams, TerrainStyle, hasSea } from '../terrain';
@@ -382,6 +382,11 @@ export class UI {
     const t = $(this.root, '#title');
     t.hidden = false;
     const last = this.game.latestLocal();
+    const draft = readDraft();
+    // A city to carry on, and land being shaped: the newer of the two first, as the main choice.
+    const city = last ? `<button class="btn" data-act="continue"><span>Continue ${esc(last.name)}</span><small class="num">${dateLabel(last.date)} · pop ${num(last.pop)}</small></button>` : '';
+    const land = draft ? `<button class="btn" data-act="draft"><span>Continue shaping the land</span><small>Seed <span class="num">${esc(draft.seed)}</span> · saved ${ago(draft.savedAt)}</small></button>` : '';
+    const carry = (draft && last && draft.savedAt > last.savedAt) || !last ? land + city : city + land;
     t.innerHTML = `
       <div class="title-inner">
         <div class="bigsign" role="img" aria-label="Terraville, established 1900">
@@ -390,9 +395,9 @@ export class UI {
         </div>
         <p class="lede">Shape a landscape, then grow a city on it. Zone homes, shops and factories, string the power lines, balance the books, and keep an eye on the sky.</p>
         <div class="title-actions">
-          ${last ? `<button class="btn primary" data-act="continue"><span>Continue ${esc(last.name)}</span><small class="num">${dateLabel(last.date)} · pop ${num(last.pop)}</small></button>` : ''}
-          <button class="btn${last ? '' : ' primary'}" data-act="quick"><span>Start a new city</span><small>Random land</small></button>
-          <button class="btn" data-act="editor"><span>Shape the land first</span><small>Terrain editor</small></button>
+          ${carry.replace('class="btn"', 'class="btn primary"')}
+          <button class="btn${carry ? '' : ' primary'}" data-act="quick"><span>Start a new city</span><small>Random land</small></button>
+          <button class="btn" data-act="editor"><span>Shape the land first</span><small>${draft ? 'New land in the terrain editor' : 'Terrain editor'}</small></button>
           <button class="btn" data-act="challenges"><span>Challenges</span><small>Cities in trouble</small></button>
           <button class="btn" data-act="guide"><span>Strategy guide</span><small>How cities grow</small></button>
           <button class="btn" data-act="open"><span>Open a saved city</span><small>Saves and city codes</small></button>
@@ -413,6 +418,11 @@ export class UI {
       else if (act === 'guide') this.openGuide();
       else if (act === 'continue') {
         if (!(await this.game.continueLatest())) this.toast('That save could not be opened.', 'warn');
+      } else if (act === 'draft') {
+        if (!(await this.game.continueDraft())) {
+          this.enterTitle();
+          this.toast('That land could not be opened.', 'warn');
+        }
       } else if (act === 'continue-drive' && this.titleCopy) {
         const c = this.titleCopy;
         try {
@@ -462,14 +472,21 @@ export class UI {
         box.innerHTML = '';
         if (!best || (here && here.savedAt >= best.saved)) return;
         this.titleCopy = best;
-        // The newest city anywhere comes first, as the main choice, and what was first steps back a place.
-        const btn = el(`<button class="btn primary" data-act="continue-drive"><span>Continue ${esc(best.name)}</span><small class="num">From ${esc(best.label)} · ${ago(best.saved)}</small></button>`);
+        // The newest city anywhere comes first, as the main choice, and what was first steps back a place; land shaped
+        // here since stays ahead of it.
+        const btn = el(`<button class="btn" data-act="continue-drive"><span>Continue ${esc(best.name)}</span><small class="num">From ${esc(best.label)} · ${ago(best.saved)}</small></button>`);
         const actions = this.root.querySelector('#title .title-actions');
         const old = this.root.querySelector('#title [data-act="continue"]');
         // The same city, older, is not worth a second button.
         if (old && here?.city === best.city) old.remove();
-        actions?.querySelector('.btn.primary')?.classList.remove('primary');
-        actions?.prepend(btn);
+        const draft = readDraft();
+        const land = this.root.querySelector('#title [data-act="draft"]');
+        if (land && draft && draft.savedAt > best.saved) land.after(btn);
+        else {
+          actions?.querySelector('.btn.primary')?.classList.remove('primary');
+          btn.classList.add('primary');
+          actions?.prepend(btn);
+        }
       }, () => {
         box.innerHTML = '';
       });
@@ -2400,7 +2417,10 @@ export class UI {
     const city = g.mode === 'city';
     const blocked = city && !storageAvailable();
     const unsaved = blocked || failed;
-    const text = !city ? 'Unsaved terrain will be lost.'
+    const text = !city
+      ? failed ? 'Saving the land failed. Storage may be full.'
+        : g.keepsDraft() ? 'The land is kept as you leave: Continue shaping the land on the title screen brings it back.'
+        : 'Unsaved terrain will be lost.'
       : blocked ? 'This browser is blocking storage, so the city cannot be saved here.'
       : failed ? 'Saving the city failed. Storage may be full.'
       : g.settings.autosave ? 'The city is saved as you leave, and you can carry on from the title screen.'
@@ -2420,6 +2440,7 @@ export class UI {
           : this.btn('Leave', 'primary', async () => {
               this.closeModal();
               if (city && g.settings.autosave && !(await g.saveCity())) return this.confirmQuit(true);
+              if (!city && !g.saveDraftNow()) return this.confirmQuit(true);
               g.showTitle();
             }),
       ],
@@ -2853,7 +2874,9 @@ export class UI {
     const body = el(`<div style="display:flex;flex-direction:column;gap:18px">
       ${canStore ? '' : '<p class="note">This browser is blocking storage, so saves cannot be kept here. City codes still work: copy one somewhere safe and paste it back later.</p>'}
       ${inGame ? `<div><h3>Save</h3><div style="display:flex;gap:8px;flex-wrap:wrap" id="fSaveBtns"></div>
-        ${g.mode === 'city' ? `<p class="note" style="margin-top:6px" id="fKept">${g.settings.autosave ? 'The city also saves itself every 90 seconds and whenever you leave the page.' : 'Autosave is off, so only Save now keeps this city.'}</p>` : ''}</div>` : ''}
+        <p class="note" style="margin-top:6px" id="fKept">${g.mode === 'city'
+          ? g.settings.autosave ? 'The city also saves itself every 90 seconds and whenever you leave the page.' : 'Autosave is off, so only Save now keeps this city.'
+          : g.settings.autosave ? 'Land you shape is also kept as a draft every 90 seconds and whenever you leave: Continue shaping the land on the title screen brings it back.' : 'Autosave is off, so only Save this terrain keeps this land.'}</p></div>` : ''}
       <div><h3>Your cities</h3><div class="slots" id="fCities"></div></div>
       <div id="fDrive"></div>
       <div id="fOtherBox"><h3>Snapshots and terrain on this device</h3><div class="slots" id="fOther"></div></div>
@@ -3245,7 +3268,7 @@ export class UI {
         ${sw('night', 'Day and night', 'Streetlights and lit windows after dark. Time stops when paused.')}
         ${sw('grid', 'Tile grid', 'Faint lines between tiles when zoomed in.')}
         ${sw('contours', 'Contour lines in the city', 'Always on in the terrain editor.')}
-        ${sw('autosave', 'Autosave', 'Every 90 seconds, at the end of each year, and when you leave the page. Each city keeps its own save.')}
+        ${sw('autosave', 'Autosave', 'Every 90 seconds, at the end of each year, and when you leave the page. Each city keeps its own save, and the land in the terrain editor one draft.')}
         ${sw('paper', 'Year-end paper', 'A front page at the end of each year, with the year’s biggest news. On Ultra it waits until you pause.')}
       </div>
       <div>
