@@ -792,6 +792,7 @@ export interface SavedBudget {
   police: number;
   fire: number;
   services: number;
+  landmarks: number;
   power: number;
   interest: number;
 }
@@ -818,7 +819,7 @@ export interface SavedRun {
 /** The news the log shows, and so what a save keeps. */
 export const SAVED_MESSAGES = 40;
 
-const BUDGET_ROWS: (keyof SavedBudget)[] = ['taxIncome', 'transport', 'police', 'fire', 'services', 'power', 'interest'];
+const BUDGET_ROWS: (keyof SavedBudget)[] = ['taxIncome', 'transport', 'police', 'fire', 'services', 'landmarks', 'power', 'interest'];
 const MESSAGE_KINDS: SavedMessageKind[] = ['info', 'good', 'warn', 'alert'];
 
 /**

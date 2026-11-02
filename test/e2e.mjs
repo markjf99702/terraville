@@ -1051,6 +1051,28 @@ try {
     await phone.close();
   });
 
+  await test('the Budget says what each funding cut does and saves, and gives the landmarks their own line', async () => {
+    const ctx = await profile(DESK);
+    const { page, problems } = await open(ctx);
+    await page.evaluate(() => { window.__terraville.startScenario('gridlock'); window.__terraville.ui.closeModal(); });
+    await page.click('#topbar [data-act="budget"]');
+    assert.equal(await page.textContent('#bFundNote'), 'Police, fire and roads at full strength.');
+    const slide = (id, v) => page.$eval(id, (s, v) => { s.value = v; s.dispatchEvent(new Event('input', { bubbles: true })); }, v);
+    await slide('#bFtransport', '30');
+    await slide('#bFpolice', '60');
+    const lines = await page.$eval('#bFundNote', (n) => n.innerHTML.split('<br>').map((l) => l.replace(/<[^>]+>/g, '')));
+    assert.equal(lines.length, 2);
+    assert.match(lines[0], /^Police at 60%: stations cover less ground, so crime rises\. Saves \$\d+\/mo\.$/);
+    assert.match(lines[1], /^Roads and rail at 30%: about \d+ tiles a month crumble into rubble\. Saves \$[\d,]+\/mo\.$/);
+    // A number in a sentence is in the text's letters; the ledger's stay in mono.
+    assert.doesNotMatch(await page.$eval('#bFundNote .num', (n) => getComputedStyle(n).fontFamily), /Mono/);
+    assert.match(await page.$eval('#bLedger td.num', (n) => getComputedStyle(n).fontFamily), /Mono/);
+    const rows = await page.$$eval('#bLedger td:first-child', (t) => t.map((x) => x.textContent));
+    assert.deepEqual(rows, ['Taxes', 'Roads and rail', 'Police', 'Fire', 'Schools, hospitals, parks', 'Stadium, seaport, airport', 'Power plants', 'Loan interest', 'Net']);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('menus tell a screen reader which layer is showing, whether disasters are on, and that they are menus', async () => {
     const ctx = await profile(DESK);
     const { page, problems } = await open(ctx);

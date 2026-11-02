@@ -11,6 +11,7 @@ import { drawBuilding } from '../render/sprites';
 import { randomSeedName } from '../rng';
 import { DRIVE_HOME, DriveCopy } from '../drive';
 import { SaveFile, SlotMeta, decode, deleteSlot, encode, listSlots, loadSlot, storageAvailable } from '../save';
+import { spending } from '../sim';
 import type { Message } from '../sim';
 import { STYLE_NAMES, TerrainStyle, hasSea } from '../terrain';
 import { GoalState, SCENARIOS, Scenario, successLine } from '../scenarios';
@@ -547,7 +548,7 @@ export class UI {
     set('stDate', dateLabel(city.month));
     set('stFunds', money(city.funds));
     const b = s.lastBudget;
-    const net = b.taxIncome - (b.transport + b.police + b.fire + b.services + b.power + b.interest);
+    const net = b.taxIncome - spending(b);
     const d = this.root.querySelector('#stDelta');
     if (d) {
       d.textContent = city.month > 0 ? `${net >= 0 ? '+' : '−'}${money(Math.abs(net)).replace('−', '')}/mo` : '';
@@ -1681,6 +1682,7 @@ export class UI {
           ${(['police', 'fire', 'transport'] as const).map((k) => `
             <label class="field" style="margin-bottom:8px"><span>${k === 'transport' ? 'Roads and rail' : k === 'police' ? 'Police' : 'Fire'} <span class="num" id="bF${k}V"></span></span>
             <input type="range" id="bF${k}" min="0" max="100" step="5" value="${Math.round(city.funding[k] * 100)}"></label>`).join('')}
+          <p class="note" id="bFundNote" style="margin-top:6px"></p>
         </div>
       </div>
       <div><h3>Last month</h3><table class="ledger" id="bLedger"></table></div>
@@ -1694,6 +1696,7 @@ export class UI {
       const proj = sim.projectTax(city.tax);
       $(body, '#bTaxNote').innerHTML = `At ${city.tax}%, taxes bring in about <span class="num">${money(proj)}</span> a month. ${city.tax > 12 ? 'High taxes slow growth and anger residents.' : city.tax < 5 ? 'Low taxes attract people but starve the treasury.' : 'Around 7% keeps most people content.'}`;
       for (const k of ['police', 'fire', 'transport'] as const) $(body, `#bF${k}V`).textContent = `${Math.round(city.funding[k] * 100)}%`;
+      $(body, '#bFundNote').innerHTML = this.fundingNote();
       const b = sim.stats.lastBudget;
       const y = sim.stats.yearBudget;
       const rows: [string, number, number][] = [
@@ -1701,7 +1704,8 @@ export class UI {
         ['Roads and rail', -b.transport, -y.transport],
         ['Police', -b.police, -y.police],
         ['Fire', -b.fire, -y.fire],
-        ['Parks, schools, ports', -b.services, -y.services],
+        ['Schools, hospitals, parks', -b.services, -y.services],
+        ['Stadium, seaport, airport', -b.landmarks, -y.landmarks],
         ['Power plants', -b.power, -y.power],
         ['Loan interest', -b.interest, -y.interest],
       ];
@@ -1747,6 +1751,34 @@ export class UI {
     }
     render();
     this.openModal({ title: 'Budget', sub: `${dateLabel(city.month)}${SEP}the clock stops while this is open`, body, foot: [this.btn('Done', 'primary', () => this.closeModal())] });
+  }
+
+  /**
+   * What the funding sliders do as they stand: a sentence for each one below full (what the cut costs the city, and
+   * what it saves a month), or that all three are at full strength.
+   */
+  private fundingNote(): string {
+    const sim = this.game.sim!;
+    const f = this.game.world.city.funding;
+    const full = sim.fullUpkeep();
+    const cut = (['police', 'fire', 'transport'] as const).filter((k) => f[k] < 1);
+    if (!cut.length) return 'Police, fire and roads at full strength.';
+    return cut.map((k) => {
+      const at = `${k === 'transport' ? 'Roads and rail' : k === 'police' ? 'Police' : 'Fire'} at ${Math.round(f[k] * 100)}%: `;
+      const saves = full[k] * (1 - f[k]);
+      const save = saves >= 0.5 ? ` Saves <span class="num">${money(saves)}</span>/mo.` : '';
+      if (k !== 'transport') {
+        if (!full[k]) return `${at}there are no stations yet.`;
+        return `${at}stations cover less ground, so ${k === 'police' ? 'crime rises' : 'fires spread further'}.${save}`;
+      }
+      // The same chance a month the simulation rolls for each tile.
+      const n = sim.crumbling(f.transport);
+      const what = f.transport >= 0.9 ? 'nothing crumbles until they fall below 90%'
+        : n >= 1.5 ? `about ${Math.round(n)} tiles a month crumble into rubble`
+          : n >= 0.75 ? 'about a tile a month crumbles into rubble'
+            : n > 0 ? `about a tile every ${Math.round(1 / n)} months crumbles into rubble` : 'there are no roads or rail to crumble yet';
+      return `${at}${what}.${save}`;
+    }).join('<br>');
   }
 
   // History charts -------------------------------------------------------------------------

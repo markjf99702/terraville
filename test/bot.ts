@@ -3,7 +3,7 @@
 // Usage: node run-test.mjs test/bot.ts [years] [difficulty] [seed=N]
 //   seed=N: the same run every time, for comparing before and after a change.
 import { World } from '../src/world';
-import { Sim } from '../src/sim';
+import { Sim, spending } from '../src/sim';
 import { BUILDINGS, DIFFICULTIES, Kind, ROAD, POWER } from '../src/defs';
 import { linePath, planLine, applyLine } from '../src/tools';
 import { makeRng } from '../src/rng';
@@ -103,7 +103,7 @@ for (let m = 0; m < years * 12; m++) {
   }
   if ((m + 1) % 36 === 0) {
     const b = s.lastBudget;
-    const exp = b.transport + b.police + b.fire + b.services + b.power + b.interest;
+    const exp = spending(b);
     console.log(`y${String((m + 1) / 12).padStart(3)} pop ${String(s.residents).padStart(6)} jobs ${String(s.comJobs + s.indJobs).padStart(6)} zones ${s.zones.res}/${s.zones.com}/${s.zones.ind} funds ${String(Math.round(world.city.funds)).padStart(7)} +${Math.round(b.taxIncome)} -${Math.round(exp)} R${d.r.toFixed(2)} C${d.c.toFixed(2)} I${d.i.toFixed(2)} lv ${s.avgLandValue.toFixed(0)} traf ${s.avgTraffic.toFixed(0)} pol ${s.avgPollution.toFixed(0)} crime ${s.avgCrime.toFixed(0)} appr ${s.approval.toFixed(0)} unpow ${s.unpowered} notrip ${s.noTrip} ${s.cityClass}`);
   }
 }

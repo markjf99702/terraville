@@ -3,7 +3,7 @@
 //   upgrades: buy each landmark upgrade as soon as the city can afford it and keep $10,000 back.
 //   seed=N: the same run every time, for comparing before and after a change.
 import { World } from '../src/world';
-import { Sim } from '../src/sim';
+import { Sim, spending } from '../src/sim';
 import { ROAD, POWER, nextUpgrade } from '../src/defs';
 import { makeRng } from '../src/rng';
 
@@ -59,7 +59,7 @@ for (let m = 0; m < years * 12; m++) {
   }
   if ((m + 1) % 24 === 0) {
     const s = sim.stats, d = world.city.demand, b = s.lastBudget;
-    const exp = b.transport + b.police + b.fire + b.services + b.power + b.interest;
+    const exp = spending(b);
     console.log(`y${String((m + 1) / 12).padStart(3)} pop ${String(s.residents).padStart(7)} com ${String(s.comJobs).padStart(6)} ind ${String(s.indJobs).padStart(6)} funds ${String(Math.round(world.city.funds)).padStart(7)} inc/mo ${String(Math.round(b.taxIncome)).padStart(5)} exp/mo ${String(Math.round(exp)).padStart(4)} R${d.r.toFixed(2)} C${d.c.toFixed(2)} I${d.i.toFixed(2)} lv ${s.avgLandValue.toFixed(0)} pol ${s.avgPollution.toFixed(0)} crime ${s.avgCrime.toFixed(0)} traf ${s.avgTraffic.toFixed(0)} appr ${s.approval.toFixed(0)} unpow ${s.unpowered} notrip ${s.noTrip} ${s.cityClass}`);
     if (s.unpowered > 0) console.log(`     warning: ${s.unpowered} zones have no power (${s.powerDemand} MW wanted, ${s.powerSupply} MW made), so the grid, not the city, is the limit`);
   }

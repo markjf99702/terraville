@@ -1,7 +1,7 @@
 // Unit checks for the core rules. Run with: npm test
 import assert from 'node:assert/strict';
 import { World, encodeArray, decodeArray } from '../src/world';
-import { Sim } from '../src/sim';
+import { Sim, spending } from '../src/sim';
 import { generateTerrain, cleanTerrain, DEFAULT_TERRAIN } from '../src/terrain';
 import { linePath, planLine, applyLine, planZones, applyBuildings, planBulldoze, levelCost } from '../src/tools';
 import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST, UPGRADE_LV, Kind, BUILDINGS, article, buildingName, upkeepOf } from '../src/defs';
@@ -446,6 +446,33 @@ await test('the landmark limits: 18,000 residents, 5,000 shop jobs, 4,000 factor
   assert.deepEqual(sim.capped, { res: false, com: false, ind: false });
 });
 
+await test('the Budget puts the stadium, seaport and airport on a line of their own, and says what a road cut crumbles', () => {
+  const w = flat(60, 40);
+  w.place('school', 1, 1);
+  w.place('park', 6, 1);
+  w.place('police', 1, 6);
+  const stadium = w.place('stadium', 10, 1);
+  w.setLevel(stadium, 3); // domed: $30 + $60 + $120
+  w.place('seaport', 16, 1);
+  w.place('airport', 22, 1);
+  for (let x = 1; x <= 50; x++) w.setNet(ROAD, x, 20);
+  const sim = new Sim(w);
+  sim.estimateBudget();
+  const b = sim.stats.lastBudget;
+  assert.equal(b.services, 40 + 0.3, 'schools, hospitals and parks');
+  assert.equal(b.landmarks, 210 + 50 + 80, 'stadium, seaport and airport, upgrades and all');
+  assert.equal(spending(b), b.transport + b.police + b.fire + 40.3 + 340 + b.power + b.interest, 'the total is what it was');
+  // Kept in a save.
+  const back = World.deserialize(JSON.parse(JSON.stringify(w.serialize(sim.saveRun()))));
+  assert.equal(back.run!.lastBudget.landmarks, 340);
+  // What each funded service costs at full funding, and what a cut to roads crumbles: (0.9 - funding) x 1.2% of the
+  // 50 road tiles a month.
+  assert.deepEqual(sim.fullUpkeep(), { police: 45, fire: 0, transport: b.transport });
+  assert.equal(sim.crumbling(1), 0);
+  assert.equal(sim.crumbling(0.9), 0);
+  assert.ok(Math.abs(sim.crumbling(0.4) - 50 * 0.5 * 0.012) < 1e-9);
+});
+
 await test('past its limit, industry stops growing until a seaport opens', () => {
   const w = flat(60, 40);
   w.place('coal', 1, 1);
@@ -777,8 +804,8 @@ await test('a save keeps its news as plain text, and anything malformed in its r
     { text: 'Off the map', kind: 'info', x: undefined, y: undefined, month: 0 },
   ]);
   assert.equal(back.week, 3);
-  assert.deepEqual(back.stats.lastBudget, { taxIncome: 12, transport: 0, police: 0, fire: 0, services: 0, power: 0, interest: 0 });
-  assert.deepEqual(back.stats.yearBudget, { taxIncome: 0, transport: 0, police: 0, fire: 0, services: 0, power: 0, interest: 0 });
+  assert.deepEqual(back.stats.lastBudget, { taxIncome: 12, transport: 0, police: 0, fire: 0, services: 0, landmarks: 0, power: 0, interest: 0 });
+  assert.deepEqual(back.stats.yearBudget, { taxIncome: 0, transport: 0, police: 0, fire: 0, services: 0, landmarks: 0, power: 0, interest: 0 });
   assert.deepEqual(back.disasters.roamers.map((r) => r.kind), ['monster']);
   // A save from before any of this was kept opens as it always did.
   delete s.run;
@@ -1218,7 +1245,7 @@ await test('a challenge opens with its goal in the news and its real monthly bal
     const sim = g.sim;
     assert.deepEqual([sim.messages[0].text, sim.messages[0].kind], [`${s.goal} You have until ${s.year + s.years}.`, 'info']);
     const b = sim.stats.lastBudget;
-    const net = b.taxIncome - (b.transport + b.police + b.fire + b.services + b.power + b.interest);
+    const net = b.taxIncome - spending(b);
     assert.ok(b.taxIncome > 500 && net > 0, `${id} opens at ${net}/mo`);
     assert.equal(g.world.city.funds, s.funds, 'the reckoning charged the city');
   }

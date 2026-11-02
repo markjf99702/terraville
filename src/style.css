@@ -635,6 +635,8 @@ kbd { font: 600 11.5px var(--mono); padding: 1px 6px; border: 1px solid var(--li
   -webkit-user-select: text;
 }
 .note { color: var(--muted); font-size: 13px; margin: 0; }
+/* A number inside a sentence is set in the text's own letters, with even figures: in mono, '$1,228' reads '$1 , 228'. */
+.note .num { font-family: var(--font); font-variant-numeric: tabular-nums; }
 .disaster-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 
 /* ---- starter checklist ---------------------------------------------------- */

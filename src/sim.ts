@@ -34,9 +34,22 @@ export interface Budget {
   transport: number;
   police: number;
   fire: number;
+  /** Schools, hospitals and parks. */
   services: number;
+  /** The stadium, seaport and airport, with their upgrades. */
+  landmarks: number;
   power: number;
   interest: number;
+}
+
+/** Everything a budget spends. */
+export function spending(b: Budget): number {
+  return b.transport + b.police + b.fire + b.services + b.landmarks + b.power + b.interest;
+}
+
+/** The chance a month that each tile of road or rail crumbles, with roads and rail funded at `f` (none from 90% up). */
+function crumbleChance(f: number): number {
+  return f < 0.9 ? (0.9 - f) * 0.012 : 0;
 }
 
 export interface Stats {
@@ -87,7 +100,7 @@ const MAX_TRIP = 80;
 const MAX_HUBS = 24;
 
 function emptyBudget(): Budget {
-  return { taxIncome: 0, transport: 0, police: 0, fire: 0, services: 0, power: 0, interest: 0 };
+  return { taxIncome: 0, transport: 0, police: 0, fire: 0, services: 0, landmarks: 0, power: 0, interest: 0 };
 }
 
 export class Sim {
@@ -260,7 +273,7 @@ export class Sim {
       }
     }
     const yb = this.stats.yearBudget;
-    const net = yb.taxIncome - (yb.transport + yb.police + yb.fire + yb.services + yb.power + yb.interest);
+    const net = yb.taxIncome - spending(yb);
     const year = 1900 + Math.floor(world.city.month / 12) - 1;
     this.say('year', `${year} closes ${net >= 0 ? 'with a surplus of' : 'with a deficit of'} $${Math.abs(Math.round(net)).toLocaleString()}. Taxes brought in $${Math.round(yb.taxIncome).toLocaleString()}.`, net >= 0 ? 'good' : 'warn', undefined, 0);
     this.stats.yearBudget = emptyBudget();
@@ -897,6 +910,7 @@ export class Sim {
       if (bd.kind === 'police') b.police += def.upkeep * city.funding.police;
       else if (bd.kind === 'fire') b.fire += def.upkeep * city.funding.fire;
       else if (def.capacity) b.power += def.upkeep;
+      else if (bd.kind === 'stadium' || bd.kind === 'seaport' || bd.kind === 'airport') b.landmarks += upkeepOf(bd);
       else b.services += upkeepOf(bd);
     }
     b.interest = city.loan * 0.07 / 12;
@@ -913,15 +927,14 @@ export class Sim {
     const city = world.city;
     const s = this.stats;
     const b = this.reckon();
-    const spend = b.transport + b.police + b.fire + b.services + b.power + b.interest;
-    city.funds += b.taxIncome - spend;
+    city.funds += b.taxIncome - spending(b);
     s.lastBudget = b;
     const yb = s.yearBudget;
     for (const k of Object.keys(b) as (keyof Budget)[]) yb[k] += b[k];
 
     // Underfunded roads crumble.
     if (city.funding.transport < 0.9) {
-      const decay = (0.9 - city.funding.transport) * 0.012;
+      const decay = crumbleChance(city.funding.transport);
       for (let i = 0; i < world.n; i++) {
         if (world.net[i] & (ROAD | RAIL) && Math.random() < decay) {
           const x = i % world.w;
@@ -934,6 +947,23 @@ export class Sim {
       }
     }
     if (city.funds < 0) this.say('debt', 'The city is in debt. Raise taxes, cut costs, or take a loan.', 'alert', undefined, 3);
+  }
+
+  /** What police, fire, and roads and rail cost a month at full funding, as the city stands. */
+  fullUpkeep(): { police: number; fire: number; transport: number } {
+    const world = this.world;
+    const counts = world.countNet();
+    const cost = { police: 0, fire: 0, transport: counts.road * NET_UPKEEP.road + counts.rail * NET_UPKEEP.rail + counts.bridge * NET_UPKEEP.bridge };
+    for (const bd of world.buildings.values()) if (bd.kind === 'police' || bd.kind === 'fire') cost[bd.kind] += BUILDINGS[bd.kind].upkeep;
+    return cost;
+  }
+
+  /** About how many tiles of road and rail crumble a month with roads and rail funded at `f`. */
+  crumbling(f = this.world.city.funding.transport): number {
+    const net = this.world.net;
+    let tiles = 0;
+    for (let i = 0; i < net.length; i++) if (net[i] & (ROAD | RAIL)) tiles++;
+    return tiles * crumbleChance(f);
   }
 
   /** Land value the landmark upgrades add to every tile: the most upgraded stadium, seaport and airport count. */
@@ -1135,7 +1165,7 @@ export class Sim {
     push(h.crime, s.avgCrime);
     push(h.pollution, s.avgPollution);
     push(h.income, b.taxIncome);
-    push(h.expense, b.transport + b.police + b.fire + b.services + b.power + b.interest);
+    push(h.expense, spending(b));
   }
 
   /** Human-readable description of a tile for the inspect tool. */
