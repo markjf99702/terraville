@@ -286,7 +286,10 @@ export function generateTerrain(p: TerrainParams): World {
       }
     }
   }
-  for (const s of springs) traceRiver(world, s, down, filled);
+  const river = new Uint8Array(n);
+  for (const s of springs) for (const j of traceRiver(world, s, down, filled)) river[j] = 1;
+
+  if (!p.classic) tidy(world, river);
 
   // Forests.
   const forest = p.forest / 100;
@@ -306,6 +309,104 @@ export function generateTerrain(p: TerrainParams): World {
   }
   world.city.seed = p.seed;
   return world;
+}
+
+/**
+ * Sweep away the specks the noise leaves: bits of land under 6 tiles become water, and ponds under 4 tiles that no
+ * river runs through become land, at the height of what is around them, unless filling one would join two islands. A
+ * one-tile pond blocks every lot over it and needs a bridge for a road; a one-tile islet is only clutter. (The 1989
+ * generator smoothed its water the same way.)
+ */
+function tidy(world: World, river: Uint8Array): void {
+  const { w, h, n } = world;
+  const hgt = world.height;
+  const seen = new Uint8Array(n);
+  const body: number[] = [];
+  /** The body of tiles like `s` (water or land) around it, into `body`. */
+  const collect = (s: number, wet: number) => {
+    body.length = 0;
+    body.push(s);
+    seen[s] = 1;
+    for (let k = 0; k < body.length; k++) {
+      const i = body[k];
+      const x = i % w;
+      const y = (i / w) | 0;
+      for (const [dx, dy] of DIRS4) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const j = ny * w + nx;
+        if (!seen[j] && world.water[j] === wet) {
+          seen[j] = 1;
+          body.push(j);
+        }
+      }
+    }
+  };
+  /** The mean height of the tiles around a body that are `wet` (water or land). */
+  const around = (wet: number) => {
+    let sum = 0;
+    let count = 0;
+    for (const i of body) {
+      const x = i % w;
+      const y = (i / w) | 0;
+      for (const [dx, dy] of DIRS4) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const j = ny * w + nx;
+        if (world.water[j] === wet) {
+          sum += hgt[j];
+          count++;
+        }
+      }
+    }
+    return count ? sum / count : NaN;
+  };
+  for (let s = 0; s < n; s++) {
+    if (seen[s] || world.water[s]) continue;
+    collect(s, 0);
+    if (body.length >= 6) continue;
+    const bed = around(1);
+    if (Number.isNaN(bed)) continue;
+    for (const i of body) {
+      world.water[i] = 1;
+      world.trees[i] = 0;
+      hgt[i] = Math.min(hgt[i], bed);
+    }
+  }
+  // Which body of land each dry tile is in, now the islets are gone: a pond only diagonally apart from the sea can be
+  // all that parts two islands.
+  seen.fill(0);
+  const isle = new Int32Array(n).fill(-1);
+  for (let s = 0; s < n; s++) {
+    if (seen[s] || world.water[s]) continue;
+    collect(s, 0);
+    for (const i of body) isle[i] = s;
+  }
+  const shores = new Set<number>();
+  for (let s = 0; s < n; s++) {
+    if (seen[s] || !world.water[s]) continue;
+    collect(s, 1);
+    if (body.length >= 4 || body.some((i) => river[i])) continue;
+    shores.clear();
+    for (const i of body) {
+      const x = i % w;
+      const y = (i / w) | 0;
+      for (const [dx, dy] of DIRS4) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx >= 0 && ny >= 0 && nx < w && ny < h && isle[ny * w + nx] >= 0) shores.add(isle[ny * w + nx]);
+      }
+    }
+    if (shores.size !== 1) continue;
+    const ground = around(0);
+    if (Number.isNaN(ground)) continue;
+    for (const i of body) {
+      world.water[i] = 0;
+      hgt[i] = Math.max(0.4, ground);
+    }
+  }
 }
 
 /**

@@ -81,6 +81,41 @@ await test('an archipelago is islands: several big ones, none with most of the l
   }
 });
 
+await test('generated land has no specks: no islets under 6 tiles, no ponds of 1 or 2', () => {
+  // Ponds are counted with their diagonals: water that meets the sea only at a corner, between two islands, is a strait.
+  const ponds = (world: World) => {
+    const seen = new Uint8Array(world.n);
+    let count = 0;
+    for (let s = 0; s < world.n; s++) {
+      if (seen[s] || !world.water[s]) continue;
+      const stack = [s];
+      seen[s] = 1;
+      let size = 0;
+      while (stack.length) {
+        const i = stack.pop()!;
+        size++;
+        const x = i % world.w, y = (i / world.w) | 0;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          const j = (y + dy) * world.w + x + dx;
+          if (world.inBounds(x + dx, y + dy) && !seen[j] && world.water[j]) {
+            seen[j] = 1;
+            stack.push(j);
+          }
+        }
+      }
+      if (size <= 2) count++;
+    }
+    return count;
+  };
+  for (const style of ['coast', 'island', 'archipelago', 'lakes'] as const) {
+    for (let k = 0; k < 3; k++) {
+      const world = generateTerrain({ ...DEFAULT_TERRAIN, style, seed: `probe-${k}-seed`, w: 180, h: 150 });
+      assert.equal(landBodies(world).filter((b) => b < 6).length, 0, `${style} probe-${k}-seed: islets`);
+      assert.equal(ponds(world), 0, `${style} probe-${k}-seed: ponds`);
+    }
+  }
+});
+
 await test('the challenges\' land is the land they were laid out on, whatever the generator has learned since', () => {
   // Checksums of the classic generator's land, taken before archipelagos had islands.
   const sum = (style: 'archipelago' | 'coast' | 'lakes', seed: string) => {
