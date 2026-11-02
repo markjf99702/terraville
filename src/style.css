@@ -784,8 +784,10 @@ kbd { font: 600 11.5px var(--mono); padding: 1px 6px; border: 1px solid var(--li
 .bigsign .est { margin-top: 8px; font: 700 13px/1 var(--font); letter-spacing: 0.3em; text-transform: uppercase; }
 .title-inner p.lede { margin: 0; font-size: 16px; line-height: 1.55; color: #cfd9d2; max-width: 44ch; }
 .title-actions { display: flex; flex-direction: column; gap: 8px; }
-.title-actions .btn { height: 50px; justify-content: space-between; font-size: 15.5px; padding: 0 18px; }
-.title-actions .btn small { font-weight: 600; color: var(--muted); font-size: 12.5px; }
+/* A long city name gives way: its note goes under it, and the name ends in an ellipsis rather than run off the screen. */
+.title-actions .btn { height: auto; min-height: 50px; justify-content: space-between; flex-wrap: wrap; row-gap: 2px; font-size: 15.5px; padding: 8px 18px; text-align: left; }
+.title-actions .btn > span { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.title-actions .btn small { flex-shrink: 0; margin-left: auto; font-weight: 600; color: var(--muted); font-size: 12.5px; }
 .title-actions .btn.primary small { color: #cdeee0; }
 .title-foot { font-size: 12px; color: var(--muted); }
 /* Beside the map (the scrim over it fades out to the right), a soft dark band keeps the small print readable over

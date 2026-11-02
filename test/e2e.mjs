@@ -882,6 +882,22 @@ try {
     await ctx.close();
   });
 
+  await test('on a phone, the title screen fits the longest city name', async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await page.click('[data-act="quick"]');
+    await page.fill('#fName', 'Port Wellington-on-the-Marsh');
+    await page.click('.modal footer .btn.primary');
+    await page.waitForFunction(() => window.__terraville.mode === 'city');
+    await page.evaluate(async () => { await window.__terraville.saveCity(); window.__terraville.showTitle(); });
+    await titleUp(page);
+    const over = await page.$$eval('.title-actions .btn', (b) => b.filter((x) => x.getBoundingClientRect().right > innerWidth || x.scrollWidth > x.clientWidth).map((x) => x.textContent.trim()));
+    assert.deepEqual(over, [], 'every title button inside the screen');
+    assert.match(await page.textContent('[data-act="continue"]'), /Continue Port Wellington-on-the-Marsh/);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('on a phone, Inspect takes the bottom slot from the map layer card and the news log', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);
