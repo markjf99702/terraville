@@ -124,6 +124,7 @@ export function buildShell(root: HTMLElement): { map: HTMLCanvasElement; minimap
     <aside id="goal" class="panel" hidden></aside>
     <div id="minimapCard" class="panel">
       <canvas id="minimap" aria-label="Overview map"></canvas>
+      <button class="iconbtn" id="zoomFit" aria-label="Whole map" title="Whole map (0)">${ICONS.fit}</button>
       <div class="mm-row">
         <select id="overlaySel" aria-label="Map layer"></select>
         <button class="iconbtn" id="zoomOut" aria-label="Zoom out">${ICONS.minus}</button>
@@ -158,6 +159,9 @@ interface ModalSpec {
   /** Only its own buttons close it: no close button, Escape or tap outside. */
   locked?: boolean;
 }
+
+/** The panels over the map that the camera keeps its edges clear of. */
+const INSET_PANELS = ['#topbar', '#toolbox', '#editorPanel', '#guide', '#goal', '#minimapCard', '#ticker'];
 
 /** The terrain editor's sliders, by id, and the setting each one sets. */
 const EDITOR_SLIDERS: [string, 'water' | 'hills' | 'rough' | 'rivers' | 'lakes' | 'forest'][] = [
@@ -216,7 +220,13 @@ export class UI {
     window.addEventListener('resize', () => {
       this.closeDropdown();
       this.fitInspect();
+      this.measureInsets();
     });
+    // The camera lets the map's edges come out from under the panels, however they fold, wrap or grow.
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => this.measureInsets());
+      for (const id of INSET_PANELS) ro.observe($(root, id));
+    }
     watchFocus();
     document.addEventListener('keydown', (e) => {
       if (!this.modalOpen) return;
@@ -259,6 +269,7 @@ export class UI {
     this.closeModal();
     this.closeDropdown();
     for (const id of ['#topbar', '#toolbox', '#editorPanel', '#minimapCard', '#ticker', '#log', '#inspect', '#guide', '#goal']) $(this.root, id).hidden = true;
+    this.measureInsets();
     const t = $(this.root, '#title');
     t.hidden = false;
     const last = this.game.latestLocal();
@@ -353,6 +364,41 @@ export class UI {
     }
   }
 
+  /**
+   * How far the panels reach in over the map from each side, with a margin, for the camera: it lets each edge of the
+   * map come in that far, so every tile can be brought clear of them. In a wide window the tools are on the left, the
+   * top bar above, the ticker below, and the cards down the right (the editor's panel, the checklist or goal, the map
+   * card). On a phone the bars and cards stack at the top and at the bottom.
+   */
+  measureInsets(): void {
+    const e = { l: 0, t: 0, r: 0, b: 0 };
+    if (this.game.mode !== 'title') {
+      const map = $(this.root, '#map').getBoundingClientRect();
+      const boxes = (...ids: string[]) => ids.flatMap((id) => {
+        const panel = $(this.root, id);
+        const b = panel.hidden ? null : panel.getBoundingClientRect();
+        return b && b.width && b.height ? [b] : [];
+      });
+      const narrow = this.narrow();
+      e.t = Math.max(0, ...boxes('#topbar', ...(narrow ? ['#guide', '#goal'] : [])).map((b) => b.bottom - map.top));
+      if (narrow) {
+        e.b = Math.max(0, ...boxes('#ticker', '#toolbox', '#editorPanel', '#minimapCard').map((b) => map.bottom - b.top));
+      } else {
+        e.l = Math.max(0, ...boxes('#toolbox').map((b) => b.right - map.left));
+        e.r = Math.max(0, ...boxes('#editorPanel', '#guide', '#goal', '#minimapCard').map((b) => map.right - b.left));
+        e.b = Math.max(0, ...boxes('#ticker').map((b) => map.bottom - b.top));
+      }
+      // A margin past the panels; and however big they grow, the map keeps at least a fifth of the screen each way.
+      const side = (a: number, b: number, size: number) => {
+        const k = Math.min(1, (size * 0.8) / (a + b + 32));
+        return [(a + 16) * k, (b + 16) * k];
+      };
+      [e.l, e.r] = side(e.l, e.r, map.width);
+      [e.t, e.b] = side(e.t, e.b, map.height);
+    }
+    this.game.renderer.insets = e;
+  }
+
   private showChrome(): void {
     $(this.root, '#title').hidden = true;
     for (const id of ['#topbar', '#toolbox', '#minimapCard']) $(this.root, id).hidden = false;
@@ -370,6 +416,7 @@ export class UI {
     this.buildToolbox();
     this.buildEditorPanel();
     this.syncOverlay();
+    this.measureInsets();
   }
 
   enterCity(): void {
@@ -387,6 +434,7 @@ export class UI {
     $(this.root, '#goal').hidden = !this.game.world.city.scenario;
     this.guideForced = this.guideSawIncomplete = false;
     this.updateGuide(true);
+    this.measureInsets();
   }
 
   // ---- top bar -------------------------------------------------------------------
@@ -909,6 +957,7 @@ export class UI {
     sel.onchange = () => this.setOverlay(sel.value as Overlay);
     $(this.root, '#zoomIn').onclick = () => this.game.renderer.zoomAt(this.game.renderer.cssW / 2, this.game.renderer.cssH / 2, 1.4);
     $(this.root, '#zoomOut').onclick = () => this.game.renderer.zoomAt(this.game.renderer.cssW / 2, this.game.renderer.cssH / 2, 1 / 1.4);
+    $(this.root, '#zoomFit').onclick = () => this.game.fitMap();
     const mm = $<HTMLCanvasElement>(this.root, '#minimap');
     let dragging = false;
     const go = (e: PointerEvent) => {
@@ -1080,6 +1129,8 @@ export class UI {
     }
     // A phone has no room for Redo in the top bar, and no keyboard for Ctrl+Shift+Z.
     if (this.game.mode === 'city' && this.compact() && this.game.canRedo()) add('redo', 'Redo', () => this.game.redo());
+    // Where the map card (or its buttons) is folded away, so is its Whole map button.
+    if (!$(this.root, '#zoomFit').getClientRects().length) add('fit', 'Whole map', () => this.game.fitMap());
     const drive = this.game.drive;
     if (this.game.mode === 'city' && drive.status() === 'signin') {
       add('cloud', 'Sign in to Google Drive', () => this.connectDrive());
@@ -2381,6 +2432,7 @@ export class UI {
     rows.push(
       [keys('Arrows'), 'Move the map'],
       [keys('+', '−'), 'Zoom'],
+      [keys('0'), 'Whole map'],
       [keys('[', ']'), city ? 'Level land brush size' : 'Brush size'],
       [keys('Ctrl Z'), 'Undo'],
       [`${keys('Ctrl Shift Z')} or ${keys('Ctrl Y')}`, 'Redo'],

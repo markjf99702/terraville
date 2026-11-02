@@ -293,6 +293,7 @@ export class Input {
     }
     if (k === '+' || k === '=') return g.renderer.zoomAt(g.renderer.cssW / 2, g.renderer.cssH / 2, 1.25);
     if (k === '-' || k === '_') return g.renderer.zoomAt(g.renderer.cssW / 2, g.renderer.cssH / 2, 0.8);
+    if (k === '0') return g.fitMap();
     if (k === '[') return g.ui.nudgeBrush(-0.5);
     if (k === ']') return g.ui.nudgeBrush(0.5);
     if (g.mode === 'city' && (k === '<' || k === ',')) return g.setSpeed(Math.max(1, g.speed - 1));

@@ -54,6 +54,16 @@ export const SLOPE_CLASSES = [
   { max: Infinity, label: 'Very steep', note: 'flatten it with Level land before building', alpha: 225 },
 ];
 
+/** Distances in from each side of the map's canvas, in CSS pixels. */
+export interface Insets {
+  l: number;
+  t: number;
+  r: number;
+  b: number;
+}
+
+const NO_INSETS: Insets = { l: 0, t: 0, r: 0, b: 0 };
+
 export interface Preview {
   tiles: [number, number][];
   bad: [number, number][];
@@ -70,6 +80,11 @@ export class Renderer {
   field!: TerrainField;
   vehicles!: Vehicles;
   cam = { x: 60, y: 50, zoom: 16 };
+  /**
+   * How far the panels reach in over the map from each side, with a margin: each edge of the map may come in that far,
+   * so that every tile can be brought clear of them. Measured by the page (see UI.measureInsets).
+   */
+  insets: Insets = { ...NO_INSETS };
   dpr = 1;
   cssW = 800;
   cssH = 600;
@@ -212,14 +227,42 @@ export class Renderer {
     return Math.max(2, Math.min(this.cssW / (this.world.w + 8), this.cssH / (this.world.h + 8)) * 0.9);
   }
 
-  clampCamera(slack = 4): void {
+  /**
+   * Keep the map in view: each of its edges may come in from its side of the screen as far as `edge` says (the panels,
+   * by default), and no further. A map smaller than the room left sits in the middle of it. The title screen's drift
+   * passes no insets, so its map always fills the screen.
+   */
+  clampCamera(edge: Insets = this.insets): void {
     const z = this.cam.zoom;
-    const halfW = this.cssW / 2 / z;
-    const halfH = this.cssH / 2 / z;
-    const w = this.world.w;
-    const h = this.world.h;
-    this.cam.x = halfW * 2 >= w ? w / 2 : Math.max(halfW - slack, Math.min(w - halfW + slack, this.cam.x));
-    this.cam.y = halfH * 2 >= h ? h / 2 : Math.max(halfH - slack, Math.min(h - halfH + slack, this.cam.y));
+    const fit = (at: number, view: number, size: number, lo: number, hi: number) => {
+      const min = (view / 2 - lo) / z; // the map's near edge `lo` px in from the screen's
+      const max = size - (view / 2 - hi) / z; // and its far edge `hi` px in from the other side
+      return min > max ? (min + max) / 2 : Math.max(min, Math.min(max, at));
+    };
+    this.cam.x = fit(this.cam.x, this.cssW, this.world.w, edge.l, edge.r);
+    this.cam.y = fit(this.cam.y, this.cssH, this.world.h, edge.t, edge.b);
+  }
+
+  /** Zoom and move so the whole map fits in a rectangle of the screen (CSS pixels), in its middle. */
+  fitRect(l: number, t: number, r: number, b: number): void {
+    const { w, h } = this.world;
+    const z = Math.max(this.minZoom(), Math.min(96, (r - l) / w, (b - t) / h));
+    this.cam.zoom = z;
+    this.cam.x = w / 2 - ((l + r) / 2 - this.cssW / 2) / z;
+    this.cam.y = h / 2 - ((t + b) / 2 - this.cssH / 2) / z;
+    this.clampCamera();
+  }
+
+  /** The whole map, in the room the panels leave. */
+  fitWhole(): void {
+    const e = this.insets;
+    this.fitRect(e.l, e.t, this.cssW - e.r, this.cssH - e.b);
+  }
+
+  /** The tile in the middle of the room the panels leave. */
+  freeCentre(): { x: number; y: number } {
+    const e = this.insets;
+    return this.screenToTile((e.l + this.cssW - e.r) / 2, (e.t + this.cssH - e.b) / 2);
   }
 
   screenToTile(sx: number, sy: number): { x: number; y: number } {

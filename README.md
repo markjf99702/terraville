@@ -62,6 +62,7 @@ In **Menu › Save, open and share**, choose **Connect Google Drive**. From then
 | `Shift` + drag | Clear an area, whatever the tool |
 | Right drag, middle drag, Space + drag, arrow keys | Move the map |
 | Wheel, pinch, `+` `-` | Zoom |
+| `0`, or the button on the overview map | The whole map, clear of the panels |
 | `1` `2` `3` | Residential, commercial, industrial |
 | `R` `T` `P` | Road, rail, power line |
 | `B` / `Q` | Bulldoze / inspect |

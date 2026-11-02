@@ -354,6 +354,10 @@ input[type="range"] { width: 100%; accent-color: var(--sign-hi); margin: 0; }
   padding: 0 8px;
 }
 .mm-row .iconbtn { width: 30px; height: 30px; border: 1px solid var(--line); background: var(--panel-2); }
+/* Whole map sits on the overview map's corner, leaving the layer's name its room in the row below. */
+#zoomFit { position: absolute; top: 12px; right: 12px; width: 28px; height: 28px; border: 1px solid var(--line-2); background: rgba(14, 20, 18, 0.78); }
+#zoomFit:hover { background: var(--panel-3); }
+#zoomFit svg { width: 16px; height: 16px; }
 .legend { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
 .legend .ramp { flex: 1; height: 8px; border-radius: 4px; }
 

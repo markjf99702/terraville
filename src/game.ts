@@ -358,6 +358,8 @@ export class Game {
     this.world = generateTerrain(this.terrain);
     this.renderer.setWorld(this.world, null);
     this.renderer.resize();
+    // No panels over the title's map: it fills the screen.
+    this.ui.measureInsets();
     this.renderer.cam.zoom = Math.max(this.renderer.minZoom() * 1.8, 11);
     this.renderer.centerOn(this.world.w * 0.35, this.world.h * 0.45);
     this.renderer.preview = null;
@@ -373,13 +375,14 @@ export class Game {
     this.terrain = { ...this.terrain, ...params, shaped: false };
     this.world = generateTerrain(this.terrain);
     this.renderer.setWorld(this.world, null);
-    this.fitMap();
     this.clearUndo();
     this.slotId = null;
     this.applySettings();
     this.setTool('pan');
     this.minimap.markDirty();
     this.ui.enterEditor();
+    // The whole map, in the room the editor's panels leave.
+    this.fitMap();
     this.ui.toast(EDITOR_HINT());
   }
 
@@ -392,12 +395,12 @@ export class Game {
     // Same map as on screen: keep the renderer's cache instead of rebuilding it.
     if (this.renderer.world !== this.world) this.renderer.setWorld(this.world, null);
     else this.renderer.sim = null;
-    this.fitMap();
     this.clearUndo();
     this.applySettings();
     this.setTool('pan');
     this.minimap.markDirty();
     this.ui.enterEditor();
+    this.fitMap();
     this.ui.toast(EDITOR_HINT());
   }
 
@@ -440,15 +443,17 @@ export class Game {
     this.clearUndo();
     this.renderer.setOverlay('none');
     this.renderer.setWorld(this.world, null);
-    this.fitMap();
     this.applySettings();
     this.minimap.markDirty();
     this.ui.enterEditor();
+    this.fitMap();
     this.ui.openFound(true);
   }
 
   foundCity(name: string, difficulty: Difficulty['id'], disasters: boolean): void {
     const w = this.world;
+    // The city opens on what was in the middle of the editor's view, between its panels.
+    const centre = this.renderer.freeCentre();
     const diff = DIFFICULTIES.find((d) => d.id === difficulty) ?? DIFFICULTIES[0];
     w.city = newCityState();
     w.city.name = name.trim() || randomCityName();
@@ -475,7 +480,7 @@ export class Game {
     const steps = this.ui.checklistShown() ? 'The checklist has the first steps.' : 'The strategy guide in the menu has the first steps.';
     this.sim!.say('welcome', `Welcome to ${w.city.name}. ${steps}`, 'good', undefined, 0);
     this.renderer.cam.zoom = Math.max(this.renderer.cam.zoom, 14);
-    this.renderer.clampCamera();
+    this.renderer.centerOn(centre.x, centre.y);
     this.audio.play('fanfare');
     this.claimCity();
   }
@@ -750,11 +755,11 @@ export class Game {
     }
   }
 
+  /** The whole map, in the room the panels leave (the Whole map button, and the 0 key). */
   fitMap(): void {
-    const r = this.renderer;
-    r.resize();
-    r.cam.zoom = Math.max(r.minZoom(), Math.min(r.cssW / (this.world.w * 0.62), r.cssH / (this.world.h * 0.62)));
-    r.centerOn(this.world.w / 2, this.world.h / 2);
+    this.renderer.resize();
+    this.ui.measureInsets();
+    this.renderer.fitWhole();
   }
 
   // ---- clock ------------------------------------------------------------------
@@ -816,7 +821,7 @@ export class Game {
       const halfH = r.cssH / 2 / c.zoom;
       if (c.x > this.world.w - halfW || c.x < halfW) this.titleDrift.vx *= -1;
       if (c.y > this.world.h - halfH || c.y < halfH) this.titleDrift.vy *= -1;
-      r.clampCamera(0);
+      r.clampCamera({ l: 0, t: 0, r: 0, b: 0 });
     }
     if (this.brushOn) this.brushTick(dt);
     // The moment for saying what was built is up: the tip goes, and the spot stays quiet until the pointer leaves it.

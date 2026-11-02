@@ -996,6 +996,76 @@ try {
     await ctx.close();
   });
 
+  await test('every corner tile of the map can be brought out from under the panels, on a laptop and a phone', async () => {
+    for (const opts of [DESK, PHONE]) {
+      const ctx = await profile(opts);
+      const { page, problems } = await open(ctx);
+      await found(page);
+      // Each corner, scrolled as far as the camera lets it go at zoom 14: the tile is on the screen and under no panel.
+      const corner = (tx, ty) => page.evaluate(([tx, ty]) => {
+        const g = window.__terraville;
+        const r = g.renderer;
+        r.cam.zoom = 14;
+        r.centerOn(tx < 0 ? -50 : g.world.w + 50, ty < 0 ? -50 : g.world.h + 50);
+        const x = tx < 0 ? 0 : g.world.w - 1;
+        const y = ty < 0 ? 0 : g.world.h - 1;
+        const map = document.querySelector('#map').getBoundingClientRect();
+        const a = r.tileToScreen(x, y);
+        const t = { left: map.left + a.x, top: map.top + a.y, right: map.left + a.x + 14, bottom: map.top + a.y + 14 };
+        const panels = [...document.querySelectorAll('#topbar > *, #toolbox, #minimapCard, #ticker, #guide, #goal, #editorPanel, #pausedPill')]
+          .filter((e) => !e.hidden && e.getClientRects().length)
+          .map((e) => [e.id || e.className, e.getBoundingClientRect()])
+          .filter(([, b]) => b.width && b.height && b.left < t.right && t.left < b.right && b.top < t.bottom && t.top < b.bottom)
+          .map(([name]) => name);
+        return { onScreen: t.left >= 0 && t.top >= 0 && t.right <= innerWidth && t.bottom <= innerHeight, under: panels };
+      }, [tx, ty]);
+      for (const [tx, ty] of [[-1, -1], [1, 1], [1, -1], [-1, 1]]) {
+        assert.deepEqual(await corner(tx, ty), { onScreen: true, under: [] }, `${opts.viewport.width}px: corner ${tx < 0 ? 'left' : 'right'} ${ty < 0 ? 'top' : 'bottom'}`);
+      }
+      assert.deepEqual(problems, []);
+      await ctx.close();
+    }
+  });
+
+  await test('the editor opens on the whole map, between its panels, and Whole map or the 0 key bring it back', async () => {
+    for (const opts of [DESK, PHONE]) {
+      const ctx = await profile(opts);
+      const { page, problems } = await open(ctx);
+      await page.click('[data-act="editor"]');
+      await page.waitForFunction(() => window.__terraville.mode === 'editor');
+      const whole = () => page.evaluate(() => {
+        const r = window.__terraville.renderer;
+        const map = document.querySelector('#map').getBoundingClientRect();
+        const a = r.tileToScreen(0, 0);
+        const b = r.tileToScreen(r.world.w, r.world.h);
+        const m = { left: map.left + a.x, top: map.top + a.y, right: map.left + b.x, bottom: map.top + b.y };
+        const under = [...document.querySelectorAll('#topbar > *, #toolbox, #minimapCard, #editorPanel')]
+          .filter((e) => !e.hidden && e.getClientRects().length)
+          .map((e) => [e.id || e.className, e.getBoundingClientRect()])
+          .filter(([, p]) => p.width && p.left < m.right - 1 && m.left + 1 < p.right && p.top < m.bottom - 1 && m.top + 1 < p.bottom)
+          .map(([name]) => name);
+        return { onScreen: m.left >= 0 && m.top >= 0 && m.right <= innerWidth && m.bottom <= innerHeight, under, wide: Math.round(b.x - a.x) };
+      });
+      const opened = await whole();
+      assert.deepEqual({ ...opened, wide: 0 }, { onScreen: true, under: [], wide: 0 }, `${opts.viewport.width}px: the whole map, clear of the panels`);
+      assert.ok(opened.wide > opts.viewport.width * 0.6, 'and as big as the room allows');
+      await page.evaluate(() => { const r = window.__terraville.renderer; r.cam.zoom = 30; r.centerOn(10, 10); });
+      if (opts === DESK) {
+        await page.keyboard.press('0');
+        assert.deepEqual(await whole(), opened, 'the 0 key');
+        await page.evaluate(() => { const r = window.__terraville.renderer; r.cam.zoom = 30; r.centerOn(10, 10); });
+        await page.click('#zoomFit');
+        assert.deepEqual(await whole(), opened, 'the Whole map button beside the zoom buttons');
+      } else {
+        await page.click('[data-act="menu"]');
+        await page.click('.dropdown button:has-text("Whole map")');
+        assert.deepEqual(await whole(), opened, "the menu's Whole map, on a phone");
+      }
+      assert.deepEqual(problems, []);
+      await ctx.close();
+    }
+  });
+
   await test('the cost tip draws its middle dots and says why lots are blocked', async () => {
     const ctx = await profile(DESK);
     const { page, problems } = await open(ctx);
@@ -1432,7 +1502,7 @@ try {
       ['Space', 'Pause or resume'], [', .', 'Slower, faster'], ['Q B', 'Inspect, bulldoze'], ['R T P', 'Road, rail, power line'],
       ['1 2 3', 'Residential, commercial, industrial'], ['K', 'Park'], ['G L', 'Plant trees, level land'],
       ['Right-click', 'Bulldoze what is under the cursor'], ['Shift drag', 'Bulldoze an area, any tool'], ['Arrows', 'Move the map'],
-      ['+ −', 'Zoom'], ['[ ]', 'Level land brush size'], ['Ctrl Z', 'Undo'], ['Ctrl Shift Z or Ctrl Y', 'Redo'], ['Esc', 'Cancel or close'],
+      ['+ −', 'Zoom'], ['0', 'Whole map'], ['[ ]', 'Level land brush size'], ['Ctrl Z', 'Undo'], ['Ctrl Shift Z or Ctrl Y', 'Redo'], ['Esc', 'Cancel or close'],
     ]);
     assert.equal(await page.getAttribute('[data-tool="level"]', 'aria-keyshortcuts'), 'l');
     assert.equal(await page.getAttribute('[data-tool="police"]', 'aria-keyshortcuts'), null, 'no key, no shortcut');
@@ -1444,7 +1514,7 @@ try {
     const editor = await keys();
     assert.deepEqual(editor.rows, [
       ['Q', 'Look around'], ['R F S L N', 'Raise, lower, smooth, flatten, roughen'], ['W D V G C', 'Water, dry land, spring, forest, clear trees'],
-      ['Arrows', 'Move the map'], ['+ −', 'Zoom'], ['[ ]', 'Brush size'], ['Ctrl Z', 'Undo'], ['Ctrl Shift Z or Ctrl Y', 'Redo'], ['Esc', 'Cancel or close'],
+      ['Arrows', 'Move the map'], ['+ −', 'Zoom'], ['0', 'Whole map'], ['[ ]', 'Brush size'], ['Ctrl Z', 'Undo'], ['Ctrl Shift Z or Ctrl Y', 'Redo'], ['Esc', 'Cancel or close'],
     ]);
     assert.deepEqual(problems, []);
     await ctx.close();
