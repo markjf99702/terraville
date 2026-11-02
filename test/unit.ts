@@ -14,6 +14,7 @@ import { chartAxis, spreadLabels, tickLabel } from '../src/ui/charts';
 import { cutOff } from '../src/render/renderer';
 import { Vehicles } from '../src/render/vehicles';
 import { ago, demandWords, worryWord } from '../src/ui/ui';
+import { builtArea, pictureName, pictureScale } from '../src/ui/picture';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -3617,6 +3618,24 @@ await test("the RCI meter's card puts each bar in words, says when a landmark ho
   // A landmark limit holds the bar down whatever demand would be: the card says what lifts it.
   const held = demandWords({ r: 0.6, c: 0.6, i: 0.6 }, 7, { res: true, com: false, ind: true }).lines.map((l) => l.text);
   assert.deepEqual(held, ['held at 18,000 residents until the city builds a stadium', 'strong demand, zone more commercial', 'held at 4,000 jobs until the city builds a seaport']);
+});
+
+await test('a picture of the city takes in what is built with a margin and room for its sign, as sharp as its size allows', () => {
+  const w = flat(120, 100);
+  assert.deepEqual(builtArea(w), { x0: 0, y0: 0, x1: 120, y1: 100 }, 'nothing built: the whole map');
+  w.place('res', 40, 30);
+  w.place('com', 70, 50);
+  applyLine(w, ROAD, planLine(w, ROAD, linePath(40, 33, 72, 33)));
+  // Tiles 40-72 across and 30-52 down, 4 tiles of margin round them, and a seventh of the shorter side below for the sign.
+  assert.deepEqual(builtArea(w), { x0: 36, y0: 26, x1: 77, y1: 62 });
+  // A cottage alone: a small town's worth of map round it, kept on the map at its corner.
+  const lone = flat(120, 100);
+  lone.place('res', 0, 0);
+  assert.deepEqual(builtArea(lone), { x0: 0, y0: 0, x1: 32, y1: 28 });
+  // A Classic map whole at 19 px a tile, 2,280 by 1,900; a Large one at 13; a small town as sharp as the street view.
+  assert.deepEqual([pictureScale(120, 100), pictureScale(180, 150), pictureScale(41, 35)], [19, 13, 32]);
+  assert.equal(pictureName('Mapleford', 49 * 12 + 4), 'Mapleford, May 1949.jpg');
+  assert.equal(pictureName('A/B: "C"', 0), 'A B C, Jan 1900.jpg');
 });
 
 await test('figures read with commas whatever language the browser speaks, and nothing in src/ asks the browser for its own', () => {

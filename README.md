@@ -49,7 +49,7 @@ The Challenges list marks each one you have won in this browser, with the year y
 - A day and night cycle: streetlights and lit windows after dark.
 - Commuters spread across the city's job centres, so traffic piles up on the arterials into downtown. Inspect on a road or track says who passes along it, from where to where, and can tint their homes and work on the map.
 - Drag to zone many lots at once, with live cost and a reason when something can't be built.
-- Every city keeps its own save, updated every 90 seconds, at each year's end and whenever you leave the page. Snapshots and city codes (the whole map compressed into text you can paste on another device) are there too.
+- Every city keeps its own save, updated every 90 seconds, at each year's end and whenever you leave the page. Snapshots and city codes (the whole map compressed into text you can paste on another device) are there too, and Save a picture makes a JPEG of the city (its built-up area or the whole map) with its sign in the corner, to share from a phone or download.
 - Optional Google Drive sync, so you can carry on with a city on another device. See below.
 - Touch support: pinch to zoom, two fingers to move. A plant, a service or a landmark takes two taps: the first shows where it goes and what it costs, and a second tap on it (or its Build button) builds it. With no right-click, the Inspect card has a Bulldoze button, confirmed with a second tap.
 - A starter checklist for the first few minutes.

@@ -687,6 +687,9 @@ textarea.code {
 .switch:last-child { border-bottom: none; }
 .switch small { display: block; color: var(--muted); font-size: 12px; }
 .switch input { width: 20px; height: 20px; accent-color: var(--sign-hi); flex: none; }
+/* A choice beside a button, such as a picture of the whole map. */
+label.check { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; font-size: 13px; color: var(--muted); cursor: pointer; }
+label.check input { width: 18px; height: 18px; margin: 0; accent-color: var(--sign-hi); flex: none; }
 /* The keys' column is as wide as its keys, short of half: a long pair ('Ctrl Shift Z or Ctrl Y') goes onto two lines. */
 .keys { display: grid; grid-template-columns: fit-content(50%) 1fr; gap: 5px 14px; font-size: 13px; margin: 0; }
 .keys kbd { white-space: nowrap; }

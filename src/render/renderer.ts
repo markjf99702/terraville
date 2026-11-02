@@ -725,6 +725,44 @@ export class Renderer {
     ctx.strokeRect(0, 0, this.world.w, this.world.h);
   }
 
+  // ---- a picture of the city -------------------------------------------------
+
+  /**
+   * The part of the map from tile (x0, y0) up to (x1, y1), drawn as the game draws it at L pixels a tile, cars and trains
+   * as they stand, in a canvas of its own. Each patch is painted afresh into one scratch canvas and copied across, so the
+   * patches cached for the view are left as they are, and the scratch canvas is let go after.
+   */
+  picture(x0: number, y0: number, x1: number, y1: number, L: number): HTMLCanvasElement | null {
+    const out = document.createElement('canvas');
+    out.width = (x1 - x0) * L;
+    out.height = (y1 - y0) * L;
+    const octx = out.getContext('2d');
+    const scratch = document.createElement('canvas');
+    scratch.width = scratch.height = CS * L;
+    const sctx = scratch.getContext('2d');
+    if (!octx || !sctx) return null;
+    for (let cy = Math.floor(y0 / CS); cy * CS < y1; cy++) {
+      for (let cx = Math.floor(x0 / CS); cx * CS < x1; cx++) {
+        const tx0 = cx * CS;
+        const ty0 = cy * CS;
+        sctx.putImageData(paintTerrain(sctx, this.field, this.world, tx0, ty0, CS, L, this.contours), 0, 0);
+        sctx.save();
+        sctx.translate(-tx0 * L, -ty0 * L);
+        this.drawObjects(sctx, tx0, ty0, L);
+        sctx.restore();
+        octx.drawImage(scratch, (tx0 - x0) * L, (ty0 - y0) * L);
+      }
+    }
+    scratch.width = scratch.height = 0;
+    octx.save();
+    octx.scale(L, L);
+    octx.translate(-x0, -y0);
+    if (this.showTraffic) this.drawCars(octx, x0, y0, x1 - 1, y1 - 1);
+    this.vehicles.draw(octx, L);
+    octx.restore();
+    return out;
+  }
+
   // ---- dynamic layers -------------------------------------------------------
 
   private drawCars(ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number): void {

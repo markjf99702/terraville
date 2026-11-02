@@ -19,6 +19,7 @@ import { World } from '../world';
 import { focusFromKeyboard, hasKeyboardFocus, watchFocus } from '../focus';
 import { lineChart } from './charts';
 import { buildGuide, trackGuide } from './guide';
+import { cityPicture, pictureName } from './picture';
 import { ICONS } from './icons';
 
 const $ = <T extends HTMLElement = HTMLElement>(root: ParentNode, sel: string): T => root.querySelector(sel) as T;
@@ -2816,7 +2817,10 @@ export class UI {
       ${inGame ? `<div><h3>Share this ${g.mode === 'city' ? 'city' : 'terrain'}</h3>
         <p class="note" style="margin-bottom:8px">A city code holds the whole map. Paste it into Open a city code on any device.</p>
         <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap"><button class="btn small" id="fMake">Create city code</button><button class="btn small" id="fCopy" disabled>Copy</button><button class="btn small" id="fDownload" disabled>Save as a file</button></div>
-        <textarea class="code" id="fCode" readonly placeholder="The code appears here." aria-label="City code"></textarea></div>` : ''}
+        <textarea class="code" id="fCode" readonly placeholder="The code appears here." aria-label="City code"></textarea>
+        ${g.mode === 'city' ? `<p class="note" style="margin:12px 0 8px">A picture shows the city to anyone, as a JPEG with its sign in the corner.</p>
+        <div style="display:flex;gap:8px 14px;flex-wrap:wrap;align-items:center"><button class="btn small" id="fPicture">Save a picture</button>
+          <label class="check"><input type="checkbox" id="fPicWhole"> The whole map, not just the built-up area</label></div>` : ''}</div>` : ''}
       <div><h3>Open a city code</h3>
         <textarea class="code" id="fPaste" placeholder="Paste a code that starts with TV1" aria-label="Paste a city code"></textarea>
         <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">
@@ -3090,6 +3094,8 @@ export class UI {
         }
       };
     }
+    const pic = body.querySelector<HTMLButtonElement>('#fPicture');
+    if (pic) pic.onclick = () => void this.savePicture(pic, $<HTMLInputElement>(body, '#fPicWhole').checked);
     const openCode = async (code: string) => {
       const err = $(body, '#fErr');
       err.textContent = '';
@@ -3110,6 +3116,48 @@ export class UI {
       if (file) await openCode(await file.text());
     };
     this.openModal({ title: inGame ? 'Save, open and share' : 'Open a saved city', body, wide: false, onClose: () => (this.filesRefresh = null) });
+  }
+
+  /**
+   * Make a picture of the city and hand it over: on a phone to the share sheet where the browser has one for files,
+   * otherwise as a download, as Save as a file does.
+   */
+  private async savePicture(btn: HTMLButtonElement, whole: boolean): Promise<void> {
+    const g = this.game;
+    const sim = g.sim;
+    if (!sim || btn.disabled) return;
+    btn.disabled = true;
+    const label = btn.textContent;
+    btn.textContent = 'Making the picture…';
+    // Let the button say so before the drawing holds up the page.
+    await new Promise((ok) => setTimeout(ok, 30));
+    let blob: Blob | null = null;
+    try {
+      blob = await cityPicture(g.renderer, g.world, sim.stats.residents, whole);
+    } catch {
+      blob = null;
+    }
+    btn.disabled = false;
+    btn.textContent = label;
+    if (!blob) return this.toast('The picture could not be made on this device.', 'warn');
+    const name = pictureName(g.world.city.name, g.world.city.month);
+    const file = new File([blob], name, { type: 'image/jpeg' });
+    if (touchScreen() && navigator.canShare?.({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: g.world.city.name });
+        return;
+      } catch (e) {
+        // Put away without sharing: nothing more to do.
+        if ((e as DOMException).name === 'AbortError') return;
+      }
+    }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(file);
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
 
   // Settings -----------------------------------------------------------------------------------

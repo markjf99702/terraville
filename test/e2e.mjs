@@ -3517,6 +3517,45 @@ try {
     await ctx.close();
   });
 
+  await test('Save a picture gives a JPEG of the built-up area, or the whole map, named for the city and the month', async () => {
+    // The height and width a JPEG says it is, from its frame header.
+    const jpegSize = (b) => {
+      assert.deepEqual([b[0], b[1], b[2]], [0xff, 0xd8, 0xff], 'a JPEG');
+      for (let i = 2; i < b.length;) {
+        const m = b[i + 1];
+        if (m === 0xc0 || m === 0xc2) return { h: b.readUInt16BE(i + 5), w: b.readUInt16BE(i + 7) };
+        i += 2 + b.readUInt16BE(i + 2);
+      }
+      throw new Error('no frame header');
+    };
+    for (const opts of [DESK, PHONE]) {
+      const ctx = await profile({ ...opts, acceptDownloads: true });
+      const { page, problems } = await open(ctx);
+      await page.evaluate(() => {
+        window.__terraville.startScenario('gridlock');
+        window.__terraville.ui.closeModal();
+      });
+      await page.waitForFunction(() => window.__terraville.mode === 'city');
+      await page.evaluate(() => window.__terraville.ui.openFiles());
+      const picture = async () => {
+        const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#fPicture')]);
+        const { readFile } = await import('node:fs/promises');
+        return { name: dl.suggestedFilename(), size: jpegSize(await readFile(await dl.path())) };
+      };
+      const built = await picture();
+      const month = await page.evaluate(() => window.__terraville.sim.dateLabel());
+      assert.equal(built.name, `Gridlock, ${month}.jpg`);
+      // Classic is 120 by 100 tiles: the built-up area is less, and sharper.
+      assert.ok(built.size.w < 2280 && built.size.w > 1000 && built.size.h > 1000, JSON.stringify(built.size));
+      await page.check('#fPicWhole');
+      const whole = await picture();
+      assert.deepEqual(whole.size, { w: 2280, h: 1900 }, 'the whole map at 19 px a tile');
+      assert.equal(await page.textContent('#fPicture'), 'Save a picture');
+      assert.deepEqual(problems, []);
+      await ctx.close();
+    }
+  });
+
   await test('a city in debt can still bulldoze, though it cannot build', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);
