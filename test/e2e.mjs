@@ -59,6 +59,9 @@ async function open(ctx) {
   page.on('pageerror', (e) => problems.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error') problems.push(m.text()); });
   page.on('request', (r) => { if (!r.url().startsWith(base) && !/^(data|blob):/.test(r.url())) problems.push('left the site: ' + r.url()); });
+  // A file that isn't there, or a request that fails, though one the page calls off as it reloads is no fault.
+  page.on('requestfailed', (r) => { if (!/ERR_ABORTED/.test(r.failure()?.errorText ?? '')) problems.push(`request failed: ${r.url()} (${r.failure()?.errorText})`); });
+  page.on('response', (r) => { if (r.status() >= 400) problems.push(`HTTP ${r.status()}: ${r.url()}`); });
   await page.goto(base);
   await titleUp(page);
   return { page, problems };
@@ -1913,6 +1916,54 @@ try {
     await ctx.close();
   });
 
+  await test('Settings are kept when the page reloads', async () => {
+    const ctx = await profile(DESK);
+    const { page, problems } = await open(ctx);
+    await found(page);
+    const settings = async () => {
+      await page.click('[data-act="menu"]');
+      await page.click('.dropdown button:has-text("Settings and keys")');
+      return page.$$eval('.modal [data-set]', (s) => Object.fromEntries(s.map((x) => [x.dataset.set, x.checked])));
+    };
+    const was = await settings();
+    assert.deepEqual(was, { sound: true, traffic: true, night: true, grid: false, contours: false, autosave: true });
+    for (const k of ['sound', 'night', 'grid', 'contours']) await page.click(`.modal label:has([data-set="${k}"])`);
+    await page.keyboard.press('Escape');
+    await page.reload();
+    await titleUp(page);
+    await found(page);
+    assert.deepEqual(await settings(), { sound: false, traffic: true, night: false, grid: true, contours: true, autosave: true });
+    assert.deepEqual(await page.evaluate(() => { const r = window.__terraville.renderer; return [r.grid, r.contours, r.nightCycle]; }), [true, true, false], 'and the map follows them');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  await test('every map layer and every disaster, in a challenge city on a laptop, with nothing going wrong', async () => {
+    const ctx = await profile(DESK);
+    const { page, problems } = await open(ctx);
+    await page.evaluate(() => { window.__terraville.startScenario('aftershock'); window.__terraville.ui.closeModal(); });
+    const layers = await page.evaluate(() => [...document.querySelectorAll('#overlaySel option')].map((o) => o.textContent));
+    assert.ok(layers.length >= 11, layers.join());
+    for (const name of [...layers.slice(1), layers[0]]) {
+      await page.click('#topbar [data-act="layers"]');
+      await page.click(`[role="menu"] button:text-is("${name}")`);
+      await page.waitForTimeout(80);
+      assert.equal(await page.inputValue('#overlaySel'), await page.evaluate((n) => [...document.querySelectorAll('#overlaySel option')].find((o) => o.textContent === n).value, name));
+    }
+    const before = await page.evaluate(() => window.__terraville.sim.messages.filter((m) => m.kind === 'alert').length);
+    for (const name of ['Fire', 'Flood', 'Tornado', 'Earthquake', 'Monster', 'Meltdown']) {
+      await page.click('#topbar [data-act="disasters"]');
+      await page.click(`[role="menu"] button:has-text("${name}")`);
+      // A few weeks of it, drawn.
+      await page.evaluate(() => { for (let i = 0; i < 6; i++) window.__terraville.sim.step(); });
+      await page.waitForTimeout(250);
+    }
+    const alerts = await page.evaluate((n) => window.__terraville.sim.messages.filter((m) => m.kind === 'alert').slice(n).map((m) => m.text), before);
+    assert.ok(alerts.length >= 5, `each disaster made the news: ${alerts.join(' | ')}`);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('a touch screen gets touch help: no key letters, no right-click in the tips, and a Touch list in Settings', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);
@@ -2940,6 +2991,12 @@ try {
     const { page, problems } = await open(ctx);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'the title screen scrolls sideways on a phone');
     await page.waitForFunction(() => navigator.serviceWorker?.controller, null, { timeout: 30000 });
+    // Installable, as Chromium sees it (the house kit's check): no reasons not to be, and a manifest it reads cleanly.
+    const cdp = await ctx.newCDPSession(page);
+    assert.deepEqual((await cdp.send('Page.getInstallabilityErrors')).installabilityErrors, []);
+    const manifest = await cdp.send('Page.getAppManifest');
+    assert.deepEqual(manifest.errors, []);
+    assert.equal(JSON.parse(manifest.data).name, 'Terraville');
     await ctx.setOffline(true);
     await page.reload();
     await titleUp(page);

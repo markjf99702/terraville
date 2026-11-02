@@ -1888,6 +1888,38 @@ await test('passing a size class is news, a toast and a fanfare; an upgrade is n
   assert.equal(played.filter((s) => s === 'coin').length, 1);
 }));
 
+await test('loans: up to $30,000 in all, repaid only with the money in hand, and their interest charged in the month', () => {
+  const w = flat();
+  w.city.funds = 1000;
+  const sim = new Sim(w);
+  assert.equal(sim.takeLoan(10000), true);
+  assert.deepEqual([w.city.loan, w.city.funds], [10000, 11000]);
+  assert.equal(sim.takeLoan(20000), true);
+  assert.equal(sim.takeLoan(10000), false, 'no more than $30,000 owed at once');
+  assert.deepEqual([w.city.loan, w.city.funds], [30000, 31000]);
+  // 7% a year, a twelfth of it each month, in the ledger and out of the funds.
+  const before = w.city.funds;
+  sim.budget();
+  const b = sim.stats.lastBudget;
+  assert.equal(b.interest, 175);
+  assert.equal(w.city.funds, before + b.taxIncome - spending(b));
+  assert.ok(spending(b) >= 175);
+  // Repaying needs the money.
+  w.city.funds = 5000;
+  assert.equal(sim.repayLoan(10000), false);
+  assert.deepEqual([w.city.loan, w.city.funds], [30000, 5000]);
+  w.city.funds = 12000;
+  assert.equal(sim.repayLoan(10000), true);
+  assert.deepEqual([w.city.loan, w.city.funds], [20000, 2000]);
+  // More than is owed repays what is owed, and then there is nothing to repay.
+  w.city.funds = 50000;
+  assert.equal(sim.repayLoan(30000), true);
+  assert.deepEqual([w.city.loan, w.city.funds], [0, 30000]);
+  assert.equal(sim.repayLoan(10000), false);
+  sim.budget();
+  assert.equal(sim.stats.lastBudget.interest, 0);
+});
+
 await test('a challenge opens with its goal in the news and its real monthly balance, and a win says when', () => seeded(4, () => {
   const g = headless(flat(40, 30));
   for (const id of ['gridlock', 'aftershock']) {
@@ -2648,6 +2680,36 @@ await test('a Terraville folder put in the trash is made again, so other devices
   await tick();
   b.connect();
   assert.deepEqual((await b.list()).map((c) => [c.name, c.date, c.label]), [['Riverton', 6, 'Mac']]);
+});
+
+await test("Delete everywhere puts every device's copy of a city in the Drive trash, and leaves the other cities", async () => {
+  const server = new FakeDrive();
+  server.valid.add('a1');
+  const mk = (id: string, label: string) => new Drive({
+    fetch: server.fetch as typeof fetch, storage: memStorage(), now: () => 1_000_000, device: { id, label }, origin: 'https://junkdrawer.works', loadGis: async () => fakeGis(() => 'a1'),
+  });
+  const settle = async (d: Drive) => {
+    for (let i = 0; i < 40 && (d.pending || d.status() === 'busy'); i++) await tick();
+  };
+  const up = async (d: Drive, code: string, city: string, name: string, saved: number) => {
+    d.push(code, { city, name, pop: 100, date: 5, saved });
+    await settle(d);
+  };
+  const [a, b] = [mk('deva', 'Mac'), mk('devb', 'iPhone')];
+  for (const d of [a, b]) {
+    d.connect();
+    await tick();
+    d.connect();
+  }
+  await up(a, 'TV1g:riverton-mac', 'riv', 'Riverton', 10);
+  await up(a, 'TV1g:lakeside-mac', 'lak', 'Lakeside', 11);
+  await up(b, 'TV1g:riverton-iphone', 'riv', 'Riverton', 12);
+  const live = () => [...server.files.values()].filter((f) => f.content && !f.trashed).map((f) => f.content).sort();
+  assert.deepEqual(live(), ['TV1g:lakeside-mac', 'TV1g:riverton-iphone', 'TV1g:riverton-mac']);
+  await a.remove('riv');
+  assert.deepEqual(live(), ['TV1g:lakeside-mac'], "the iPhone's copy went too");
+  assert.ok([...server.files.values()].some((f) => f.appProperties.terraville === 'folder' && !f.trashed), 'the folder stays for the others');
+  assert.deepEqual((await b.list()).map((c) => c.name), ['Lakeside']);
 });
 
 await test('a page that opens with Drive signed in sends the saves that missed it', async () => {
