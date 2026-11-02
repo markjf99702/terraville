@@ -10,7 +10,7 @@ import { ZONE_COLORS } from '../render/color';
 import { drawBuilding } from '../render/sprites';
 import { randomSeedName } from '../rng';
 import { DRIVE_HOME, DriveCopy } from '../drive';
-import { SaveFile, SlotMeta, decode, deleteSlot, encode, listSlots, loadSlot, storageAvailable } from '../save';
+import { SaveFile, SlotMeta, challengeWins, decode, deleteSlot, encode, listSlots, loadSlot, storageAvailable } from '../save';
 import { spending } from '../sim';
 import type { Message } from '../sim';
 import { STYLE_NAMES, TerrainParams, TerrainStyle, hasSea } from '../terrain';
@@ -2023,9 +2023,11 @@ export class UI {
 
   openChallenges(): void {
     const body = el(`<div class="slots"></div>`);
+    const wins = challengeWins();
     for (const s of SCENARIOS) {
+      const won = wins[s.id];
       const row = el(`<div class="slot" style="grid-template-columns:1fr auto">
-        <div><b style="font-size:15px">${esc(s.name)}</b> <span class="note num">${s.year} · ${s.years} years</span>
+        <div><b style="font-size:15px">${esc(s.name)}</b> <span class="note num">${s.year} · ${s.years} years</span>${won ? ` <span class="won">${ICONS.check}Won in <span class="num">${won}</span></span>` : ''}
         <p class="note" style="margin:4px 0 0">${esc(s.blurb)}</p>
         <p style="margin:6px 0 0;font-size:13px;display:flex;gap:8px;align-items:flex-start"><span class="caution" style="width:10px;height:10px;margin-top:4px"></span>${esc(s.goal)}</p></div>
         <div class="actions" style="grid-row:auto"></div></div>`);

@@ -10,8 +10,8 @@ import { Renderer, SLOPE_CLASSES } from './render/renderer';
 import { hashString, makeRng, pick, randomSeedName } from './rng';
 import { CityMeta, Drive, DriveCopy } from './drive';
 import {
-  SaveFile, SlotMeta, citySlot, decode, deleteSlot, encode, encodeNow, listSlots, newCityId, pushSaved, readCode, saveCode, saveSlot, slotKey,
-  thisDevice, worldFrom,
+  SaveFile, SlotMeta, citySlot, decode, deleteSlot, encode, encodeNow, listSlots, newCityId, pushSaved, readCode, recordWin, saveCode, saveSlot,
+  slotKey, thisDevice, worldFrom,
 } from './save';
 import { SCENARIOS, buildScenario, goalState, openScenario, scenarioMonth, scenarioNews, successLine, timeUpLine } from './scenarios';
 import { Sim } from './sim';
@@ -619,6 +619,8 @@ export class Game {
     if ((s.kind === 'reach' && st.met) || month >= sc.end) {
       sc.done = st.met ? 'won' : 'lost';
       sc.decided = month;
+      // The Challenges list shows it from now on, in the year the news gives it.
+      if (st.met) recordWin(s.id, 1900 + Math.floor(month / 12));
       // The news keeps the result under the dialog, and in the log, in place of the goal's deadline.
       this.sim.say('result', st.met ? successLine(s, month, sc.end) : timeUpLine(s, st), st.met ? 'good' : 'warn', undefined, 0);
       this.audio.play(st.met ? 'fanfare' : 'sting');

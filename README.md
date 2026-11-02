@@ -38,6 +38,8 @@ Play it at [terraville.junkdrawer.works](https://terraville.junkdrawer.works/), 
 - *Aftershock* (1989): rebuild after an earthquake and keep growing.
 - *Monster Bay* (1957): something in the bay comes ashore whenever the air is smoky.
 
+The Challenges list marks each one you have won in this browser, with the year you won it in.
+
 **Modern bits**
 - Smooth zoom from the whole map down to street level, with detail that adapts to the zoom.
 - Animated traffic on busy roads, trains, departing planes, boats, smoke and wind turbines.

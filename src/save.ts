@@ -63,6 +63,38 @@ function writeIndex(list: SlotMeta[]): void {
   }
 }
 
+const WINS = 'terraville.wins';
+
+/** The challenges won in this browser, each with the earliest year it was won in. */
+export function challengeWins(): Record<string, number> {
+  const s = store();
+  if (!s) return {};
+  try {
+    const kept = JSON.parse(s.getItem(WINS) ?? '{}');
+    const wins: Record<string, number> = {};
+    if (kept && typeof kept === 'object' && !Array.isArray(kept)) {
+      for (const [id, year] of Object.entries(kept)) if (Number.isInteger(year) && (year as number) >= 1900 && (year as number) < 3000) wins[id] = year as number;
+    }
+    return wins;
+  } catch {
+    return {};
+  }
+}
+
+/** Keep a challenge's win in this browser, unless it was won in an earlier year before. */
+export function recordWin(id: string, year: number): void {
+  const s = store();
+  if (!s) return;
+  const wins = challengeWins();
+  if (wins[id] !== undefined && wins[id] <= year) return;
+  wins[id] = year;
+  try {
+    s.setItem(WINS, JSON.stringify(wins));
+  } catch {
+    /* storage full or blocked */
+  }
+}
+
 export async function saveSlot(id: string, file: SaveFile, pop: number): Promise<boolean> {
   try {
     return saveCode(await encode(file), { id, name: file.world.city.name, pop, date: file.world.city.month, savedAt: Date.now(), mode: file.mode });

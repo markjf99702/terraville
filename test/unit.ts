@@ -5,7 +5,7 @@ import { Sim, spending } from '../src/sim';
 import { generateTerrain, cleanTerrain, DEFAULT_TERRAIN } from '../src/terrain';
 import { linePath, planLine, applyLine, planZones, applyBuildings, planBulldoze, levelCost } from '../src/tools';
 import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST, UPGRADE_LV, Kind, BUILDINGS, article, buildingName, cityClass, num, upkeepOf } from '../src/defs';
-import { DAMAGED_CODE, citySlot, encode, encodeNow, decode, listSlots, pushSaved, readCode, saveCode, SlotMeta } from '../src/save';
+import { DAMAGED_CODE, challengeWins, citySlot, encode, encodeNow, decode, listSlots, pushSaved, readCode, recordWin, saveCode, SlotMeta } from '../src/save';
 import { Drive, GisOAuth2 } from '../src/drive';
 import { makeRng } from '../src/rng';
 import { SCENARIOS, buildScenario, goalRowText, goalState, openScenario, scenarioMonth, scenarioNews, successLine } from '../src/scenarios';
@@ -2084,6 +2084,38 @@ await test('a won challenge plays the fanfare, and a lost one its own falling st
   g.checkScenario();
   assert.equal(g.world.city.scenario.done, 'won');
   assert.deepEqual(played.filter((s) => ['sting', 'error', 'fanfare'].includes(s)), ['fanfare']);
+}));
+
+await test('a won challenge is kept in this browser with the year it was won, and a loss is not', () => seeded(4, () => {
+  const glob = globalThis as unknown as { window?: unknown };
+  const was = glob.window;
+  const storage = memStorage();
+  glob.window = { localStorage: storage };
+  try {
+    assert.deepEqual(challengeWins(), {});
+    const g = headless(flat(40, 30));
+    g.startScenario('gridlock');
+    g.world.city.month = g.world.city.scenario.end;
+    g.checkScenario();
+    assert.deepEqual(challengeWins(), {}, 'a lost challenge is not kept');
+    g.startScenario('boomtown');
+    g.world.city.month += 30;
+    g.sim.stats.residents = 12500;
+    g.checkScenario();
+    assert.deepEqual(challengeWins(), { boomtown: 1902 });
+    // A later win in a later year leaves the earlier one; an earlier year replaces it.
+    recordWin('boomtown', 1910);
+    recordWin('boomtown', 1901);
+    recordWin('smog', 1975);
+    assert.deepEqual(challengeWins(), { boomtown: 1901, smog: 1975 });
+    // Whatever else is in the key is left out.
+    storage.setItem('terraville.wins', JSON.stringify({ boomtown: 'soon', smog: 1975.5, gridlock: 1960, monster: null }));
+    assert.deepEqual(challengeWins(), { gridlock: 1960 });
+    storage.setItem('terraville.wins', '[1993');
+    assert.deepEqual(challengeWins(), {});
+  } finally {
+    glob.window = was;
+  }
 }));
 
 await test("the city's first seaport, airport or stadium is news, with the limit it lifts and a fanfare; a second is not", () => seeded(5, () => {

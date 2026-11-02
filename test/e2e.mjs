@@ -570,6 +570,12 @@ try {
     assert.equal(await page.textContent('.modal h2'), 'Challenge complete');
     await page.click('.modal footer .btn.primary');
     assert.match(await page.textContent('#ticker .msg-text'), /^Boomtown is a success in 1900, 15 years early\.$/);
+    // The Challenges list keeps the win in this browser, on that challenge's row alone, after a reload too.
+    await page.reload();
+    await titleUp(page);
+    await page.click('[data-act="challenges"]');
+    const won = await page.$$eval('.modal .slot', (rows) => rows.map((r) => [r.querySelector('b').textContent, r.querySelector('.won')?.textContent ?? '']));
+    assert.deepEqual(won, [['Boomtown', 'Won in 1900'], ['Gridlock', ''], ['Smog Valley', ''], ['Aftershock', ''], ['Monster Bay', '']]);
     assert.deepEqual(problems, []);
     await ctx.close();
   });
