@@ -1312,7 +1312,7 @@ try {
     await titleUp(page);
     assert.deepEqual(await buttons(), ['*draft', 'quick', 'editor', 'challenges', 'guide', 'open']);
     assert.equal(await page.textContent('[data-act="draft"]'), `Continue shaping the landSeed ${seed} · saved just now`);
-    assert.equal(await page.textContent('[data-act="editor"] small'), 'New land in the terrain editor');
+    assert.equal(await page.textContent('[data-act="editor"] small'), 'New land');
     await page.click('[data-act="draft"]');
     await page.waitForFunction(() => window.__terraville.mode === 'editor');
     assert.equal(await hash(), shaped, 'the land comes back as it was shaped');

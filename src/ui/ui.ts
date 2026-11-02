@@ -399,7 +399,7 @@ export class UI {
     const draft = readDraft();
     // A city to carry on, and land being shaped: the newer of the two first, as the main choice.
     const city = last ? `<button class="btn" data-act="continue"><span>Continue ${esc(last.name)}</span><small class="num">${dateLabel(last.date)} · pop ${num(last.pop)}</small></button>` : '';
-    const land = draft ? `<button class="btn" data-act="draft"><span>Continue shaping the land</span><small>Seed <span class="num">${esc(draft.seed)}</span> · saved ${ago(draft.savedAt)}</small></button>` : '';
+    const land = draft ? `<button class="btn" data-act="draft"><span>Continue shaping the land</span><small>Seed <span class="num">${esc(draft.seed)}</span>${SEP}saved ${ago(draft.savedAt)}</small></button>` : '';
     const carry = (draft && last && draft.savedAt > last.savedAt) || !last ? land + city : city + land;
     t.innerHTML = `
       <div class="title-inner">
@@ -411,7 +411,7 @@ export class UI {
         <div class="title-actions">
           ${carry.replace('class="btn"', 'class="btn primary"')}
           <button class="btn${carry ? '' : ' primary'}" data-act="quick"><span>Start a new city</span><small>Random land</small></button>
-          <button class="btn" data-act="editor"><span>Shape the land first</span><small>${draft ? 'New land in the terrain editor' : 'Terrain editor'}</small></button>
+          <button class="btn" data-act="editor"><span>Shape the land first</span><small>${draft ? 'New land' : 'Terrain editor'}</small></button>
           <button class="btn" data-act="challenges"><span>Challenges</span><small>Cities in trouble</small></button>
           <button class="btn" data-act="guide"><span>Strategy guide</span><small>How cities grow</small></button>
           <button class="btn" data-act="open"><span>Open a saved city</span><small>Saves and city codes</small></button>
