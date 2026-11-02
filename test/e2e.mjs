@@ -590,6 +590,22 @@ try {
     await ctx.close();
   });
 
+  await test('on a laptop or a tablet, the Inspect card leaves the news buttons free', async () => {
+    for (const [width, height, both] of [[1280, 800, true], [1024, 768, false]]) {
+      const ctx = await profile({ viewport: { width, height } });
+      const { page, problems } = await open(ctx);
+      await found(page);
+      await page.click('#map', { position: { x: Math.round(width / 2), y: Math.round(height / 2) } });
+      assert.equal(await page.isHidden('#inspect'), false, 'a click with Inspect opened the card');
+      await page.click('#tkLog', { timeout: 3000 });
+      assert.equal(await page.isHidden('#log'), false, `${width}: News opened the log`);
+      // Where the two would cover each other, the log takes the card's place, as on a phone.
+      assert.equal(await page.isHidden('#inspect'), !both, `${width}: the card stays only where there is room for both`);
+      assert.deepEqual(problems, []);
+      await ctx.close();
+    }
+  });
+
   await test('on a phone, Inspect takes the bottom slot from the map layer card and the news log', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

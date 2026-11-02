@@ -945,9 +945,17 @@ export class UI {
     log.hidden = !log.hidden;
     if (!log.hidden) {
       this.renderLog();
-      if (this.narrow()) this.hideInspect();
+      if (this.narrow() || this.overlaps(log, $(this.root, '#inspect'))) this.hideInspect();
     }
     this.renderTicker();
+  }
+
+  /** Whether two cards on screen cover each other: the log and the Inspect card do in a window about 1,000 px wide. */
+  private overlaps(a: HTMLElement, b: HTMLElement): boolean {
+    if (a.hidden || b.hidden) return false;
+    const r = a.getBoundingClientRect();
+    const q = b.getBoundingClientRect();
+    return r.left < q.right && q.left < r.right && r.top < q.bottom && q.top < r.bottom;
   }
 
   private renderLog(): void {
@@ -1003,10 +1011,11 @@ export class UI {
       };
     }
     card.hidden = false;
-    // On a phone the card takes the bottom slot that the map layer card and the news log also use.
+    // On a phone the card takes the bottom slot that the map layer card and the news log also use; in a window too
+    // narrow for both side by side it takes the log's place too.
     this.root.classList.add('inspecting');
     const log = $(this.root, '#log');
-    if (!refresh && this.narrow() && !log.hidden) {
+    if (!refresh && !log.hidden && (this.narrow() || this.overlaps(card, log))) {
       log.hidden = true;
       this.renderTicker();
     }
