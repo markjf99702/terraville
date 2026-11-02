@@ -14,7 +14,7 @@ import {
   slotKey, thisDevice, worldFrom,
 } from './save';
 import { SCENARIOS, buildScenario, goalState, openScenario, scenarioMonth, scenarioNews, successLine, timeUpLine } from './scenarios';
-import { Sim } from './sim';
+import { Paper, Sim } from './sim';
 import { DEFAULT_TERRAIN, TerrainParams, TerrainStyle, addSpring, applyBrush, cleanTerrain, generateTerrain } from './terrain';
 import {
   Plan, applyBuildings, applyBulldoze, applyLine, applyTrees, linePath, planBulldoze, planLine, planParks, planPlace,
@@ -70,6 +70,8 @@ export interface Settings {
   grid: boolean;
   contours: boolean;
   night: boolean;
+  /** The year-end paper. */
+  paper: boolean;
 }
 
 const NAME_A = ['Maple', 'Cedar', 'River', 'Lake', 'Stone', 'Pine', 'Oak', 'Harbor', 'Fair', 'Bright', 'Silver', 'Green', 'Elm', 'Clear', 'Red', 'Willow', 'Ash', 'Hazel', 'North', 'Bay', 'Copper', 'Sand', 'Glen', 'Mill'];
@@ -136,7 +138,9 @@ export class Game {
   terrain: TerrainParams;
   toolId = 'query';
   brush = { radius: 4, strength: 0.6 };
-  settings: Settings = { sound: true, autosave: true, traffic: true, grid: false, contours: false, night: true };
+  settings: Settings = { sound: true, autosave: true, traffic: true, grid: false, contours: false, night: true, paper: true };
+  /** A year-end paper that came on Ultra, waiting for the clock to stop. */
+  private paperWaiting: Paper | null = null;
   slotId: string | null = null;
 
   private acc = 0;
@@ -535,6 +539,7 @@ export class Game {
   }
 
   private startSim(): void {
+    this.paperWaiting = null;
     const sim = new Sim(this.world);
     this.setSim(sim);
     this.autosaveFailing = false;
@@ -548,6 +553,12 @@ export class Game {
           break;
         case 'broke':
           this.ui.broke();
+          break;
+        case 'paper':
+          // On Ultra a year passes in a few seconds: the paper waits for a pause, the latest replacing the one before.
+          if (!this.settings.paper) break;
+          if (this.speed === SPEEDS.length - 1) this.paperWaiting = e.paper;
+          else this.ui.paper(e.paper);
           break;
         case 'class':
           // A big moment: more than a line in the ticker.
@@ -584,8 +595,9 @@ export class Game {
     this.startSim();
     const sim = this.sim!;
     openScenario(sim);
-    // A ready-made city starts at its own size class, without the fanfare.
+    // A ready-made city starts at its own size class, without the fanfare, and its year's news from the city it opens as.
     this.world.city.classReached = CITY_CLASSES.reduce((acc, c, i) => (sim.stats.residents >= c.min ? i : acc), 0);
+    this.world.city.year = sim.newYear();
     this.mode = 'city';
     this.speed = 2;
     this.neverRun = false;
@@ -852,6 +864,11 @@ export class Game {
     this.speed = Math.max(0, Math.min(SPEEDS.length - 1, s));
     if (this.speed > 0) this.neverRun = false;
     this.ui.syncSpeed();
+    const paper = this.paperWaiting;
+    if (this.speed === 0 && paper) {
+      this.paperWaiting = null;
+      if (this.settings.paper && this.mode === 'city') this.ui.paper(paper);
+    }
   }
 
   /** A city founded here whose clock hasn't run yet: the Normal button is marked as the way to start it. */

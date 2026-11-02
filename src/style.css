@@ -493,6 +493,15 @@ input[type="range"] { width: 100%; accent-color: var(--sign-hi); margin: 0; touc
 #inspect .news-costs li { display: flex; justify-content: space-between; gap: 12px; }
 #inspect .news-p { margin: 8px 0 0; font-size: 13px; line-height: 1.4; }
 #inspect .news-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+/* The year-end paper: its name and date across the top, a headline, and how the city stands. */
+#inspect .masthead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 2px 10px; margin: 0 30px 8px 0; padding-bottom: 6px; border-bottom: 2px solid var(--line-2); }
+#inspect .paper-name { font-size: 11px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); min-width: 0; overflow-wrap: anywhere; }
+#inspect .paper-date { font: 600 11px var(--mono); color: var(--faint); white-space: nowrap; }
+#inspect.paper h3 { font-size: 18px; line-height: 1.25; padding-right: 0; }
+#inspect .also { margin-top: 0; color: var(--muted); }
+#inspect .paper-facts { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+#inspect .paper-facts dd { font-family: var(--font); }
+#inspect .closing { color: var(--muted); }
 /* On a road or track: who passes along it, and the switch that shows them on the map. */
 #inspect .who { margin: 10px 0 0; padding-top: 9px; border-top: 1px solid var(--line); font-size: 13px; line-height: 1.4; }
 #inspect #inWho { margin-top: 8px; }

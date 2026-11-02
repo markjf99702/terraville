@@ -2093,6 +2093,92 @@ await test('a year in debt in a row brings the broke card once a spell, counted 
   assert.ok(r.covers !== null && sim.projectTax(r.covers) >= r.spend && sim.projectTax(r.covers - 1) < r.spend, `${r.covers}%`);
 });
 
+await test("the year's paper leads with its biggest news, lists the rest, and says how the city stands", async () => {
+  const w = flat(60, 40);
+  const sim = new Sim(w);
+  w.city.name = 'Mapleford';
+  w.city.month = 49 * 12; // the end of 1948, its paper made at the start of 1949
+  const year = (set: (n: NonNullable<typeof w.city.year>) => void = () => {}) => {
+    w.city.year = sim.newYear();
+    set(w.city.year);
+    return sim.paper('1948 closes with a surplus of $3,535. Taxes brought in $13,907.');
+  };
+  const quiet = year();
+  assert.deepEqual([quiet.year, quiet.headline, quiet.also, quiet.change, quiet.broke], [1948, 'A quiet year in Mapleford', '', 0, null]);
+  // What struck is remembered as it happens.
+  sim.emit({ type: 'disaster', kind: 'fire', x: 1, y: 1 });
+  assert.deepEqual(w.city.year!.disasters, ['fire']);
+  const struck = year((n) => n.disasters.push('fire', 'flood', 'fire', 'earthquake'));
+  assert.equal(struck.headline, 'Earthquake shakes Mapleford');
+  assert.equal(struck.also, 'Also this year: a flood and two fires.');
+  // A new size class, a landmark opened and another upgraded, brownouts and debt.
+  const stadium = w.place('stadium', 40, 30);
+  const port = w.place('airport', 10, 30);
+  year((n) => {
+    n.cls = 0;
+    n.brownouts = 3;
+    n.landmarks = [[port.id, 1]];
+  });
+  w.city.classReached = 1;
+  w.setLevel(port, 2);
+  w.city.funds = -900;
+  const busy2 = sim.paper('');
+  assert.equal(busy2.headline, 'Mapleford is now a town');
+  assert.equal(busy2.also, 'Also this year: a new stadium, a jet terminal and brownouts.');
+  // A year and more in debt is the biggest news there is, with the broke card's ways out.
+  w.city.debtMonths = 14;
+  const broke = sim.paper('');
+  assert.equal(broke.headline, 'City hall is broke');
+  assert.equal(broke.broke?.months, 14);
+  assert.match(broke.also, /^Also this year: becoming a town, a new stadium and a jet terminal\.$/);
+  w.city.debtMonths = 3;
+  w.city.classReached = 0;
+  w.remove(stadium.id);
+  w.setLevel(port, 1);
+  const red = year((n) => (n.landmarks = [[port.id, 1]]));
+  assert.equal(red.headline, 'Mapleford ends 1948 in debt');
+  w.city.funds = 1000;
+  // Record growth: more new residents than any earlier year the history holds.
+  const h = w.city.history.res;
+  h.length = 0;
+  for (let m = 0; m < 37; m++) h.push(m < 13 ? m * 50 : m < 25 ? 600 + (m - 12) * 20 : 840 + (m - 24) * 10);
+  const grew = year((n) => (n.pop = sim.stats.residents - 900));
+  assert.equal(grew.headline, 'Record year: 900 new residents');
+  assert.equal(grew.change, 900);
+});
+
+await test("the year's news is kept with a save, starts again each year, and the paper comes at the year's end", async () => {
+  const g = seeded(3, () => town());
+  const sim: Sim = g.sim;
+  const city = g.world.city;
+  const papers: any[] = [];
+  g.ui.paper = (p: any) => papers.push(p);
+  g.settings.paper = true;
+  while (city.month % 12 !== 6) seeded(5, () => weeks(g, 4));
+  sim.emit({ type: 'disaster', kind: 'tornado', x: 1, y: 1 });
+  city.year!.brownouts = 2;
+  const back = await reopen(sim);
+  assert.deepEqual([back.world.city.year!.disasters, back.world.city.year!.brownouts], [['tornado'], 2]);
+  while (city.month % 12 !== 0) seeded(5, () => weeks(g, 4));
+  assert.equal(papers.length, 1);
+  assert.equal(papers[0].headline, `Tornado tears through ${city.name}`);
+  assert.equal(papers[0].also, 'Also this year: brownouts.');
+  assert.match(papers[0].closing, /^\d{4} closes with a (surplus|deficit) of \$[\d,]+\. Taxes brought in \$[\d,]+\.$/);
+  assert.deepEqual([city.year!.disasters, city.year!.brownouts, city.year!.pop], [[], 0, sim.stats.residents]);
+  // On Ultra a year passes in seconds: the paper waits for the clock to stop, the latest replacing the one before.
+  g.speed = 4;
+  seeded(5, () => weeks(g, 4 * 24));
+  assert.equal(papers.length, 1);
+  g.setSpeed(0);
+  assert.equal(papers.length, 2);
+  assert.equal(papers[1].year, 1900 + city.month / 12 - 1);
+  // Turned off in Settings: no paper.
+  g.settings.paper = false;
+  g.setSpeed(2);
+  seeded(5, () => weeks(g, 4 * 12));
+  assert.equal(papers.length, 2);
+});
+
 await test('on a device too slow for the speed, a frame runs one week of the clock and drops the rest', () => {
   const g = headless(flat());
   g.speed = 4; // Ultra: 14 weeks a second

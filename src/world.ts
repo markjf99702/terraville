@@ -42,6 +42,19 @@ export interface History {
   expense: number[];
 }
 
+/** What a year has brought so far, for the paper at its end: kept with the city, so a save made mid-year keeps it. */
+export interface YearNews {
+  /** Residents, and the size class reached, as the year began. */
+  pop: number;
+  cls: number;
+  /** The disasters that struck, by kind, in order. */
+  disasters: string[];
+  /** Month ends with a grid short of power. */
+  brownouts: number;
+  /** The stadiums, seaports and airports standing as the year began, by id, with their levels. */
+  landmarks: [number, number][];
+}
+
 export interface CityState {
   /** Stays the same for the life of a city, across saves and devices. */
   id?: string;
@@ -62,6 +75,8 @@ export interface CityState {
   approval: number;
   /** Month ends in a row the city has closed in debt: at 12 a card says why, and the ways out. */
   debtMonths: number;
+  /** The year's news so far; set when the city first runs. */
+  year?: YearNews;
   /**
    * Set when the city is a challenge: which one, the deadline month, and the outcome once decided, with the month it
    * was decided and whether the goal tracker has been closed since. For a goal that must hold to the end, also how many
@@ -129,6 +144,16 @@ function cleanCity(raw: unknown): CityState {
     approval: num(s.approval, 50, 0, 100),
     debtMonths: Math.floor(num(s.debtMonths, 0, 0)),
   };
+  const y = record(s.year);
+  if (Array.isArray(y.disasters) && Array.isArray(y.landmarks)) {
+    city.year = {
+      pop: Math.floor(num(y.pop, 0, 0)),
+      cls: Math.floor(num(y.cls, 0, 0)),
+      disasters: y.disasters.filter((k): k is string => typeof k === 'string').slice(-YEAR_DISASTERS),
+      brownouts: Math.floor(num(y.brownouts, 0, 0, 12)),
+      landmarks: y.landmarks.filter((l): l is [number, number] => Array.isArray(l) && l.length === 2 && l.every((v) => Number.isFinite(v))).map(([id, level]) => [Math.floor(id), Math.floor(level)]),
+    };
+  } else delete city.year;
   // Only the plain ids Terraville makes; a city without one gets a new id when it opens.
   if (typeof s.id !== 'string' || !/^[a-z0-9]{1,24}$/.test(s.id)) delete city.id;
   const sc = record(s.scenario);
@@ -140,6 +165,9 @@ function cleanCity(raw: unknown): CityState {
   } else delete city.scenario;
   return city;
 }
+
+/** The most disasters a year's news keeps. */
+export const YEAR_DISASTERS = 30;
 
 function record(v: unknown): Record<string, unknown> {
   return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};

@@ -222,7 +222,8 @@ function sections(): Section[] {
       id: 'classes',
       title: 'City sizes and score',
       html: `${table(['Class', 'Residents'], CITY_CLASSES.map((c) => [c.name, c.min ? `${num(c.min)}+` : 'under 2,000']), [1])}
-        <p>The city report scores the city out of 1,000. The mayor’s approval weighs most, 7 points for each percent, up to 700. Each size class past ${CITY_CLASSES[0].name} adds 50, up to ${(CITY_CLASSES.length - 1) * 50} for a ${CITY_CLASSES[CITY_CLASSES.length - 1].name.toLowerCase()}, and land value adds up to 50. The History charts show the approval behind it.</p>`,
+        <p>The city report scores the city out of 1,000. The mayor’s approval weighs most, 7 points for each percent, up to 700. Each size class past ${CITY_CLASSES[0].name} adds 50, up to ${(CITY_CLASSES.length - 1) * 50} for a ${CITY_CLASSES[CITY_CLASSES.length - 1].name.toLowerCase()}, and land value adds up to 50. The History charts show the approval behind it.</p>
+        <p>At the end of each year the city’s paper comes out: the year’s biggest news as its headline (a year in debt, a disaster, a new size class, a landmark, record growth, brownouts), residents and the change on the year before, the top worry, approval, and the year’s surplus or deficit. On Ultra it waits until you pause, and Settings turns it off.</p>`,
     },
   ];
 }

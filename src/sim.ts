@@ -3,13 +3,17 @@
 // map passes (traffic, pollution, crime, land value) run at month end.
 import {
   BUILDINGS, DIFFICULTIES, DISASTER_POP, DOES, Kind, LANDMARK_LETS, LANDMARK_LIMITS, NET_UPKEEP, POWER, RAIL, ROAD, STATION_POP,
-  UPGRADE_LV, ZONE_LV_GATE, ZONE_POP, buildingName, cityClass, CITY_CLASSES, dateLabel, isZone, num, toIndex, upkeepOf,
+  START_YEAR, UPGRADE_LV, ZONE_LV_GATE, ZONE_POP, article, buildingName, cityClass, CITY_CLASSES, dateLabel, isZone, num, toIndex, upkeepOf,
 } from './defs';
+
 import { MinHeap } from './heap';
 import { clamp } from './rng';
 import { shoreDistance } from './terrain';
-import { Building, READOUT_NUMBERS, SAVED_MESSAGES, SavedReadouts, SavedRun, World } from './world';
+import { Building, READOUT_NUMBERS, SAVED_MESSAGES, SavedReadouts, SavedRun, World, YEAR_DISASTERS, YearNews } from './world';
 import { Disasters } from './disasters';
+
+/** The landmarks the year-end paper reports opening and upgrading. */
+const LANDMARKS: Kind[] = ['stadium', 'seaport', 'airport'];
 
 export type MessageKind = 'info' | 'good' | 'warn' | 'alert';
 
@@ -73,6 +77,29 @@ export interface BrokeReport {
   loanRoom: number;
 }
 
+/** The year-end paper: the year's biggest news as its headline, and how the city stands (see Sim.paper). */
+export interface Paper {
+  /** The year that closed. */
+  year: number;
+  headline: string;
+  /** The rest of the year's news, briefly ('Also this year: two fires and a flood.'), or empty. */
+  also: string;
+  /** When the headline is a year and more in debt: why, and the ways out. */
+  broke: BrokeReport | null;
+  residents: number;
+  /** Residents gained (or lost) since the year began. */
+  change: number;
+  /** The city report's top worry, with how bad it is (0-100). */
+  worry: { label: string; value: number } | null;
+  approval: number;
+  /** The year's surplus or deficit, as the news ticker says it. */
+  closing: string;
+}
+
+const COUNT_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
+const countWord = (n: number) => COUNT_WORDS[n] ?? num(n);
+const capital = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+
 /** Everything a budget spends. */
 export function spending(b: Budget): number {
   return b.transport + b.police + b.fire + b.services + b.landmarks + b.power + b.interest;
@@ -124,6 +151,7 @@ export type SimEvent =
   | { type: 'year'; surplus: boolean }
   | { type: 'class'; text: string }
   | { type: 'broke' }
+  | { type: 'paper'; paper: Paper }
   | { type: 'grow'; b: Building }
   | { type: 'destroyed'; x: number; y: number; kind: Kind }
   | { type: 'disaster'; kind: string; x: number; y: number };
@@ -205,6 +233,8 @@ export class Sim {
     this.tally();
     this.lastPop = this.stats.residents;
     if (run) this.resume(run);
+    // A city opening for the first time starts its year's news as it stands.
+    world.city.year ??= this.newYear();
   }
 
   /** What a save keeps of the running simulation, beyond the map and the city. */
@@ -262,7 +292,86 @@ export class Sim {
   }
 
   emit(e: SimEvent): void {
+    // The year's paper remembers what struck.
+    const news = this.world.city.year;
+    if (e.type === 'disaster' && news) {
+      news.disasters.push(e.kind);
+      if (news.disasters.length > YEAR_DISASTERS) news.disasters.shift();
+    }
     for (const l of this.listeners) l(e);
+  }
+
+  /** The year's news as it begins: residents, size class and landmarks, and nothing struck yet. */
+  newYear(): YearNews {
+    const landmarks: [number, number][] = [];
+    for (const b of this.world.buildings.values()) if (LANDMARKS.includes(b.kind)) landmarks.push([b.id, b.level]);
+    return { pop: this.stats.residents, cls: this.world.city.classReached, disasters: [], brownouts: 0, landmarks };
+  }
+
+  /**
+   * The year-end paper for the year just closed, from the year's news: its biggest story as the headline (a year in
+   * debt, a disaster, a new size class, a landmark, record growth, brownouts, debt, or how the city grew), the rest
+   * in a line, and how the city stands.
+   */
+  paper(closing: string): Paper {
+    const world = this.world;
+    const city = world.city;
+    const s = this.stats;
+    const news = city.year ?? this.newYear();
+    const name = city.name;
+    const year = START_YEAR + Math.floor(city.month / 12) - 1;
+    const change = s.residents - news.pop;
+    const items: { p: number; head: string; also: string }[] = [];
+    const struck = new Map<string, number>();
+    for (const k of news.disasters) struck.set(k, (struck.get(k) ?? 0) + 1);
+    const n = (k: string) => struck.get(k) ?? 0;
+    const broke = city.debtMonths >= BROKE_MONTHS;
+    if (broke) items.push({ p: 100, head: 'City hall is broke', also: '' });
+    if (n('meltdown')) items.push({ p: 90, head: 'Meltdown at the nuclear plant', also: 'a meltdown' });
+    if (n('earthquake')) items.push({ p: 85, head: `Earthquake shakes ${name}`, also: n('earthquake') > 1 ? `${countWord(n('earthquake'))} earthquakes` : 'an earthquake' });
+    if (city.classReached > news.cls) {
+      const cls = CITY_CLASSES[city.classReached].name.toLowerCase();
+      items.push({ p: 80, head: `${name} is now ${article(cls)} ${cls}`, also: `becoming ${article(cls)} ${cls}` });
+    }
+    if (n('monster')) items.push({ p: 75, head: 'A monster comes ashore', also: n('monster') > 1 ? `${countWord(n('monster'))} monsters` : 'a monster' });
+    if (n('tornado')) items.push({ p: 70, head: `Tornado tears through ${name}`, also: n('tornado') > 1 ? `${countWord(n('tornado'))} tornadoes` : 'a tornado' });
+    if (n('flood')) items.push({ p: 65, head: 'Flooding along the shore', also: n('flood') > 1 ? `${countWord(n('flood'))} floods` : 'a flood' });
+    const was = new Map(news.landmarks);
+    for (const b of world.buildings.values()) {
+      if (!LANDMARKS.includes(b.kind)) continue;
+      const base = BUILDINGS[b.kind].name.toLowerCase();
+      const before = was.get(b.id);
+      if (before === undefined) items.push({ p: 60, head: `${name} opens its ${base}`, also: `a new ${base}` });
+      else if (b.level > before) {
+        const now = buildingName(b).toLowerCase();
+        items.push({ p: 55, head: `${name}’s ${base} is now ${article(now)} ${now}`, also: `${article(now)} ${now}` });
+      }
+    }
+    // Record growth: more new residents than in any earlier year the history holds, and at least one to compare with.
+    const res = city.history.res;
+    let best = -Infinity;
+    for (let k = 1; res.length - 1 - 12 * (k + 1) >= 0; k++) best = Math.max(best, res[res.length - 1 - 12 * k] - res[res.length - 1 - 12 * (k + 1)]);
+    if (change >= 100 && best > -Infinity && change > best) items.push({ p: 50, head: `Record year: ${num(change)} new residents`, also: 'record growth' });
+    if (n('fire')) items.push({ p: 45, head: n('fire') > 1 ? `${capital(countWord(n('fire')))} fires in ${name}` : `Fire in ${name}`, also: n('fire') > 1 ? `${countWord(n('fire'))} fires` : 'a fire' });
+    if (news.brownouts) items.push({ p: 40, head: `Brownouts in ${name}`, also: 'brownouts' });
+    if (city.funds < 0 && !broke) items.push({ p: 35, head: `${name} ends ${year} in debt`, also: 'debt' });
+    items.sort((a, b) => b.p - a.p);
+    const top = items.shift();
+    const head = top?.head ?? (change > 0 ? `${name} grows by ${num(change)}` : change < 0 ? `${name} loses ${num(-change)} residents` : `A quiet year in ${name}`);
+    const rest = items.slice(0, 3).map((i) => i.also);
+    const also = rest.length ? `Also this year: ${rest.length > 1 ? `${rest.slice(0, -1).join(', ')} and ${rest[rest.length - 1]}` : rest[0]}.` : '';
+    const worry = s.problems[0];
+    return {
+      year,
+      headline: head,
+      also,
+      broke: broke ? this.brokeReport() : null,
+      residents: s.residents,
+      change,
+      worry: worry ? { label: worry.label, value: worry.value } : null,
+      approval: Math.round(s.approval),
+      closing,
+    };
   }
 
   private blankStats(): Stats {
@@ -330,6 +439,7 @@ export class Sim {
     this.evaluate();
     this.advise();
     this.record();
+    if (this.stats.gridsShort > 0 && city.year) city.year.brownouts = Math.min(12, city.year.brownouts + 1);
     this.disasters.month();
     city.month++;
     this.emit({ type: 'month' });
@@ -347,9 +457,13 @@ export class Sim {
     const yb = this.stats.yearBudget;
     const net = yb.taxIncome - spending(yb);
     const year = 1900 + Math.floor(world.city.month / 12) - 1;
-    this.say('year', `${year} closes ${net >= 0 ? 'with a surplus of' : 'with a deficit of'} $${num(Math.abs(net))}. Taxes brought in $${num(yb.taxIncome)}.`, net >= 0 ? 'good' : 'warn', undefined, 0);
+    const closing = `${year} closes ${net >= 0 ? 'with a surplus of' : 'with a deficit of'} $${num(Math.abs(net))}. Taxes brought in $${num(yb.taxIncome)}.`;
+    this.say('year', closing, net >= 0 ? 'good' : 'warn', undefined, 0);
     this.stats.yearBudget = emptyBudget();
     this.emit({ type: 'year', surplus: net >= 0 });
+    const paper = this.paper(closing);
+    world.city.year = this.newYear();
+    this.emit({ type: 'paper', paper });
   }
 
   // ---- power --------------------------------------------------------------

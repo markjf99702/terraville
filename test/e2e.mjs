@@ -2388,13 +2388,13 @@ try {
       return page.$$eval('.modal [data-set]', (s) => Object.fromEntries(s.map((x) => [x.dataset.set, x.checked])));
     };
     const was = await settings();
-    assert.deepEqual(was, { sound: true, traffic: true, night: true, grid: false, contours: false, autosave: true });
-    for (const k of ['sound', 'night', 'grid', 'contours']) await page.click(`.modal label:has([data-set="${k}"])`);
+    assert.deepEqual(was, { sound: true, traffic: true, night: true, grid: false, contours: false, autosave: true, paper: true });
+    for (const k of ['sound', 'night', 'grid', 'contours', 'paper']) await page.click(`.modal label:has([data-set="${k}"])`);
     await page.keyboard.press('Escape');
     await page.reload();
     await titleUp(page);
     await found(page);
-    assert.deepEqual(await settings(), { sound: false, traffic: true, night: false, grid: true, contours: true, autosave: true });
+    assert.deepEqual(await settings(), { sound: false, traffic: true, night: false, grid: true, contours: true, autosave: true, paper: false });
     assert.deepEqual(await page.evaluate(() => { const r = window.__terraville.renderer; return [r.grid, r.contours, r.nightCycle]; }), [true, true, false], 'and the map follows them');
     assert.deepEqual(problems, []);
     await ctx.close();
@@ -3450,6 +3450,8 @@ try {
     await page.tap('#inspect .close');
     assert.equal(await page.textContent('#inspect h3'), 'City hall is broke');
     assert.equal(await page.getByRole('region', { name: 'City hall is broke' }).count(), 1);
+    // With the year-end paper on, as it starts, it comes as the paper's extra edition.
+    assert.match(await page.textContent('#inspect .masthead'), /^The .+ CourierExtra · [A-Z][a-z]{2} \d{4}$/);
     const text = await page.textContent('#inspect');
     assert.match(text, /has been in debt for a year, and owes \$2,\d{3}\. Nothing new can be built until it is out\./);
     assert.match(text, /Its biggest costs each month/);
@@ -3474,6 +3476,43 @@ try {
     await page.tap('#inspect .news-btns button:has-text("Bulldoze")');
     assert.equal(await page.evaluate(() => window.__terraville.toolId), 'bulldoze');
     assert.equal(await page.isHidden('#inspect'), true);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  await test("on a phone the year-end paper leads with the year's news, and Settings turns it off", async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await found(page);
+    const yearEnd = () => page.evaluate(() => {
+      const g = window.__terraville;
+      g.setSpeed(0);
+      do { for (let k = 0; k < 4; k++) g.sim.step(); } while (g.world.city.month % 12);
+    });
+    const name = await page.evaluate(() => {
+      const g = window.__terraville;
+      g.sim.emit({ type: 'disaster', kind: 'tornado', x: 5, y: 5 });
+      return g.world.city.name;
+    });
+    await yearEnd();
+    assert.equal(await page.textContent('#inspect .masthead'), `The ${name} Courier1900`);
+    assert.equal(await page.textContent('#inspect h3'), `Tornado tears through ${name}`);
+    assert.deepEqual(await page.$$eval('#inspect .paper-facts dt', (d) => d.map((x) => x.textContent)), ['Residents', 'Top worry', 'Approval']);
+    assert.match(await page.textContent('#inspect .closing'), /^1900 closes with a (surplus|deficit) of \$[\d,]+\. Taxes brought in \$[\d,]+\.$/);
+    const card = await page.locator('#inspect').boundingBox();
+    const tools = await page.locator('#toolbox').boundingBox();
+    assert.ok(card.x >= 0 && card.x + card.width <= 390 && card.y + card.height <= tools.y, 'on the screen, above the tools');
+    await page.tap('#inspect .close');
+    assert.equal(await page.isHidden('#inspect'), true);
+    // Off in Settings: the next year closes with its line in the ticker only.
+    await page.tap('#topbar [data-act="menu"]');
+    await page.tap('.dropdown button:has-text("Settings")');
+    await page.tap('label.switch:has-text("Year-end paper")');
+    await page.tap('.modal footer .btn.primary');
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('terraville.settings')).paper), false);
+    await yearEnd();
+    assert.equal(await page.isHidden('#inspect'), true);
+    assert.match(await page.textContent('#ticker'), /1901 closes with/);
     assert.deepEqual(problems, []);
     await ctx.close();
   });

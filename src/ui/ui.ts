@@ -12,7 +12,7 @@ import { randomSeedName } from '../rng';
 import { DRIVE_HOME, DriveCopy } from '../drive';
 import { SaveFile, SlotMeta, challengeWins, decode, deleteSlot, encode, listSlots, loadSlot, storageAvailable } from '../save';
 import { LOAN_LIMIT, passingSentence, spending } from '../sim';
-import type { Message, Passing } from '../sim';
+import type { BrokeReport, Message, Paper, Passing } from '../sim';
 import { STYLE_NAMES, TerrainParams, TerrainStyle, hasSea } from '../terrain';
 import { GoalRow, GoalState, SCENARIOS, Scenario, isCount, lastYear, successLine } from '../scenarios';
 import { World } from '../world';
@@ -1760,10 +1760,10 @@ export class UI {
    * running: the title, the body, and buttons that close it as they act. While the Inspect card is open it waits for it
    * to be closed; news already showing is replaced.
    */
-  private showNews(title: string, body: string, buttons: { label: string; primary?: boolean; act: () => void }[] = [], cls = ''): void {
+  private showNews(title: string, body: string, buttons: { label: string; primary?: boolean; act: () => void }[] = [], cls = '', head = ''): void {
     const card = $(this.root, '#inspect');
     if (!card.hidden && !this.newsShown) {
-      this.newsWaiting = () => this.showNews(title, body, buttons, cls);
+      this.newsWaiting = () => this.showNews(title, body, buttons, cls, head);
       return;
     }
     this.newsWaiting = null;
@@ -1772,7 +1772,7 @@ export class UI {
     this.game.renderer.selected = null;
     this.newsShown = true;
     card.className = `panel news ${cls}`.trim();
-    card.innerHTML = `<button class="iconbtn close" aria-label="Close">${ICONS.close}</button><h3 id="inspectTitle">${title}</h3>${body}${buttons.length ? '<div class="news-btns"></div>' : ''}`;
+    card.innerHTML = `<button class="iconbtn close" aria-label="Close">${ICONS.close}</button>${head}<h3 id="inspectTitle">${title}</h3>${body}${buttons.length ? '<div class="news-btns"></div>' : ''}`;
     $(card, '.close').onclick = () => this.hideInspect(true);
     const row = card.querySelector('.news-btns');
     for (const b of buttons) {
@@ -1796,8 +1796,16 @@ export class UI {
   broke(): void {
     const sim = this.game.sim;
     if (!sim) return;
-    const r = sim.brokeReport();
     const city = this.game.world.city;
+    const r = sim.brokeReport();
+    const intro = `<p class="does">${esc(city.name)} has been in debt for a year, and owes <span class="num">${money(r.owed)}</span>. Nothing new can be built until it is out.</p>`;
+    // With the paper on, it is the paper's news: an extra edition.
+    const head = this.game.settings.paper ? this.masthead(`Extra${SEP}${dateLabel(city.month)}`) : '';
+    this.showNews('City hall is broke', intro + this.brokeBody(r), this.brokeButtons(), head ? 'paper broke' : 'broke', head);
+  }
+
+  /** The broke card's body: the biggest costs, the tax that would cover them, the loan room, and bulldozing. */
+  private brokeBody(r: BrokeReport): string {
     const m = (n: number) => `<span class="num">${money(n)}</span>`;
     const costs = r.costs.map((c) => `<li><span>${esc(c.label)}</span>${m(c.amount)}</li>`).join('');
     const net = r.income - r.spend;
@@ -1809,16 +1817,45 @@ export class UI {
     const loan = r.loanRoom >= 10000
       ? `The Budget can still lend ${m(r.loanRoom)}, at 7% a year.`
       : `The city has borrowed all it can, ${m(LOAN_LIMIT)}.`;
-    this.showNews('City hall is broke', `
-      <p class="does">${esc(city.name)} has been in debt for a year, and owes ${m(r.owed)}. Nothing new can be built until it is out.</p>
+    return `
       <p class="news-h">Its biggest costs each month</p>
       <ul class="news-costs">${costs}</ul>
       <p class="news-p">${tax}</p>
       <p class="news-p">${loan}</p>
-      <p class="news-p">Bulldozing still works in debt, at $1 a tile: clearing what the city can't run cuts its costs.</p>`, [
+      <p class="news-p">Bulldozing still works in debt, at $1 a tile: clearing what the city can't run cuts its costs.</p>`;
+  }
+
+  private brokeButtons(): { label: string; primary?: boolean; act: () => void }[] {
+    return [
       { label: 'Open the Budget', primary: true, act: () => this.openBudget() },
       { label: 'Bulldoze', act: () => this.game.setTool('bulldoze') },
-    ], 'broke');
+    ];
+  }
+
+  /** The paper's name across the top of its card, and its date. */
+  private masthead(date: string): string {
+    return `<div class="masthead"><span class="paper-name">The ${esc(this.game.world.city.name)} Courier</span><span class="paper-date">${date}</span></div>`;
+  }
+
+  /**
+   * The year-end paper: the year's biggest news as its headline, the rest in a line, residents and the change on last
+   * year, the top worry, approval, and the year's surplus or deficit. A year and more in debt is its headline, with the
+   * broke card's ways out.
+   */
+  paper(p: Paper): void {
+    if (this.game.mode !== 'city') return;
+    const change = p.change > 0 ? `, up ${num(p.change)}` : p.change < 0 ? `, down ${num(-p.change)}` : '';
+    const worry = p.worry && worryWord(p.worry.value) !== 'Fine' ? `${p.worry.label}, ${worryWord(p.worry.value).toLowerCase()}` : 'Nothing much';
+    const facts = `<dl class="paper-facts">
+      <dt>Residents</dt><dd>${num(p.residents)}${change}</dd>
+      <dt>Top worry</dt><dd>${esc(worry)}</dd>
+      <dt>Approval</dt><dd>${p.approval}%</dd>
+    </dl>`;
+    const lead = p.broke
+      ? `<p class="does">${esc(this.game.world.city.name)} has been in debt for ${p.broke.months} months, and owes <span class="num">${money(p.broke.owed)}</span>. Nothing new can be built until it is out.</p>`
+      : '';
+    const body = `${lead}${p.also ? `<p class="news-p also">${esc(p.also)}</p>` : ''}${facts}<p class="news-p closing">${esc(p.closing)}</p>${p.broke ? this.brokeBody(p.broke) : ''}`;
+    this.showNews(esc(p.headline), body, p.broke ? this.brokeButtons() : [], p.broke ? 'paper broke' : 'paper', this.masthead(String(p.year)));
   }
 
   /** Whether the starter checklist is on screen. */
@@ -3118,6 +3155,7 @@ export class UI {
         ${sw('grid', 'Tile grid', 'Faint lines between tiles when zoomed in.')}
         ${sw('contours', 'Contour lines in the city', 'Always on in the terrain editor.')}
         ${sw('autosave', 'Autosave', 'Every 90 seconds, at the end of each year, and when you leave the page. Each city keeps its own save.')}
+        ${sw('paper', 'Year-end paper', 'A front page at the end of each year, with the year’s biggest news. On Ultra it waits until you pause.')}
       </div>
       <div>
         ${touchScreen() ? touchHelp(g.mode === 'city') : ''}
