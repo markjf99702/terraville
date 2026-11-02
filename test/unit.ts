@@ -2173,6 +2173,32 @@ await test('a high tide under way keeps coming in after a reload, and ends as a 
   assert.equal(sim.saveRun().floodTide, false);
 }));
 
+await test('no other flood starts while a high tide is in: a random one waits, and one set off from the menu says so', () => seeded(6, () => {
+  const w = tideCoast();
+  Object.assign(w.city, { disasters: true, difficulty: 'medium' });
+  const sim = new Sim(w);
+  sim.disasters.tide(3);
+  sim.step();
+  // A month whose roll is a flood, in a town big enough for disasters.
+  sim.stats.residents = 6000;
+  const random = Math.random;
+  let roll = true;
+  Math.random = () => (roll ? ((roll = false), 0.063) : random());
+  try {
+    sim.disasters.month();
+  } finally {
+    Math.random = random;
+  }
+  assert.equal(roll, false);
+  assert.equal(sim.saveRun().floodTide, true, 'still a tide');
+  assert.ok(!sim.messages.some((m) => m.text === 'Flooding along the shore!'));
+  sim.disasters.trigger('flood');
+  assert.equal(sim.messages.at(-1)!.text, 'The high tide is in. Another flood can wait until it goes out.');
+  for (let k = 0; k < 12; k++) sim.step();
+  assert.deepEqual(houses(w), [29]);
+  assert.equal(tideNews(sim).at(-1), 'The tide has gone out. It washed away 3 buildings.');
+}));
+
 await test('undo refunds only within three months of the action, however often it was undone and redone since', () => seeded(42, () => {
   const g = town();
   drag(g, 'nuclear', 52, 20);

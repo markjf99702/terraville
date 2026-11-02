@@ -137,9 +137,11 @@ export class Disasters {
     if (pop < DISASTER_POP) return;
     const r = Math.random();
     // Rough monthly odds; fire is by far the most common.
+    // A flood waits while a high tide is in, which it would otherwise take over as a flood of its own.
     if (r < 0.06 * f) this.randomFire(false);
-    else if (r < 0.06 * f + 0.006 * f) this.trigger('flood');
-    else if (r < 0.066 * f + 0.004 * f) this.trigger('tornado');
+    else if (r < 0.06 * f + 0.006 * f) {
+      if (!this.floodTide) this.trigger('flood');
+    } else if (r < 0.066 * f + 0.004 * f) this.trigger('tornado');
     else if (r < 0.07 * f + 0.0025 * f) this.trigger('earthquake');
     else if (r < 0.0725 * f + 0.002 * f && this.sim.stats.avgPollution > 60) this.trigger('monster');
     // Each plant: about 11%, 21% and 32% over 50 years on Easy, Medium and Hard. Rarely, as the toolbox says.
@@ -498,6 +500,10 @@ export class Disasters {
   private startFlood(): void {
     const world = this.world;
     const { w, h } = world;
+    if (this.floodTide) {
+      this.say('noflood', 'The high tide is in. Another flood can wait until it goes out.', 'info', undefined, 0);
+      return;
+    }
     const shore: number[] = [];
     for (let y = 1; y < h - 1; y++) {
       for (let x = 1; x < w - 1; x++) {
