@@ -57,6 +57,19 @@ function difficultyNote(d: Difficulty): string {
   return text[0].toUpperCase() + text.slice(1);
 }
 
+/** A phone or tablet with no mouse: key letters and mouse moves mean nothing there (the style sheet asks the same). */
+function touchScreen(): boolean {
+  return matchMedia('(hover: none) and (pointer: coarse)').matches;
+}
+
+/** How the map works by touch, in Settings. */
+const TOUCH_HELP = `<h3 class="touch-h">Touch</h3>
+  <dl class="kv touch-help">
+    <dt>One finger</dt><dd>Use the tool (with Inspect, move the map)</dd>
+    <dt>Two fingers</dt><dd>Pinch to zoom, drag to move the map</dd>
+    <dt>Bulldoze</dt><dd>Pick the bulldozer and drag over what to clear</dd>
+  </dl>`;
+
 /** The second press that confirms a purchase or a deletion: a click with a mouse, a tap on a touch screen. */
 function again(): string {
   return matchMedia('(pointer: fine)').matches ? 'Click again' : 'Tap again';
@@ -651,8 +664,9 @@ export class UI {
     this.tipOwner = b;
     const tip = $(this.root, '#tooltip');
     const cost = t.cost ? `<span class="cost">${t.kind === 'line' || t.id === 'bulldoze' || t.id === 'trees' || t.id === 'park' ? `$${t.cost} a tile` : money(t.cost)}${t.building && BUILDINGS[t.building].upkeep ? ` · ${money(BUILDINGS[t.building].upkeep)}/mo upkeep` : ''}</span>` : '';
-    const zoneTip = t.building && isZone(t.building) ? `<p>${esc(BUILDINGS[t.building].blurb)} Drag to zone several 3×3 lots.</p>` : `<p>${esc(t.tip)}</p>`;
-    tip.innerHTML = `<b>${esc(t.name)}${t.key ? ` <kbd>${t.key.toUpperCase()}</kbd>` : ''}</b>${cost}${zoneTip}`;
+    const touch = touchScreen();
+    const zoneTip = t.building && isZone(t.building) ? `<p>${esc(BUILDINGS[t.building].blurb)} Drag to zone several 3×3 lots.</p>` : `<p>${esc((touch && t.touchTip) || t.tip)}</p>`;
+    tip.innerHTML = `<b>${esc(t.name)}${t.key && !touch ? ` <kbd>${t.key.toUpperCase()}</kbd>` : ''}</b>${cost}${zoneTip}`;
     tip.hidden = false;
     const r = b.getBoundingClientRect();
     const narrow = window.innerWidth <= 820;
@@ -938,7 +952,7 @@ export class UI {
     if (this.game.mode === 'city' && drive.status() === 'error') add('cloud', 'Saving to Drive failed: try again', () => void this.retryDrive());
     add('file', this.game.mode === 'city' ? 'Save, open and share' : 'Save, open and share terrain', () => this.openFiles());
     add('book', 'Strategy guide', () => this.openGuide());
-    add('settings', 'Settings and keys', () => this.openSettings());
+    add('settings', touchScreen() ? 'Settings and touch' : 'Settings and keys', () => this.openSettings());
     if (this.game.mode === 'city') add('guide', 'Show the starter checklist', () => {
       this.guideDismissed = false;
       this.updateGuide(true);
@@ -2048,6 +2062,7 @@ export class UI {
         ${sw('autosave', 'Autosave', 'Every 90 seconds, at the end of each year, and when you leave the page. Each city keeps its own save.')}
       </div>
       <div>
+        ${touchScreen() ? TOUCH_HELP : ''}
         <h3>Keys</h3>
         <div class="keys">
           <kbd>Space</kbd><span>Pause or resume</span>
@@ -2064,7 +2079,8 @@ export class UI {
           <kbd>Ctrl Z</kbd><span>Undo</span>
           <kbd>Esc</kbd><span>Cancel or close</span>
         </div>
-        <p class="note" style="margin-top:12px">Right-drag, middle-drag or Space-drag moves the map with any tool. On touch, pinch to zoom and use two fingers to move.</p>
+        <p class="note" style="margin-top:12px">Right-drag, middle-drag or Space-drag moves the map with any tool.</p>
+        ${touchScreen() ? '' : TOUCH_HELP}
       </div>
     </div>`);
     body.addEventListener('change', (e) => {

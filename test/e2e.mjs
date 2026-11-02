@@ -947,6 +947,22 @@ try {
     await ctx.close();
   });
 
+  await test('a touch screen gets touch help: no key letters, no right-click in the tips, and a Touch list in Settings', async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await found(page);
+    assert.deepEqual(await page.$$eval('.tool .key', (k) => k.filter((x) => getComputedStyle(x).display !== 'none').length), 0, 'no key letters on the tools');
+    await page.tap('[data-tool="bulldoze"]');
+    const tip = await page.textContent('#tooltip');
+    assert.doesNotMatch(tip, /right-click|Shift/);
+    assert.match(tip, /^Bulldoze\$1 a tileDrag to clear buildings/);
+    await page.click('[data-act="menu"]');
+    await page.click('.dropdown button:has-text("Settings and touch")');
+    assert.match(await page.textContent('.modal .touch-help'), /One finger.*Two fingers.*Pinch to zoom.*Bulldoze.*Pick the bulldozer/s);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('on a phone, Inspect takes the bottom slot from the map layer card and the news log', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

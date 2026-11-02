@@ -132,11 +132,13 @@ export interface ToolDef {
   cost?: number;
   group: string;
   tip: string;
+  /** The tip on a touch screen, where it differs: no right-click, Shift or hover there. */
+  touchTip?: string;
 }
 
 export const CITY_TOOLS: ToolDef[] = [
-  { id: 'query', name: 'Inspect', kind: 'click', key: 'q', group: 'look', tip: 'Click a tile to see what is there.' },
-  { id: 'bulldoze', name: 'Bulldoze', kind: 'rect', key: 'b', cost: BULLDOZE_COST, group: 'look', tip: 'Drag to clear buildings, roads, trees and rubble. $1 a tile. With any tool, right-click something to bulldoze it, or Shift-drag to clear an area. It does not flatten hills: use Level land for that.' },
+  { id: 'query', name: 'Inspect', kind: 'click', key: 'q', group: 'look', tip: 'Click a tile to see what is there.', touchTip: 'Tap a tile to see what is there. Drag to move the map.' },
+  { id: 'bulldoze', name: 'Bulldoze', kind: 'rect', key: 'b', cost: BULLDOZE_COST, group: 'look', tip: 'Drag to clear buildings, roads, trees and rubble. $1 a tile. With any tool, right-click something to bulldoze it, or Shift-drag to clear an area. It does not flatten hills: use Level land for that.', touchTip: 'Drag to clear buildings, roads, trees and rubble. $1 a tile. It does not flatten hills: use Level land for that.' },
   { id: 'road', name: 'Road', kind: 'line', key: 'r', net: ROAD, cost: NET_COST.road, group: 'move', tip: 'Drag to lay road. Over water it becomes a bridge.' },
   { id: 'rail', name: 'Rail', kind: 'line', key: 't', net: RAIL, cost: NET_COST.rail, group: 'move', tip: 'Drag to lay track. Trips by rail add no car traffic.' },
   { id: 'power', name: 'Power line', kind: 'line', key: 'p', net: POWER, cost: NET_COST.power, group: 'move', tip: 'Carries power. Zones also pass power to neighbours.' },

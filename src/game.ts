@@ -80,9 +80,9 @@ type TabNote =
 /** How long opening a city waits for the tab playing it to save and stop, should that tab not answer. */
 const HANDOVER_WAIT = 2000; // ms
 
-/** The terrain editor's opening toast. On a phone the brushes are along the bottom. */
+/** The terrain editor's opening toast. On a phone the brushes are along the bottom, and a touch screen has no wheel. */
 const EDITOR_HINT = () =>
-  `Drag to move the map, scroll or pinch to zoom. Pick a brush ${window.innerWidth <= 820 ? 'below' : 'on the left'} to shape the land.`;
+  `Drag to move the map, ${matchMedia('(hover: none) and (pointer: coarse)').matches ? 'pinch' : 'scroll or pinch'} to zoom. Pick a brush ${window.innerWidth <= 820 ? 'below' : 'on the left'} to shape the land.`;
 
 function fmtMoney(n: number): string {
   return '$' + Math.round(n).toLocaleString();
