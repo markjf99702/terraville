@@ -1167,6 +1167,10 @@ export class Game {
   }
 
   private dropSpring(tx: number, ty: number): void {
+    if (this.world.water[ty * this.world.w + tx]) {
+      this.ui.toast('Springs go on dry land. Pick a spot above the water.', 'warn');
+      return;
+    }
     this.pushUndo();
     const n = addSpring(this.world, tx, ty);
     if (n) {

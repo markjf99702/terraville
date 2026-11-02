@@ -457,6 +457,9 @@ input[type="range"] { width: 100%; accent-color: var(--sign-hi); margin: 0; }
   gap: 12px;
 }
 #editorPanel h2 { margin: 0; font-size: 12px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+/* Folded on a phone, the heading is a button the height of a finger, and nothing else of the panel shows. */
+#editorPanel .ed-head { display: flex; align-items: center; justify-content: space-between; width: calc(100% + 28px); min-height: 44px; margin: -12px -14px; padding: 0 14px; border: none; background: none; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; text-align: left; }
+#editorPanel.collapsed > :not(h2) { display: none; }
 .field { display: flex; flex-direction: column; gap: 5px; }
 .field > span { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--muted); font-weight: 600; }
 .field > span .num { color: var(--text); font-size: 12px; }
@@ -917,7 +920,6 @@ footer.jd-foot { display: block; margin: 0; padding: 4px 0 0; border: 0; font-si
   #inspect { right: calc(var(--right) + 222px); bottom: calc(var(--bottom) + 16px + var(--ticker-h, 44px)); max-height: calc(100% - var(--top) - var(--bottom) - 84px - var(--ticker-h, 44px)); }
   /* The editor's panel takes the right side, full height; the map layer card, when it shows, sits beside it. */
   #editorPanel { top: calc(var(--top) + 66px); max-height: calc(100% - var(--top) - var(--bottom) - 68px); }
-  #editorPanel.collapsed { max-height: 46px; overflow: hidden; }
   [data-mode="editor"] #minimapCard:not(.show) { display: none; }
   [data-mode="editor"] #minimapCard.show { right: calc(var(--right) + 270px); }
 }
@@ -974,7 +976,6 @@ footer.jd-foot { display: block; margin: 0; padding: 4px 0 0; border: 0; font-si
   #inspect { right: 8px; left: 8px; width: auto; bottom: calc(var(--bottom) + 90px + var(--ticker-h, 38px)); max-height: none; overflow-y: visible; }
   .inspecting #minimapCard.show { display: none; } /* the Inspect card has the slot while it is open */
   #editorPanel { right: 8px; left: 8px; top: auto; bottom: calc(var(--bottom) + 80px); width: auto; max-height: 38vh; }
-  #editorPanel.collapsed { max-height: 46px; overflow: hidden; }
   #log { left: 8px; bottom: calc(var(--bottom) + 86px + var(--ticker-h, 38px)); width: calc(100vw - 16px); }
   .cols, .chartgrid { grid-template-columns: 1fr; }
   .guide { grid-template-columns: 1fr; }

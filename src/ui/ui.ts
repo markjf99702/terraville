@@ -714,7 +714,7 @@ export class UI {
     const editor = this.game.mode === 'editor';
     const bb = el(`<div class="brushbox" id="brushBox">
       <label>Brush size <span class="num" id="brushTiles"></span><input type="range" id="brushSize" min="1" max="14" step="0.5"></label>
-      ${editor ? '<label>Strength <input type="range" id="brushStrength" min="0.1" max="1.5" step="0.05"></label>' : ''}
+      ${editor ? '<label>Strength <span class="num" id="brushPct"></span><input type="range" id="brushStrength" min="0.1" max="1.5" step="0.05"></label>' : ''}
     </div>`);
     const size = $<HTMLInputElement>(bb, '#brushSize');
     size.oninput = () => {
@@ -723,8 +723,14 @@ export class UI {
     };
     if (editor) {
       const str = $<HTMLInputElement>(bb, '#brushStrength');
+      const pct = $(bb, '#brushPct');
+      const show = () => (pct.textContent = `${Math.round(this.game.brush.strength * 100)}%`);
       str.value = String(this.game.brush.strength);
-      str.oninput = () => (this.game.brush.strength = Number(str.value));
+      str.oninput = () => {
+        this.game.brush.strength = Number(str.value);
+        show();
+      };
+      show();
     }
     box.appendChild(bb);
     this.syncBrushSize();
@@ -829,11 +835,13 @@ export class UI {
     const t = this.game.terrain;
     const styles = Object.keys(STYLE_NAMES) as TerrainStyle[];
     const slider = (id: string, label: string, min: number, max: number, step: number, val: number) => `
-      <label class="field"><span>${label} <span class="num" id="${id}Val">${val}</span></span>
+      <label class="field"><span><span id="${id}Name">${label}</span> <span class="num" id="${id}Val">${val}</span></span>
       <input type="range" id="${id}" min="${min}" max="${max}" step="${step}" value="${val}"></label>`;
-    p.classList.toggle('collapsed', this.compact());
+    // On a phone either way up the panel folds to its heading, a button that opens it.
+    const fold = this.compact();
+    p.classList.toggle('collapsed', fold);
     p.innerHTML = `
-      <h2 id="edHead" style="cursor:pointer">Generate land</h2>
+      ${fold ? '<h2><button id="edHead" class="ed-head" aria-expanded="false">Generate land <i class="chev" aria-hidden="true"></i></button></h2>' : '<h2 id="edHead">Generate land</h2>'}
       <div class="field"><span id="edStyleCap">Landscape</span>
         <div class="seg" id="edStyle" role="group" aria-labelledby="edStyleCap">${styles.map((s) => `<button data-style="${s}" aria-pressed="${s === t.style}">${STYLE_NAMES[s]}</button>`).join('')}</div>
       </div>
@@ -851,9 +859,14 @@ export class UI {
         <button class="iconbtn" id="edDice" aria-label="Random seed" title="Random seed">${ICONS.dice}</button></div>
       </div>
       <p class="note">Sliders regenerate the whole map. Sculpt afterwards with the brushes; Undo steps back through both.</p>`;
-    $(p, '#edHead').onclick = () => {
-      if (this.compact()) p.classList.toggle('collapsed');
-    };
+    if (fold) {
+      const head = $(p, '#edHead');
+      head.onclick = () => {
+        const open = p.classList.toggle('collapsed') === false;
+        head.setAttribute('aria-expanded', String(open));
+        $(head, '.chev').classList.toggle('up', open);
+      };
+    }
     const bind = (id: string, key: (typeof EDITOR_SLIDERS)[number][1]) => {
       const input = $<HTMLInputElement>(p, '#' + id);
       const next = () => this.gestures.set(id, (this.gestures.get(id) ?? 0) + 1);
@@ -940,13 +953,16 @@ export class UI {
     if (sub) sub.textContent = t.seed;
   }
 
-  /** The Sea slider works only for the styles with a sea. */
+  /** The Sea slider works only for the styles with a sea, and says so; River valley lays a river of its own. */
   private syncSea(style: TerrainStyle): void {
     const input = this.root.querySelector<HTMLInputElement>('#edWater');
     if (!input) return;
     const on = hasSea(style);
     input.disabled = !on;
-    input.closest('.field')!.setAttribute('style', on ? '' : 'opacity:.45');
+    input.style.opacity = on ? '' : '0.45';
+    $(this.root, '#edWaterName').innerHTML = on ? 'Sea' : `Sea${SEP}coast, island and archipelago only`;
+    $(this.root, '#edWaterVal').hidden = !on;
+    $(this.root, '#edRiversName').textContent = style === 'valley' ? "Rivers (besides the valley's own)" : 'Rivers';
   }
 
   // ---- minimap and overlays --------------------------------------------------------

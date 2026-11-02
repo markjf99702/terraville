@@ -1066,6 +1066,60 @@ try {
     }
   });
 
+  await test("the editor's panel says why Sea is off and what Rivers adds in a valley, shows the brush strength, folds cleanly on a phone, and keeps springs on land", async () => {
+    const desk = await profile(DESK);
+    const { page: d, problems: dp } = await open(desk);
+    await d.click('[data-act="editor"]');
+    await d.waitForFunction(() => window.__terraville.mode === 'editor');
+    const label = (id) => d.$eval(id, (s) => s.closest('.field').querySelector('span').innerText.replace(/\s+/g, ' ').trim());
+    await d.click('[data-style="valley"]');
+    await d.waitForFunction(() => window.__terraville.terrain.style === 'valley');
+    assert.equal(await label('#edWater'), 'Sea · coast, island and archipelago only');
+    assert.equal(await label('#edRivers'), "Rivers (besides the valley's own) 2");
+    await d.click('[data-style="island"]');
+    await d.waitForFunction(() => window.__terraville.terrain.style === 'island');
+    assert.equal(await label('#edWater'), 'Sea 35');
+    assert.equal(await label('#edRivers'), 'Rivers 2');
+    assert.equal(await d.textContent('#brushPct'), '60%');
+    await d.$eval('#brushStrength', (s) => { s.value = '1.2'; s.dispatchEvent(new Event('input', { bubbles: true })); });
+    assert.equal(await d.textContent('#brushPct'), '120%');
+    // A spring in the sea says where springs go, and leaves nothing to undo.
+    await d.keyboard.press('v');
+    const steps = await d.evaluate(() => window.__terraville.undoStack.length);
+    const wet = await d.evaluate(() => {
+      const g = window.__terraville;
+      const w = g.world;
+      for (let i = 0; i < w.n; i++) {
+        const p = g.renderer.tileToScreen((i % w.w) + 0.5, Math.floor(i / w.w) + 0.5);
+        if (w.water[i] && w.height[i] < 0 && p.x > 150 && p.x < 950 && p.y > 100 && p.y < 750) return p;
+      }
+    });
+    await d.mouse.click(wet.x, wet.y);
+    assert.equal(await d.textContent('#toast'), 'Springs go on dry land. Pick a spot above the water.');
+    assert.equal(await d.evaluate(() => window.__terraville.undoStack.length), steps);
+    assert.deepEqual(dp, []);
+    await desk.close();
+
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await page.click('[data-act="editor"]');
+    await page.waitForFunction(() => window.__terraville.mode === 'editor');
+    const panel = () => page.evaluate(() => {
+      const p = document.querySelector('#editorPanel').getBoundingClientRect();
+      const head = document.querySelector('#edHead');
+      const shown = [...document.querySelectorAll('#editorPanel > *')].filter((e) => !e.contains(head) && e.getClientRects().length).length;
+      return { tag: head.tagName, expanded: head.getAttribute('aria-expanded'), height: Math.round(p.height), shown };
+    });
+    const folded = await panel();
+    assert.deepEqual({ ...folded, height: folded.height <= 50 }, { tag: 'BUTTON', expanded: 'false', height: true, shown: 0 }, 'folded to its heading, nothing of the next line showing');
+    await page.tap('#edHead');
+    const opened = await panel();
+    assert.equal(opened.expanded, 'true');
+    assert.ok(opened.shown > 5 && opened.height > 200, 'and opens on a tap');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('the cost tip draws its middle dots and says why lots are blocked', async () => {
     const ctx = await profile(DESK);
     const { page, problems } = await open(ctx);
