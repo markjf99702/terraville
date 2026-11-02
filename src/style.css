@@ -450,8 +450,8 @@ input[type="range"] { width: 100%; accent-color: var(--sign-hi); margin: 0; }
 .field > span .num { color: var(--text); font-size: 12px; }
 .seg { display: grid; grid-template-columns: repeat(auto-fit, minmax(70px, 1fr)); gap: 4px; }
 .seg button {
-  padding: 6px 4px;
-  font-size: 12px;
+  padding: 6px 3px;
+  font-size: 11.5px; /* 'Archipelago' fits a third of the editor panel */
   font-weight: 700;
   border-radius: 7px;
   border: 1px solid var(--line);
@@ -516,6 +516,9 @@ input[type="range"] { width: 100%; accent-color: var(--sign-hi); margin: 0; }
 .modal header .sub { color: var(--muted); font-size: 13px; }
 .modal .body { padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
 .modal footer { display: flex; gap: 8px; justify-content: flex-end; padding: 12px 16px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+/* Links in dialogs, like the link buttons: not the browser's blue. */
+.modal a { color: var(--text); text-decoration: underline; text-underline-offset: 3px; font-weight: 600; }
+.modal a:hover, .modal a:focus-visible { color: var(--caution); }
 .modal h3 { margin: 0 0 8px; font-size: 12px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
 .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 
@@ -831,7 +834,7 @@ footer.jd-foot { display: block; margin: 0; padding: 4px 0 0; border: 0; font-si
   vertical-align: middle;
   font-size: 0;
 }
-.jd-foot a { color: inherit; text-decoration: none; text-underline-offset: 3px; border-radius: 3px; }
+.jd-foot a { color: inherit; font-weight: inherit; text-decoration: none; text-underline-offset: 3px; border-radius: 3px; }
 .jd-foot a:hover, .jd-foot a:focus-visible { color: var(--text); text-decoration: underline; }
 .caution {
   width: 16px;
@@ -907,6 +910,7 @@ footer.jd-foot { display: block; margin: 0; padding: 4px 0 0; border: 0; font-si
   #minimapCard { display: none; }
   #minimapCard.show { display: flex; right: 8px; bottom: calc(var(--bottom) + 90px + var(--ticker-h, 38px)); width: 180px; }
   #minimapCard.show #minimap { height: 120px; }
+  #minimapCard .mm-row .iconbtn { display: none; } /* fingers pinch to zoom; the layer's name gets the room */
   #inspect { right: 8px; left: 8px; width: auto; bottom: calc(var(--bottom) + 90px + var(--ticker-h, 38px)); max-height: none; overflow-y: visible; }
   .inspecting #minimapCard.show { display: none; } /* the Inspect card has the slot while it is open */
   #editorPanel { right: 8px; left: 8px; top: auto; bottom: calc(var(--bottom) + 80px); width: auto; max-height: 38vh; }

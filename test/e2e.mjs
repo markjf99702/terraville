@@ -1064,6 +1064,35 @@ try {
     await ctx.close();
   });
 
+  await test('rough edges: links in dialogs, the phone layer card and its steepness, and the landscape buttons', async () => {
+    const desk = await profile(DESK);
+    const { page: d, problems: dp } = await open(desk);
+    await d.click('[data-act="open"]');
+    assert.equal(await d.$eval('.modal a', (a) => getComputedStyle(a).color), 'rgb(234, 240, 234)', "a dialog's link is in the text colour, not the browser's blue");
+    await d.click('.modal [data-close]');
+    await d.click('[data-act="editor"]');
+    await d.waitForFunction(() => window.__terraville.mode === 'editor');
+    assert.deepEqual(await d.$$eval('#edStyle button', (b) => b.filter((x) => x.scrollWidth > x.clientWidth).map((x) => x.textContent)), [], 'every landscape name fits its button');
+    assert.deepEqual(dp, []);
+    await desk.close();
+
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await page.click('[data-act="editor"]');
+    await page.waitForFunction(() => window.__terraville.mode === 'editor');
+    await page.click('[data-act="menu"]');
+    await page.click('.dropdown button:has-text("Show the steepness")');
+    assert.equal(await page.evaluate(() => window.__terraville.renderer.overlay), 'slope', 'the phone editor can show the steepness');
+    assert.equal(await page.isVisible('#minimapCard'), true);
+    assert.deepEqual(await page.$$eval('#minimapCard .mm-row .iconbtn', (b) => b.map((x) => getComputedStyle(x).display)), ['none', 'none'], 'no zoom buttons beside the layer name on a phone');
+    assert.ok(await page.$eval('#overlaySel', (s) => s.clientWidth >= 150), 'the layer name has room');
+    await page.click('[data-act="menu"]');
+    await page.click('.dropdown button:has-text("Hide the steepness")');
+    assert.equal(await page.evaluate(() => window.__terraville.renderer.overlay), 'none');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('on a phone, Inspect takes the bottom slot from the map layer card and the news log', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

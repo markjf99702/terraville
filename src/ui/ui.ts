@@ -960,6 +960,11 @@ export class UI {
       };
       d.appendChild(b);
     };
+    // A phone's editor hides the map layer card, which is where the steepness layer is picked.
+    if (this.game.mode === 'editor' && this.narrow()) {
+      const on = this.game.renderer.overlay === 'slope';
+      add('contour', on ? 'Hide the steepness' : 'Show the steepness', () => this.setOverlay(on ? 'none' : 'slope'));
+    }
     // A phone has no room for Redo in the top bar, and no keyboard for Ctrl+Shift+Z.
     if (this.game.mode === 'city' && this.narrow() && this.game.canRedo()) add('redo', 'Redo', () => this.game.redo());
     const drive = this.game.drive;
