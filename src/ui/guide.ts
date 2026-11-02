@@ -195,11 +195,11 @@ function sections(): Section[] {
         <p>Random disasters start once a city passes ${num(DISASTER_POP)} residents, on every difficulty. The advisor asks for a first fire station at ${num(STATION_POP)}, so there is time to build one before they do. They can be switched off from the Disasters menu, and harder difficulties bring them more often.</p>
         ${table(['Disaster', 'How to prepare'], [
           ['Fire', 'The most common by far. Fire stations prevent fires and put them out. Buildings far from a station catch fire more often, and fire spreads through trees and touching buildings. Bulldoze a gap to stop it: a gap cleared beside a fire is a firebreak, and undo can’t put it back.'],
-          ['Flood', 'Starts on low shoreline and spreads over land a few metres above the water. Keep valuable buildings on higher ground.'],
+          ['Flood', 'Starts on low shoreline and spreads over land a few metres above the water. Keep valuable buildings on higher ground. High Water’s tides come in from the whole shore at once.'],
           ['Tornado', 'Wanders near the town centre. You cannot stop it, so keep money in reserve to rebuild.'],
           ['Earthquake', 'Wrecks buildings and roads within about 16 tiles and starts fires. Good fire cover limits the damage.'],
           ['Monster', 'Comes out of the water only when the air is dirty, at a pollution index of 24 or more (9 in Monster Bay), heads for the most polluted spot, and leaves fires in what it wrecks. Clean air keeps it away.'],
-          ['Meltdown', 'Only with a nuclear plant: a small chance each month, or if the plant is destroyed. It contaminates the area for years.'],
+          ['Meltdown', 'Only with a nuclear plant: a small chance each month, or if the plant is destroyed. It leaves the ground within about 7 tiles radioactive in patches for 12 to 21 years (12 tiles in Fallout), where nothing can be built.'],
         ])}
         ${tip('Every message in the news ticker with a location has a Go there button.')}`,
     },
