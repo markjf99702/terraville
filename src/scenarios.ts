@@ -295,6 +295,16 @@ export function scenarioNews(s: Scenario, sim: Sim, st: GoalState): void {
 
 const NUMBER_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'];
 
+/**
+ * How a lost challenge is told in the news: the first condition that was not met, as the goal tracker words it:
+ * 'Time ran out for Smog Valley. Pollution 14 (goal under 12).'
+ */
+export function timeUpLine(s: Scenario, st: GoalState): string {
+  const parts = st.status.split(' · ');
+  const part = parts[Math.max(0, st.rows.findIndex((r) => !r.met))] ?? parts[0];
+  return `Time ran out for ${s.name}. ${part[0].toUpperCase()}${part.slice(1)}.`;
+}
+
 /** How a won challenge is announced: the year, and how far ahead of its deadline, at month index `month`. */
 export function successLine(s: Scenario, month: number, end: number): string {
   const left = end - month;

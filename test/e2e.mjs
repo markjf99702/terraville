@@ -524,6 +524,7 @@ try {
     });
     assert.equal(await page.textContent('.modal h2'), "Time's up");
     assert.match(await page.textContent('.modal .body'), /^\s*The deadline for Gridlock passed at the end of 1960\. The council went into the election with its promise unkept, and lost\.\s*Not met:/);
+    assert.equal(await page.textContent('#ticker .msg-text'), 'Time ran out for Gridlock. 17,568 of 20,000 residents.', 'the news has the result under the dialog');
     assert.deepEqual(await page.$$eval('.modal .goal-row', (els) => els.map((e) => e.firstElementChild.textContent)), ['Residents 17,568 / 20,000']);
     await page.click('.modal footer .btn.primary');
     assert.equal(await page.textContent('#goal .goal-time'), 'Time ran out');
@@ -540,6 +541,27 @@ try {
     assert.equal(await page.isHidden('#goal'), true);
     await page.click('#citySign');
     assert.match((await page.textContent('.modal .body')).replace(/\s+/g, ' '), /Time's up ?The deadline for Gridlock passed at the end of 1960\./);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  await test('a won challenge leaves its result in the news ticker, in place of the deadline', async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await page.click('[data-act="challenges"]');
+    await page.click('.slot:has-text("Boomtown") .btn.primary');
+    await page.waitForFunction(() => window.__terraville.mode === 'city');
+    await page.keyboard.press('Escape');
+    assert.match(await page.textContent('#ticker .msg-text'), /You have until 1915\./);
+    await page.evaluate(() => {
+      const g = window.__terraville;
+      g.setSpeed(0);
+      g.sim.stats.residents = 12500;
+      g.checkScenario();
+    });
+    assert.equal(await page.textContent('.modal h2'), 'Challenge complete');
+    await page.click('.modal footer .btn.primary');
+    assert.match(await page.textContent('#ticker .msg-text'), /^Boomtown is a success in 1900, 15 years early\.$/);
     assert.deepEqual(problems, []);
     await ctx.close();
   });

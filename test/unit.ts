@@ -1842,6 +1842,29 @@ await test('a challenge opens with its goal in the news and its real monthly bal
   assert.equal(successLine(aftershock, end, end), 'Aftershock is a success in 1997.');
 }));
 
+await test("a challenge's result goes in the news: a win says when, and a loss names the first goal not met", () => seeded(4, () => {
+  const g = headless(flat(40, 30));
+  g.startScenario('boomtown');
+  const boom = SCENARIOS.find((x) => x.id === 'boomtown')!;
+  const sc = g.world.city.scenario;
+  g.world.city.month = sc.end - 30;
+  g.sim.stats.residents = 12500;
+  g.checkScenario();
+  assert.equal(sc.done, 'won');
+  const won = g.sim.messages.at(-1);
+  assert.deepEqual([won.text, won.kind, won.x], [successLine(boom, sc.end - 30, sc.end), 'good', undefined]);
+  assert.equal(won.text, 'Boomtown is a success in 1912, two years early.');
+  g.startScenario('gridlock');
+  const gs = g.world.city.scenario;
+  g.world.city.month = gs.end;
+  g.checkScenario();
+  assert.equal(gs.done, 'lost');
+  const lost = g.sim.messages.at(-1);
+  // Its traffic goal was met; its residents were not.
+  assert.match(lost.text, /^Time ran out for Gridlock\. [\d,]+ of 20,000 residents\.$/);
+  assert.equal(lost.kind, 'warn');
+}));
+
 await test("a challenge's deadline notices come from the game's own month ends, once each", () => seeded(5, () => {
   const g = headless(flat(40, 30));
   g.startScenario('gridlock');
