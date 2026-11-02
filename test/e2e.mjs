@@ -349,11 +349,12 @@ try {
     await page.waitForSelector('#fOther .slot');
     // Read out of a list of buttons, each one says whose it is.
     const labels = await page.$$eval('#fCities .slot button, #fOther .slot button', (bs) => bs.map((b) => b.getAttribute('aria-label')));
-    assert.deepEqual(labels.slice(0, 2), [`Open ${name}`, `Delete ${name}`]);
-    assert.match(labels[2], /^Open the snapshot of .+, [A-Z][a-z]{2} \d{4}$/);
-    assert.ok(labels[2].startsWith(`Open the snapshot of ${name}, `));
-    assert.equal(labels[3], labels[2].replace('Open', 'Delete'));
-    assert.equal(labels.length, 4);
+    assert.deepEqual(labels.slice(0, 3), [`Open ${name}`, `Delete ${name}`, `Shape the land of ${name} again`]);
+    assert.match(labels[3], /^Open the snapshot of .+, [A-Z][a-z]{2} \d{4}$/);
+    assert.ok(labels[3].startsWith(`Open the snapshot of ${name}, `));
+    assert.equal(labels[4], labels[3].replace('Open', 'Delete'));
+    assert.equal(labels[5], `Shape the land of ${name} as it was in ${labels[3].split(', ').pop()} again`);
+    assert.equal(labels.length, 6);
     // Laid out as the cities above are, saying how long ago it was saved as they do.
     assert.deepEqual(await page.$$eval('#fOther .slot .meta', (m) => m.map((x) => x.textContent)), [await page.textContent('#fCities .slot .meta'), 'Saved just now']);
     // A code that won't open is said out loud.
@@ -1472,6 +1473,65 @@ try {
       assert.deepEqual(problems, []);
       await ctx.close();
     }
+  });
+
+  await test("Shape this land again opens a saved city's land in the editor with everything built on it cleared, and keeps the city", async () => {
+    const ctx = await profile(DESK);
+    const { page, problems } = await open(ctx);
+    // A ready-made city, with roads, rail, power lines and buildings, a fire and some rubble, played a month.
+    await page.evaluate(() => window.__terraville.startScenario('gridlock'));
+    await page.waitForFunction(() => window.__terraville.mode === 'city');
+    await page.keyboard.press('Escape');
+    const land = () => page.evaluate(() => {
+      const w = window.__terraville.world;
+      let h = w.w, built = 0;
+      for (let i = 0; i < w.n; i++) {
+        h = (h * 31 + Math.round(w.height[i] * 10) + w.water[i] * 7) | 0;
+        built += (w.occ[i] ? 1 : 0) + (w.net[i] ? 1 : 0) + w.rubble[i] + w.fire[i] + w.flood[i] + w.rad[i];
+      }
+      return { h, built, buildings: w.buildings.size, seed: w.city.seed };
+    });
+    await page.evaluate(() => {
+      const g = window.__terraville;
+      const w = g.world;
+      let fire = 0, rubble = 0;
+      while (w.occ[fire] || w.water[fire] || w.net[fire]) fire++;
+      w.fire[fire] = 3;
+      for (rubble = fire + 1; w.occ[rubble] || w.water[rubble] || w.net[rubble]; rubble++);
+      w.rubble[rubble] = 1;
+      g.setSpeed(0);
+    });
+    const city = await land();
+    assert.ok(city.buildings > 50 && city.built > 0);
+    const name = await page.evaluate(() => window.__terraville.world.city.name);
+    const month = await page.evaluate(() => window.__terraville.world.city.month);
+    await page.evaluate(() => window.__terraville.saveCity());
+    await page.evaluate(() => window.__terraville.showTitle());
+    await page.click('[data-act="open"]');
+    await page.click(`.slot button[aria-label="Shape the land of ${name} again"]`);
+    await page.waitForFunction(() => window.__terraville.mode === 'editor');
+    const shaped = await land();
+    assert.deepEqual(shaped, { h: city.h, built: 0, buildings: 0, seed: city.seed }, 'the same ground, with nothing on it');
+    assert.deepEqual(await page.evaluate(() => { const t = window.__terraville.terrain; return [t.seed, t.shaped, t.w, t.h]; }), [city.seed, true, 120, 100]);
+    assert.equal(await page.evaluate(() => window.__terraville.undoStack.length), 0);
+    assert.match(await page.textContent('#toast'), new RegExp(`The land of ${name} is in the terrain editor`));
+    // It is the land being shaped now, kept as the draft; the city is kept as it was.
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('terraville.draft')).seed), city.seed);
+    await page.evaluate(() => window.__terraville.showTitle());
+    await page.click('[data-act="continue"]');
+    await page.waitForFunction(() => window.__terraville.mode === 'city');
+    assert.deepEqual([(await land()).buildings, await page.evaluate(() => window.__terraville.world.city.month)], [city.buildings, month]);
+    // From inside a city the city is saved first, with the months played since its last save.
+    await page.evaluate(() => { const g = window.__terraville; for (let k = 0; k < 9; k++) g.sim.step(); });
+    const played = await page.evaluate(() => window.__terraville.world.city.month);
+    assert.ok(played > month);
+    await page.click('#topbar [data-act="menu"]');
+    await page.click('[role="menu"] button:has-text("Save, open and share")');
+    await page.click(`.slot button[aria-label="Shape the land of ${name} again"]`);
+    await page.waitForFunction(() => window.__terraville.mode === 'editor');
+    assert.equal(await page.evaluate((id) => JSON.parse(localStorage.getItem('terraville.slots')).find((s) => s.name === id).date, name), played);
+    assert.deepEqual(problems, []);
+    await ctx.close();
   });
 
   await test('every corner tile of the map can be brought out from under the panels, on a laptop and a phone', async () => {

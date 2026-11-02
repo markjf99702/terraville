@@ -947,6 +947,21 @@ export class Game {
     clearDraft();
   }
 
+  /**
+   * Open a city's land in the terrain editor, with everything built on it cleared (see World.naturalGround), as the land
+   * being shaped. The city's own saves stay as they are. A city being played is saved first, as leaving it would.
+   */
+  async shapeLandOf(file: SaveFile): Promise<void> {
+    const city = World.deserialize(file.world);
+    const land = city.naturalGround();
+    const base = { ...DEFAULT_TERRAIN, seed: city.city.seed || randomSeedName(), w: city.w, h: city.h };
+    // Not the seed's land any more, whatever the settings say: a city has been built on it.
+    const terrain = { ...cleanTerrain(file.terrain, base), w: city.w, h: city.h, shaped: true };
+    if (this.mode === 'city' && this.settings.autosave && !this.stopped) await this.saveCity();
+    this.loadFile({ v: 1, world: land.serialize(), mode: 'editor', terrain });
+    this.saveDraftNow();
+  }
+
   /** Open the draft in the editor. False when it can't be read, and it goes then. */
   async continueDraft(): Promise<boolean> {
     const d = readDraft();

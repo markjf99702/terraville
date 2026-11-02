@@ -2950,6 +2950,26 @@ export class UI {
       this.toast(`Opened ${name}.`);
     };
 
+    /** Open a city's land in the terrain editor, from its save as `load` reads it, with everything built on it cleared. */
+    const shapeLand = async (load: () => Promise<SaveFile | null>, name: string) => {
+      let f: SaveFile | null;
+      try {
+        f = await load();
+        if (f) World.deserialize(f.world);
+      } catch (e) {
+        return this.toast(`That save could not be read: ${(e as Error).message}`, 'warn');
+      }
+      if (!f) return this.toast('That save could not be read.', 'warn');
+      this.closeModal();
+      await g.shapeLandOf(f);
+      this.toast(`The land of ${name} is in the terrain editor, with everything built on it cleared. The city itself is kept as it was.`);
+    };
+    const shapeBtn = (load: () => Promise<SaveFile | null>, name: string, what: string) => {
+      const b = el<HTMLButtonElement>('<button class="linkbtn shape">Shape this land again</button>');
+      b.onclick = () => void shapeLand(load, name);
+      return named(b, `Shape the land of ${what} again`);
+    };
+
     /**
      * A copy of a city (a code or a snapshot) that this device, or Drive, has a later save of: opening it as it is
      * would replace that save at the next autosave, so ask first. True when it asked.
@@ -3068,6 +3088,7 @@ export class UI {
           }), `Open ${name}`),
           del,
         );
+        row.appendChild(shapeBtn(useRemote ? async () => decode(await drive.download(r.remote!.fileId)) : () => loadSlot(r.local!.id), name, name));
         box.appendChild(row);
       }
       // Said once: the Google Drive section below shows Drive's own error.
@@ -3094,6 +3115,7 @@ export class UI {
             renderOther();
           }),
         );
+        if (s.mode === 'city') row.appendChild(shapeBtn(() => loadSlot(s.id), s.name, `${s.name} as it was in ${dateLabel(s.date)}`));
         box.appendChild(row);
       }
     };

@@ -1035,6 +1035,28 @@ await test('world and save codes round-trip', async () => {
   await assert.rejects(decode('hello'));
 });
 
+await test("a city's natural ground keeps the land's heights, water and trees, and nothing built on it", () => {
+  const w = flat(20, 16);
+  w.city.seed = 'harbor-pine-42';
+  for (let i = 0; i < w.n; i++) w.height[i] = 2 + (i % 7);
+  w.water.fill(1, 0, 20);
+  w.trees[50] = 3;
+  applyLine(w, ROAD, planLine(w, ROAD, linePath(2, 8, 12, 8)));
+  applyLine(w, ROAD, planLine(w, ROAD, linePath(2, 0, 2, 4)));
+  applyBuildings(w, 'res', planZones(w, 'res', 5, 10, 5, 10));
+  w.rubble[200] = 1;
+  w.fire[201] = 2;
+  w.flood[202] = 4;
+  w.rad[203] = 9;
+  assert.ok(w.buildings.size === 1 && w.net.some((v) => v) && w.water[2], 'a road crosses the water on a bridge');
+  const g = w.naturalGround();
+  assert.deepEqual([g.w, g.h, g.city.seed, g.city.founded, g.buildings.size], [20, 16, 'harbor-pine-42', false, 0]);
+  assert.deepEqual([g.height, g.water, g.trees], [w.height, w.water, w.trees]);
+  for (const layer of ['net', 'occ', 'rubble', 'fire', 'flood', 'rad'] as const) assert.ok(g[layer].every((v) => !v), layer);
+  // The city it came from is as it was.
+  assert.equal(w.buildings.size, 1);
+});
+
 await test('a city code opens from whatever it was pasted with, and a damaged one says so plainly', async () => {
   const w = generateTerrain({ ...DEFAULT_TERRAIN, seed: 'pasted', w: 50, h: 40 });
   w.city.founded = true;

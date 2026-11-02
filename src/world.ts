@@ -497,6 +497,20 @@ export class World {
     return !this.water[i] && !this.occ[i] && !this.net[i];
   }
 
+  /**
+   * The natural ground alone, as a new map for the terrain editor: the land's heights, water and trees, and nothing
+   * built, burning, flooded or radioactive on it. Ground a building or a road stood on stays bare, as the 1989
+   * generator's ClearUnnatural turned every tile past the woods to dirt (Micropolis, src/sim/s_gen.c).
+   */
+  naturalGround(): World {
+    const w = new World(this.w, this.h);
+    w.height.set(this.height);
+    w.water.set(this.water);
+    w.trees.set(this.trees);
+    w.city.seed = this.city.seed;
+    return w;
+  }
+
   countNet(): { road: number; rail: number; bridge: number } {
     let road = 0, rail = 0, bridge = 0;
     for (let i = 0; i < this.n; i++) {

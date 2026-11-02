@@ -20,6 +20,7 @@ Play it at [terraville.junkdrawer.works](https://terraville.junkdrawer.works/), 
 - Real elevation with hillshading and contour lines. Beaches form on low coasts; rivers widen as they run. The Elevation layer, in the city too, colours the land in height bands, 5 m apart near the water where floods reach.
 - Undo and redo through everything, including regenerations.
 - The land being shaped is kept as a draft every 90 seconds and whenever you leave the page, and **Continue shaping the land** on the title screen brings it back. Founding a city on it, or starting new land, lets the draft go.
+- **Shape this land again**, on a saved city in Save, open and share, opens the city's land in the editor with everything built on it cleared, as the 1989 generator's ClearUnnatural pass kept only the natural ground. The city itself is kept as it was.
 
 **City**
 - The classic loop: residential, commercial and industrial zones grow from vacant lots to cottages, main streets, factories and towers when they have power, road access, a workable commute and demand on the RCI meter.

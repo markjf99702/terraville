@@ -685,6 +685,8 @@ button.barrow.worry:hover { background: var(--panel-3); }
 .slot .won { display: inline-flex; align-items: center; gap: 3px; color: var(--good-ink); font-size: 12.5px; font-weight: 700; white-space: nowrap; }
 .slot .won svg { width: 13px; height: 13px; flex: none; }
 .slot .actions { display: flex; gap: 6px; grid-row: span 2; }
+/* A city's land, opened in the terrain editor: a line of its own under the row. */
+.slot .shape { grid-column: 1 / -1; justify-self: start; padding: 2px 0; font-size: 12.5px; }
 textarea.code {
   width: 100%;
   min-height: 90px;
@@ -1210,6 +1212,7 @@ footer.jd-foot { display: block; margin: 0; padding: 4px 0 0; border: 0; font-si
   #ticker button { height: 40px; }
   .mm-row select { height: 44px; }
   .btn.small { height: 40px; }
+  .slot .shape { min-height: 36px; }
   .guide-nav button { min-height: 40px; }
 }
 
