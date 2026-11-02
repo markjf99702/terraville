@@ -14,7 +14,7 @@ import { SaveFile, SlotMeta, decode, deleteSlot, encode, listSlots, loadSlot, st
 import { spending } from '../sim';
 import type { Message } from '../sim';
 import { STYLE_NAMES, TerrainParams, TerrainStyle, hasSea } from '../terrain';
-import { GoalState, SCENARIOS, Scenario, successLine } from '../scenarios';
+import { GoalRow, GoalState, SCENARIOS, Scenario, isCount, successLine } from '../scenarios';
 import { World } from '../world';
 import { focusFromKeyboard, hasKeyboardFocus, watchFocus } from '../focus';
 import { lineChart } from './charts';
@@ -168,6 +168,13 @@ const EDITOR_SLIDERS: [string, 'water' | 'hills' | 'rough' | 'rivers' | 'lakes' 
   ['edWater', 'water'], ['edHills', 'hills'], ['edRough', 'rough'], ['edRivers', 'rivers'], ['edLakes', 'lakes'], ['edForest', 'forest'],
 ];
 
+/** A goal condition in the tracker: its figures never break across lines, and a tick or a dash says if it is met. */
+function goalRowHtml(r: GoalRow): string {
+  const fig = (t: string) => `<span class="fig">${esc(t)}</span>`;
+  return `<li class="goal-row${r.met ? ' met' : ''}"><span>${esc(r.label)} ${isCount(r) ? fig(`${r.value} / ${r.goal}`) : `${fig(r.value)}${SEP}${fig(r.goal)}`}</span>`
+    + `<span class="mark" aria-hidden="true">${r.met ? ICONS.check : '–'}</span><span class="sr-only">${r.met ? ', met' : ', not yet'}</span></li>`;
+}
+
 export class UI {
   modalOpen = false;
   /** The open dialog closes only from its own buttons. */
@@ -204,6 +211,12 @@ export class UI {
   private guideSawIncomplete = false;
   /** On a phone, the checklist has been tapped open. */
   private guideOpen = false;
+  /** The goal tracker as last filled in, to draw again when it folds or the window changes shape. */
+  private goalShown: { s: Scenario; st: GoalState; monthsLeft: number; done: '' | 'won' | 'lost' } | null = null;
+  /** On a phone, the goal tracker folded to its heading: kept for the session, so each challenge opens the same way. */
+  private goalFolded = (() => {
+    try { return sessionStorage.getItem('terraville.goalFolded') === '1'; } catch { return false; }
+  })();
   private chartRange = 120;
 
   constructor(private game: Game, private root: HTMLElement) {
@@ -219,6 +232,7 @@ export class UI {
     });
     window.addEventListener('resize', () => {
       this.closeDropdown();
+      this.redrawGoal();
       this.fitInspect();
       this.measureInsets();
     });
@@ -1843,19 +1857,46 @@ export class UI {
     this.openModal({ title: s.name, sub: `<span class="num">${s.year}</span>`, body, foot: [this.btn('Begin', 'primary', () => this.closeModal())] });
   }
 
+  /**
+   * The goal tracker: the challenge, the time left, each condition with a tick once it is met, the progress bar, and
+   * for a goal judged at the deadline, when. On a phone its heading folds it away to that one line, for the session.
+   */
   updateGoal(s: Scenario, st: GoalState, monthsLeft: number, done: '' | 'won' | 'lost'): void {
     const box = $(this.root, '#goal');
     if (this.game.mode !== 'city') return;
+    this.goalShown = { s, st, monthsLeft, done };
     box.hidden = false;
-    box.style.cssText = 'position:absolute;right:calc(var(--right) + 10px);top:calc(var(--top) + 74px);width:270px;padding:11px 13px;z-index:12;display:flex;flex-direction:column;gap:6px';
+    const small = this.compact();
+    const folded = small && this.goalFolded;
     const left = Math.max(0, monthsLeft);
     const time = done === 'won' ? 'Won' : done === 'lost' ? 'Time ran out' : `${Math.floor(left / 12)}y ${left % 12}m left`;
     const col = done === 'lost' ? 'var(--critical)' : st.met ? 'var(--good)' : 'var(--caution)';
-    box.innerHTML = `<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline">
-        <b style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">${esc(s.name)}</b>
-        <span class="num" style="font-size:12px;color:${done === 'lost' ? 'var(--critical-ink)' : 'var(--text)'}">${time}</span></div>
-      <div style="font-size:13px">${st.status.split(' · ').map(esc).join(SEP)}</div>
-      <div class="barrow" style="grid-template-columns:1fr"><div class="track" role="img" aria-label="Progress ${Math.round(st.progress * 100)}%"><i style="width:${Math.max(2, st.progress * 100)}%;background:${col}"></i></div></div>`;
+    const head = `<b class="goal-name">${esc(s.name)}</b> <span class="num goal-time${done === 'lost' ? ' lost' : ''}">${time}</span>`;
+    const html = (small
+      ? `<button class="goal-head" aria-expanded="${!folded}" aria-label="${esc(s.name)}, ${time}. ${folded ? 'Show the goal' : 'Fold the goal away'}">${head}<i class="chev${folded ? '' : ' up'}" aria-hidden="true"></i></button>`
+      : `<div class="goal-head">${head}</div>`)
+      + (folded ? '' : `
+      <ul class="goal-rows">${st.rows.map(goalRowHtml).join('\n')}</ul>
+      <div class="barrow" style="grid-template-columns:1fr"><div class="track" role="img" aria-label="Progress ${Math.round(st.progress * 100)}%"><i style="width:${Math.max(2, st.progress * 100)}%;background:${col}"></i></div></div>
+      ${st.note ? `<p class="goal-note">${esc(st.note)}</p>` : ''}`);
+    box.classList.toggle('folded', folded);
+    box.style.cssText = 'position:absolute;right:calc(var(--right) + 10px);top:calc(var(--top) + 74px);width:270px;z-index:12';
+    if (box.dataset.html === html) return;
+    box.dataset.html = html;
+    box.innerHTML = html;
+    const toggle = box.querySelector<HTMLElement>('button.goal-head');
+    if (toggle) toggle.onclick = () => {
+      this.goalFolded = !this.goalFolded;
+      try { sessionStorage.setItem('terraville.goalFolded', this.goalFolded ? '1' : ''); } catch { /* ignore */ }
+      this.redrawGoal();
+      box.querySelector<HTMLElement>('button.goal-head')?.focus();
+    };
+  }
+
+  /** Draw the goal tracker again as it was last filled in, for a fold or a window that changed shape. */
+  private redrawGoal(): void {
+    const g = this.goalShown;
+    if (g && !$(this.root, '#goal').hidden) this.updateGoal(g.s, g.st, g.monthsLeft, g.done);
   }
 
   scenarioResult(s: Scenario, st: GoalState, won: boolean): void {

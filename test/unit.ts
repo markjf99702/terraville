@@ -8,7 +8,7 @@ import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST, UPGRADE_LV, Kind, BUILDINGS, 
 import { DAMAGED_CODE, encode, encodeNow, decode, listSlots, pushSaved, saveCode, SlotMeta } from '../src/save';
 import { Drive, GisOAuth2 } from '../src/drive';
 import { makeRng } from '../src/rng';
-import { SCENARIOS, buildScenario, openScenario, scenarioMonth, successLine } from '../src/scenarios';
+import { SCENARIOS, buildScenario, goalRowText, goalState, openScenario, scenarioMonth, successLine } from '../src/scenarios';
 import { Game } from '../src/game';
 import { chartAxis, spreadLabels, tickLabel } from '../src/ui/charts';
 
@@ -1252,22 +1252,74 @@ await test('Gridlock and Smog Valley are not won by bulldozing every job before 
   assert.equal(goal('smog').met, true);
 });
 
-await test('Smog Valley is won by holding its goal for the last 12 month ends, and the count is saved', () => {
+await test('each challenge lists its conditions as rows, ticked when met, without changing how it is judged', () => {
+  const sim = new Sim(flat());
+  const goal = (id: string) => SCENARIOS.find((s) => s.id === id)!.check(sim);
+  const rows = (id: string) => goal(id).rows.map((r) => [goalRowText(r), r.met]);
+  Object.assign(sim.stats, { avgTraffic: 25 * 2.55, avgPollution: 13 * 2.55, residents: 17544, comJobs: 9000, indJobs: 5960, approval: 58 });
+  assert.deepEqual(rows('boomtown'), [['Residents 17,544 / 12,000', true]]);
+  assert.deepEqual(rows('gridlock'), [['Traffic index 25 · under 28', true], ['Residents 17,544 / 20,000', false], ['Jobs 14,960 / 10,000', true]]);
+  assert.deepEqual(rows('smog'), [['Pollution index 13 · under 12', false], ['Residents 17,544 / 20,000', false], ['Jobs 14,960 / 9,000', true]]);
+  assert.deepEqual(rows('aftershock'), [['Residents 17,544 / 55,000', false]]);
+  assert.deepEqual(rows('monster'), [['Approval 58% · over 60%', false], ['Residents 17,544 / 25,000', false]]);
+  // The goal is met when every row is, and the bar and the one-line status are as they were.
+  assert.deepEqual([goal('gridlock').met, goal('gridlock').progress], [false, 0.5]);
+  assert.equal(goal('gridlock').status, 'Traffic 25 (goal under 28) · 17,544 of 20,000 residents · 14,960 of 10,000 jobs');
+  for (const stats of [{ residents: 60000, approval: 70, avgPollution: 5 }, { residents: 21000, approval: 61, avgTraffic: 70 }, { residents: 30000, comJobs: 0, indJobs: 0 }]) {
+    Object.assign(sim.stats, stats);
+    for (const s of SCENARIOS) assert.equal(s.check(sim).met, s.check(sim).rows.every((r) => r.met), `${s.name}: met and its rows disagree`);
+  }
+});
+
+await test('a goal judged at the deadline says when; Smog Valley counts only the month-ends of its last 12, and the count is saved', () => {
   const w = flat();
-  w.city.scenario = { id: 'smog', end: 100, done: '' };
   const sim = new Sim(w);
+  const judged = (id: string) => {
+    const s = SCENARIOS.find((x) => x.id === id)!;
+    w.city.scenario = buildScenario(s, 40, 30).city.scenario;
+    return goalState(s, sim).note;
+  };
+  assert.equal(judged('gridlock'), 'Judged at the end of 1960');
+  assert.equal(judged('monster'), 'Judged at the end of 1966');
+  assert.equal(judged('smog'), 'Judged at the end of 1975');
+  assert.equal(judged('boomtown'), undefined, 'Boomtown is won the month it gets there');
+  assert.equal(judged('aftershock'), undefined);
+  const end = (1968 - 1900 + 8) * 12;
+  w.city.scenario = { id: 'smog', end, done: '' };
   const smog = SCENARIOS.find((x) => x.id === 'smog')!;
   const air = (index: number) => Object.assign(sim.stats, { avgPollution: index * 2.55, residents: 21000, comJobs: 5000, indJobs: 4500 });
+  const held = () => goalRowText(goalState(smog, sim).rows.at(-1)!);
   air(10);
-  for (let k = 1; k < 12; k++) assert.equal(scenarioMonth(smog, sim).met, false, `met after ${k} months`);
+  // Met from 1972 on: the run is counted, but the bar stays half full and unmet until the final year begins.
+  for (let m = (1972 - 1900) * 12; m <= end - 12; m++) {
+    w.city.month = m;
+    const st = scenarioMonth(smog, sim);
+    assert.deepEqual([st.met, st.progress], [false, 0.5], `the goal reads as met in month ${m}`);
+  }
+  assert.equal(held(), 'Held 37 months in a row · must hold through 1975');
+  assert.equal(goalState(smog, sim).note, 'Judged at the end of 1975');
+  // Through 1975 it fills, and only the deadline's month-end meets it.
+  for (let m = end - 11; m < end; m++) {
+    w.city.month = m;
+    const st = scenarioMonth(smog, sim);
+    assert.equal(st.met, false);
+    assert.equal(st.progress, 0.5 + (0.5 * (m - end + 12)) / 12);
+  }
+  w.city.month = end;
   const st = scenarioMonth(smog, sim);
-  assert.equal(st.met, true);
+  assert.deepEqual([st.met, st.progress], [true, 1]);
   assert.match(st.status, /^Pollution 10 \(goal under 12\) · 21,000 of 20,000 residents · 9,500 of 9,000 jobs · held 12 of 12 months$/);
+  assert.deepEqual(st.rows.map((r) => r.met), [true, true, true, true]);
   const back = World.deserialize(JSON.parse(JSON.stringify(w.serialize())));
-  assert.deepEqual(back.city.scenario, { id: 'smog', end: 100, done: '', held: 12 });
+  assert.deepEqual(back.city.scenario, { id: 'smog', end, done: '', held: 49 });
   air(12); // one month over the line starts the count again
   assert.equal(scenarioMonth(smog, sim).met, false);
   assert.equal(w.city.scenario.held, 0);
+  assert.equal(held(), 'Held 0 months in a row · must hold through 1975');
+  w.city.month = end + 1;
+  air(10);
+  scenarioMonth(smog, sim);
+  assert.equal(held(), 'Held 1 month in a row · must hold through 1975');
 });
 
 await test('undo snapshots restore the map but never money, and only onto the same map', () => {

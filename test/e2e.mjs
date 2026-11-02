@@ -434,10 +434,53 @@ try {
     await page.waitForFunction(() => window.__terraville.mode === 'city');
     await page.evaluate(() => window.__terraville.setSpeed(0));
     // Approval is just as it was saved: opening a city doesn't move it, so reloading can't nudge it either way.
-    assert.match((await page.textContent('#goal')).replace(/\s+/g, ' ').trim(), /^Monster Bay \d+y \d+m left Approval 95% \(goal over 60%\)/);
+    assert.match((await page.textContent('#goal')).replace(/\s+/g, ' ').trim(), /^Monster Bay \d+y \d+m left Approval 95% · over 60%/);
     await page.click('#citySign');
     assert.equal(await page.textContent('.modal .big'), '95%');
     assert.equal(await page.locator('.modal .bars .barrow').count(), 8, 'no worries listed');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  await test('the goal tracker ticks each condition, says when a held goal is judged, and folds away on a phone for the session', async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await page.click('[data-act="challenges"]');
+    await page.click('.slot:has-text("Gridlock") .btn.primary');
+    await page.click('.modal footer .btn.primary');
+    await page.waitForFunction(() => window.__terraville.mode === 'city');
+    await page.evaluate(() => window.__terraville.setSpeed(0));
+    const rows = () => page.$$eval('#goal .goal-row', (els) => els.map((e) => ({
+      text: e.firstElementChild.textContent.replace(/\s+/g, ' ').trim(),
+      met: e.classList.contains('met'),
+      // Each figure on one line: '17,544 of / 20,000' was how the old status wrapped.
+      whole: [...e.querySelectorAll('.fig')].every((f) => f.getClientRects().length === 1),
+    })));
+    const opening = await rows();
+    assert.deepEqual(opening.map((r) => r.text.replace(/[\d,]+(?= )/, 'N').replace(/^Residents [\d,]+/, 'Residents N').replace(/^Jobs [\d,]+/, 'Jobs N')),
+      ['Traffic index N · under 28', 'Residents N / 20,000', 'Jobs N / 10,000']);
+    assert.deepEqual(opening.map((r) => r.met), [true, false, true], 'Gridlock opens under the traffic line and with the jobs, short of residents');
+    assert.ok(opening.every((r) => r.whole), 'a figure broke across lines');
+    assert.equal(await page.textContent('#goal .goal-note'), 'Judged at the end of 1960');
+    // Folded, it is one line: the challenge and the time left.
+    const head = page.locator('#goal button.goal-head');
+    assert.equal(await head.getAttribute('aria-expanded'), 'true');
+    await head.click();
+    assert.equal(await page.locator('#goal .goal-row').count(), 0);
+    assert.equal((await page.textContent('#goal')).replace(/\s+/g, ' ').trim(), 'Gridlock 6y 0m left');
+    assert.equal(await page.locator('#goal button.goal-head').getAttribute('aria-expanded'), 'false');
+    assert.ok((await page.locator('#goal').boundingBox()).height < 50);
+    // The next challenge opens folded too, and a tap opens it.
+    await page.evaluate(() => window.__terraville.startScenario('monster'));
+    await page.click('.modal footer .btn.primary');
+    assert.equal((await page.textContent('#goal')).replace(/\s+/g, ' ').trim(), 'Monster Bay 10y 0m left');
+    await page.click('#goal button.goal-head');
+    assert.equal(await page.locator('#goal .goal-row').count(), 2);
+    assert.equal(await page.textContent('#goal .goal-note'), 'Judged at the end of 1966');
+    // A wide window has room for it: its heading is only a heading.
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.waitForFunction(() => !document.querySelector('#goal button.goal-head'));
+    assert.equal(await page.locator('#goal .goal-row').count(), 2);
     assert.deepEqual(problems, []);
     await ctx.close();
   });

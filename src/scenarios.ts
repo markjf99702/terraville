@@ -6,13 +6,40 @@ import { Sim } from './sim';
 import { DEFAULT_TERRAIN, TerrainParams, generateTerrain } from './terrain';
 import { World, newCityState } from './world';
 
+/** One condition of a goal, as the tracker lists it: 'Traffic index 25 · under 28', 'Residents 17,544 / 20,000'. */
+export interface GoalRow {
+  label: string;
+  value: string;
+  /** A count to reach ('20,000'), or a line to stay on the right side of ('under 28'). */
+  goal: string;
+  met: boolean;
+}
+
 export interface GoalState {
   /** 0-1 towards the goal. */
   progress: number;
-  /** Short status such as "Traffic 62 of 40". */
+  /** The whole goal on one line, such as "Traffic 25 (goal under 28) · 17,544 of 20,000 residents". */
   status: string;
   met: boolean;
+  /** Each condition on its own. */
+  rows: GoalRow[];
+  /** For a goal judged only at the deadline, when that is: 'Judged at the end of 1960'. */
+  note?: string;
 }
+
+/** Whether a row is a count to reach, '17,544 / 20,000', rather than a line to stay on the right side of. */
+export function isCount(r: GoalRow): boolean {
+  return /^\d/.test(r.goal);
+}
+
+/** A row as one line: 'Residents 17,544 / 20,000', 'Traffic index 25 · under 28'. */
+export function goalRowText(r: GoalRow): string {
+  return isCount(r) ? `${r.label} ${r.value} / ${r.goal}` : `${r.label} ${r.value} · ${r.goal}`;
+}
+
+const people = (n: number) => n.toLocaleString('en-US');
+/** A row for a count to reach. */
+const atLeast = (label: string, n: number, goal: number): GoalRow => ({ label, value: people(n), goal: people(goal), met: n >= goal });
 
 export interface Scenario {
   id: string;
@@ -65,7 +92,7 @@ export const SCENARIOS: Scenario[] = [
     terrain: { seed: 'boomtown-coast-7', style: 'coast', hills: 30, water: 35 },
     check: (sim) => {
       const r = sim.stats.residents;
-      return { progress: Math.min(1, r / 12000), status: `${r.toLocaleString()} of 12,000 residents`, met: r >= 12000 };
+      return { progress: Math.min(1, r / 12000), status: `${r.toLocaleString()} of 12,000 residents`, met: r >= 12000, rows: [atLeast('Residents', r, 12000)] };
     },
   },
   {
@@ -98,6 +125,7 @@ export const SCENARIOS: Scenario[] = [
         progress: Math.max(0, Math.min(1, (40 - t) / 12)) * (size ? 1 : 0.5),
         status: `Traffic ${t} (goal under 28) · ${r.toLocaleString()} of 20,000 residents · ${j.toLocaleString()} of 10,000 jobs`,
         met: t < 28 && size,
+        rows: [{ label: 'Traffic index', value: String(t), goal: 'under 28', met: t < 28 }, atLeast('Residents', r, 20000), atLeast('Jobs', j, 10000)],
       };
     },
   },
@@ -130,6 +158,7 @@ export const SCENARIOS: Scenario[] = [
         progress: Math.max(0, Math.min(1, (30 - p) / 18)) * (size ? 1 : 0.5),
         status: `Pollution ${p} (goal under 12) · ${r.toLocaleString()} of 20,000 residents · ${j.toLocaleString()} of 9,000 jobs`,
         met: p < 12 && size,
+        rows: [{ label: 'Pollution index', value: String(p), goal: 'under 12', met: p < 12 }, atLeast('Residents', r, 20000), atLeast('Jobs', j, 9000)],
       };
     },
   },
@@ -161,7 +190,7 @@ export const SCENARIOS: Scenario[] = [
     },
     check: (sim) => {
       const r = sim.stats.residents;
-      return { progress: Math.min(1, r / 55000), status: `${r.toLocaleString()} of 55,000 residents`, met: r >= 55000 };
+      return { progress: Math.min(1, r / 55000), status: `${r.toLocaleString()} of 55,000 residents`, met: r >= 55000, rows: [atLeast('Residents', r, 55000)] };
     },
   },
   {
@@ -192,7 +221,12 @@ export const SCENARIOS: Scenario[] = [
     check: (sim) => {
       const a = Math.round(sim.stats.approval);
       const r = sim.stats.residents;
-      return { progress: Math.min(1, r / 25000) * Math.min(1, a / 60), status: `Approval ${a}% (goal over 60%) · ${r.toLocaleString()} of 25,000 residents`, met: a > 60 && r >= 25000 };
+      return {
+        progress: Math.min(1, r / 25000) * Math.min(1, a / 60),
+        status: `Approval ${a}% (goal over 60%) · ${r.toLocaleString()} of 25,000 residents`,
+        met: a > 60 && r >= 25000,
+        rows: [{ label: 'Approval', value: `${a}%`, goal: 'over 60%', met: a > 60 }, atLeast('Residents', r, 25000)],
+      };
     },
   },
 ];
@@ -219,15 +253,31 @@ export function successLine(s: Scenario, month: number, end: number): string {
   return `${s.name} is a success in ${1900 + Math.floor(month / 12)}${early}.`;
 }
 
-/** The goal as the tracker shows it: one that must hold is met once it has held long enough. */
+/** The last year of a challenge, the one whose end is its deadline. */
+export function lastYear(end: number): number {
+  return 1900 + Math.floor((end - 1) / 12);
+}
+
+/**
+ * The goal as the tracker shows it. A goal judged at the deadline says when; one that must hold for its last months
+ * counts only the month-ends inside them toward being met, so it can't read as won years early.
+ */
 export function goalState(s: Scenario, sim: Sim, now = s.check(sim)): GoalState {
-  if (!s.holdMonths) return now;
+  const sc = sim.world.city.scenario;
+  if (s.kind !== 'hold' || !sc) return now;
+  const note = `Judged at the end of ${lastYear(sc.end)}`;
+  if (!s.holdMonths) return { ...now, note };
   const need = s.holdMonths;
-  const held = Math.min(need, sim.world.city.scenario?.held ?? 0);
+  const held = sc.held ?? 0;
+  // The month-ends of the final stretch so far: none before it begins, all of them at the deadline.
+  const inside = Math.max(0, Math.min(need, need - (sc.end - sim.world.city.month)));
+  const counted = Math.min(held, inside);
   return {
-    met: now.met && held >= need,
-    progress: now.met ? 0.5 + (0.5 * held) / need : now.progress * 0.5,
-    status: `${now.status} · held ${held} of ${need} months`,
+    met: now.met && counted >= need,
+    progress: now.met ? 0.5 + (0.5 * counted) / need : now.progress * 0.5,
+    status: `${now.status} · held ${counted} of ${need} months`,
+    rows: [...now.rows, { label: 'Held', value: `${held} month${held === 1 ? '' : 's'} in a row`, goal: `must hold through ${lastYear(sc.end)}`, met: counted >= need }],
+    note,
   };
 }
 
