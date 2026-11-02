@@ -484,7 +484,7 @@ try {
     const opening = await rows();
     assert.deepEqual(opening.map((r) => r.text.replace(/[\d,]+(?= )/, 'N').replace(/^Residents [\d,]+/, 'Residents N').replace(/^Jobs [\d,]+/, 'Jobs N')),
       ['Traffic index N · under 28', 'Residents N / 20,000', 'Jobs N / 10,000']);
-    assert.deepEqual(opening.map((r) => r.met), [true, false, true], 'Gridlock opens under the traffic line and with the jobs, short of residents');
+    assert.deepEqual(opening.map((r) => r.met), [true, false, false], 'Gridlock opens under the traffic line, short of residents and jobs');
     assert.ok(opening.every((r) => r.whole), 'a figure broke across lines');
     assert.equal(await page.textContent('#goal .goal-note'), 'Judged at the end of 1960');
     // Folded, it is one line: the challenge and the time left.
@@ -530,7 +530,10 @@ try {
     assert.equal(await page.textContent('.modal h2'), "Time's up");
     assert.match(await page.textContent('.modal .body'), /^\s*The deadline for Gridlock passed at the end of 1960\. The council went into the election with its promise unkept, and lost\.\s*Not met:/);
     assert.equal(await page.textContent('#ticker .msg-text'), 'Time ran out for Gridlock. 17,568 of 20,000 residents.', 'the news has the result under the dialog');
-    assert.deepEqual(await page.$$eval('.modal .goal-row', (els) => els.map((e) => e.firstElementChild.textContent)), ['Residents 17,568 / 20,000']);
+    const notMet = await page.$$eval('.modal .goal-row', (els) => els.map((e) => e.firstElementChild.textContent));
+    assert.equal(notMet.length, 2);
+    assert.equal(notMet[0], 'Residents 17,568 / 20,000');
+    assert.match(notMet[1], /^Jobs [\d,]+ \/ 10,000$/);
     await page.click('.modal footer .btn.primary');
     assert.equal(await page.textContent('#goal .goal-time'), 'Time ran out');
     assert.match(await page.getAttribute('#goal .track i', 'style'), /var\(--critical\)/);

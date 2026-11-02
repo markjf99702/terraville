@@ -1397,6 +1397,31 @@ await test('challenge cities open as dense as their land value holds, so they do
   }
 });
 
+await test('challenge cities open with only the factories and shops their people keep busy, and keep those jobs', () => {
+  const random = Math.random;
+  try {
+    for (const seed of [3, 7]) {
+      Math.random = makeRng(seed);
+      for (const s of SCENARIOS.filter((x) => x.city)) {
+        const w = buildScenario(s, 120, 100);
+        w.city.disasters = false;
+        const sim = new Sim(w);
+        openScenario(sim);
+        const want = sim.jobsWanted();
+        assert.ok(sim.stats.indJobs <= want.ind, `${s.name}: ${sim.stats.indJobs} factory jobs for ${Math.round(want.ind)} wanted`);
+        assert.ok(sim.stats.comJobs <= want.com, `${s.name}: ${sim.stats.comJobs} shop jobs for ${Math.round(want.com)} wanted`);
+        // Gridlock opened with 15,560 jobs and lost a third of them in its first year; Monster Bay lost two thirds.
+        const opening = sim.stats.comJobs + sim.stats.indJobs;
+        for (let k = 0; k < 4 * 12; k++) sim.step();
+        const after = sim.stats.comJobs + sim.stats.indJobs;
+        assert.ok(after >= opening * 0.9, `${s.name}, seed ${seed}: jobs fell from ${opening} to ${after} in the first year`);
+      }
+    }
+  } finally {
+    Math.random = random;
+  }
+});
+
 await test("Aftershock's opening quakes strike under zones, and neither they nor its fires touch the power plants", () => {
   const random = Math.random;
   const aftershock = SCENARIOS.find((x) => x.id === 'aftershock')!;
@@ -1961,7 +1986,7 @@ await test('a challenge opens with its goal in the news and its real monthly bal
     assert.deepEqual([sim.messages[0].text, sim.messages[0].kind], [`${s.goal} You have until ${s.year + s.years}.`, 'info']);
     const b = sim.stats.lastBudget;
     const net = b.taxIncome - spending(b);
-    assert.ok(b.taxIncome > 500 && net > 0, `${id} opens at ${net}/mo`);
+    assert.ok(b.taxIncome > 300 && net > 0, `${id} opens at ${net}/mo`);
     assert.equal(g.world.city.funds, s.funds, 'the reckoning charged the city');
   }
   assert.ok(g.sim.messages.some((m: any) => m.kind === 'alert'), "Aftershock's earthquake is news after the goal");

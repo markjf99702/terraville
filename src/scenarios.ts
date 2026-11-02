@@ -342,8 +342,9 @@ export function goalState(s: Scenario, sim: Sim, now = s.check(sim)): GoalState 
 }
 
 /**
- * Settle a challenge city as it opens: the month-end maps worked out, and every lot brought down to the density its
- * land value holds, so the city doesn't start out by shrinking. The challenge's own opening events come after.
+ * Settle a challenge city as it opens: the month-end maps worked out, every lot brought down to the density its
+ * land value holds, and its factories and shops down to the jobs its people keep busy, so the city doesn't start
+ * out by shrinking. The challenge's own opening events come after.
  */
 export function openScenario(sim: Sim): void {
   const passes = () => {
@@ -364,6 +365,7 @@ export function openScenario(sim: Sim): void {
         changed = true;
       }
     }
+    if (trimJobs(sim)) changed = true;
     if (!changed) break;
     passes();
   }
@@ -371,6 +373,33 @@ export function openScenario(sim: Sim): void {
   // Thinning the lots is how the city was laid out, not people leaving: it opens with no "Last month" loss.
   sim.lastPop = sim.stats.residents;
   sim.evaluate();
+}
+
+/**
+ * Bring a city's factories, then its shops, down to the jobs its residents keep busy, the densest lots first and,
+ * among equals, the one on the poorest spot for its kind. More jobs than that would empty out in the first year.
+ * Whether anything changed.
+ */
+function trimJobs(sim: Sim): boolean {
+  let changed = false;
+  for (const kind of ['ind', 'com'] as const) {
+    sim.tally();
+    const want = sim.jobsWanted()[kind];
+    let jobs = kind === 'ind' ? sim.stats.indJobs : sim.stats.comJobs;
+    if (jobs <= want) continue;
+    const lots = [...sim.world.buildings.values()].filter((b) => b.kind === kind && b.level > 0).map((b) => ({ b, score: sim.growth(b).score }));
+    while (jobs > want) {
+      let pick: (typeof lots)[number] | undefined;
+      for (const l of lots) if (l.b.level > 0 && (!pick || l.b.level > pick.b.level || (l.b.level === pick.b.level && l.score < pick.score))) pick = l;
+      if (!pick) break;
+      const was = pick.b.pop;
+      sim.world.setLevel(pick.b, pick.b.level - 1);
+      jobs -= was - pick.b.pop;
+      changed = true;
+    }
+  }
+  if (changed) sim.tally();
+  return changed;
 }
 
 /** Build the scenario's world, ready to hand to a Sim. */

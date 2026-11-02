@@ -885,6 +885,12 @@ export class Sim {
     s.cityClass = cityClass(res);
   }
 
+  /** The jobs the city's people keep busy: shops for its residents and the factories' workers, factories for its residents. */
+  jobsWanted(): { com: number; ind: number } {
+    const s = this.stats;
+    return { com: s.residents * 0.22 + s.indJobs * 0.12 + 60, ind: s.residents * 0.3 + 90 };
+  }
+
   computeDemand(): void {
     const s = this.stats;
     const city = this.world.city;
@@ -892,8 +898,7 @@ export class Sim {
     const Jc = s.comJobs;
     const Ji = s.indJobs;
     const rTarget = (Jc + Ji) * 2.05 + 220;
-    const cTarget = R * 0.22 + Ji * 0.12 + 60;
-    const iTarget = R * 0.3 + 90;
+    const { com: cTarget, ind: iTarget } = this.jobsWanted();
     const valve = (target: number, cur: number) => ((target - cur) / (Math.max(target, cur) + 200)) * 2.2;
     // Each point of tax away from 7% pushes every bar down (or up, below 7%).
     const tax = (7 - city.tax) * 0.05;
