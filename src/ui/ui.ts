@@ -209,8 +209,8 @@ interface ModalSpec {
   locked?: boolean;
 }
 
-/** The panels over the map that the camera keeps its edges clear of. */
-const INSET_PANELS = ['#topbar', '#toolbox', '#editorPanel', '#guide', '#goal', '#minimapCard', '#ticker'];
+/** The panels and cards over the map that the camera keeps its edges clear of. */
+const INSET_PANELS = ['#topbar', '#toolbox', '#editorPanel', '#guide', '#goal', '#minimapCard', '#ticker', '#log', '#inspect'];
 
 /** The terrain editor's sliders, by id, and the setting each one sets. */
 const EDITOR_SLIDERS: [string, 'water' | 'hills' | 'rough' | 'rivers' | 'lakes' | 'forest'][] = [
@@ -295,6 +295,9 @@ export class UI {
     if (typeof ResizeObserver !== 'undefined') {
       const ro = new ResizeObserver(() => {
         this.stackCards();
+        // A toast showing under the checklist or the goal card follows it as it folds or grows.
+        const toast = $(root, '#toast');
+        if (!toast.classList.contains('hide')) this.placeToast(toast);
         this.measureInsets();
         this.fitInspect();
       });
@@ -445,28 +448,61 @@ export class UI {
 
   /**
    * How far the panels reach in over the map from each side, with a margin, for the camera: it lets each edge of the
-   * map come in that far, so every tile can be brought clear of them. In a wide window the tools are on the left, the
-   * top bar above, the ticker below, and the cards down the right (the editor's panel, the checklist or goal, the map
-   * card). On a phone the bars and cards stack at the top and at the bottom.
+   * map come in that far, so every tile can be brought clear of them. In a wide window the tools are on the left, the top
+   * bar above, the ticker below and the cards down the right; on a phone the bars and cards stack at the top and at the
+   * bottom. The news log and the Inspect card are kept clear of on the side that leaves the map the most room, and the
+   * place the paused badge and the toasts show, whether or not one is showing, so neither ever covers a tile at the top.
    */
   measureInsets(): void {
     const e = { l: 0, t: 0, r: 0, b: 0 };
     this.syncBarBottom();
     if (this.game.mode !== 'title') {
       const map = $(this.root, '#map').getBoundingClientRect();
-      const boxes = (...ids: string[]) => ids.flatMap((id) => {
+      const box = (id: string): DOMRect | null => {
         const panel = $(this.root, id);
         const b = panel.hidden ? null : panel.getBoundingClientRect();
-        return b && b.width && b.height ? [b] : [];
-      });
+        return b && b.width && b.height ? b : null;
+      };
+      const need = (b: DOMRect) => ({ l: b.right - map.left, t: b.bottom - map.top, r: map.right - b.left, b: map.bottom - b.top });
+      const keep = (side: keyof typeof e, b: DOMRect | null) => {
+        if (b) e[side] = Math.max(e[side], need(b)[side]);
+      };
       const narrow = this.narrow();
-      e.t = Math.max(0, ...boxes('#topbar', ...(narrow ? ['#guide', '#goal'] : [])).map((b) => b.bottom - map.top));
+      keep('t', box('#topbar'));
+      keep('t', this.noticeSlot(map));
       if (narrow) {
-        e.b = Math.max(0, ...boxes('#ticker', '#toolbox', '#editorPanel', '#minimapCard').map((b) => map.bottom - b.top));
+        for (const id of ['#guide', '#goal']) keep('t', box(id));
+        for (const id of ['#ticker', '#toolbox', '#editorPanel', '#minimapCard']) keep('b', box(id));
       } else {
-        e.l = Math.max(0, ...boxes('#toolbox').map((b) => b.right - map.left));
-        e.r = Math.max(0, ...boxes('#editorPanel', '#guide', '#goal', '#minimapCard').map((b) => map.right - b.left));
-        e.b = Math.max(0, ...boxes('#ticker').map((b) => map.bottom - b.top));
+        keep('l', box('#toolbox'));
+        for (const id of ['#editorPanel', '#guide', '#goal', '#minimapCard']) keep('r', box(id));
+        keep('b', box('#ticker'));
+      }
+      // The news log and the Inspect card float over the map: each is kept clear of on the side that leaves the map the
+      // most room. The log grows no taller than leaves the map a fifth of the window above it; on a phone it closes when
+      // the map is touched instead (see closeLogIfCompact).
+      const log = $(this.root, '#log');
+      log.style.maxHeight = '';
+      if (!log.hidden && !this.compact()) {
+        const l = log.getBoundingClientRect();
+        const room = l.bottom - (map.bottom - (map.height * 0.8 - 32 - e.t));
+        if (room < l.height) log.style.maxHeight = `${Math.max(120, Math.floor(room))}px`;
+      }
+      for (const id of this.compact() ? ['#inspect'] : ['#log', '#inspect']) {
+        const b = box(id);
+        if (!b) continue;
+        const n = need(b);
+        let best: keyof typeof e = 'b';
+        let room = -1;
+        for (const k of narrow ? (['b'] as const) : (['l', 't', 'r', 'b'] as const)) {
+          const f = { ...e, [k]: Math.max(e[k], n[k]) };
+          const area = Math.max(0, map.width - f.l - f.r) * Math.max(0, map.height - f.t - f.b);
+          if (area > room) {
+            room = area;
+            best = k;
+          }
+        }
+        e[best] = Math.max(e[best], n[best]);
       }
       // A margin past the panels; and however big they grow, the map keeps at least a fifth of the screen each way.
       const side = (a: number, b: number, size: number) => {
@@ -476,7 +512,40 @@ export class UI {
       [e.l, e.r] = side(e.l, e.r, map.width);
       [e.t, e.b] = side(e.t, e.b, map.height);
     }
-    this.game.renderer.insets = e;
+    this.game.renderer.setInsets(e);
+  }
+
+  /**
+   * Where the paused badge and the toasts show over the top of a city's map: under the top bar in a wide window or on a
+   * phone on its side, and on a phone held upright under the stats and any card below them.
+   */
+  private noticeSlot(map: DOMRect): DOMRect | null {
+    if (this.game.mode !== 'city') return null;
+    let top = $(this.root, '#topbar').getBoundingClientRect().bottom + 6;
+    if (this.narrow()) {
+      for (const id of ['#guide', '#goal']) {
+        const c = $(this.root, id);
+        if (!c.hidden) top = Math.max(top, c.getBoundingClientRect().bottom + 8);
+      }
+    } else {
+      // The badge is measured where it shows, though it may be hidden now.
+      const pill = $(this.root, '#pausedPill');
+      const hidden = pill.hidden;
+      if (hidden) {
+        pill.style.visibility = 'hidden';
+        pill.hidden = false;
+      }
+      const p = pill.getBoundingClientRect();
+      if (hidden) {
+        pill.hidden = true;
+        pill.style.visibility = '';
+      }
+      if (p.height) top = p.top;
+    }
+    // One line of toast tall, or as tall as the one showing.
+    const toast = $(this.root, '#toast');
+    const tall = toast.classList.contains('hide') || toast.classList.contains('at-bottom') ? 0 : toast.offsetHeight;
+    return new DOMRect(map.left + map.width / 2 - 150, top, 300, Math.max(44, tall));
   }
 
   /** The cards under the top bar sit on its bottom edge (--bar-bottom in the style sheet), which moves as it wraps. */
@@ -917,6 +986,9 @@ export class UI {
     }
     const map = $(this.root, '#map');
     map.classList.toggle('grab', this.game.toolId === 'query' || this.game.toolId === 'pan');
+    // On a phone the Inspect card takes the bottom of the map, where the next road or lot may go: another tool puts it
+    // away.
+    if (this.narrow() && this.game.toolId !== 'query' && !$(this.root, '#inspect').hidden) this.hideInspect();
   }
 
   // ---- editor panel ----------------------------------------------------------------
@@ -1197,6 +1269,18 @@ export class UI {
   closeDropdownIfOpen(): boolean {
     if (!this.dropdownEl) return false;
     this.closeDropdown();
+    return true;
+  }
+
+  /**
+   * On a phone either way up the news log covers much of the map, the bottom edge with it: it closes when the map is
+   * touched, as it does when the Inspect card takes its place.
+   */
+  closeLogIfCompact(): boolean {
+    const log = $(this.root, '#log');
+    if (log.hidden || !this.compact()) return false;
+    log.hidden = true;
+    this.renderTicker();
     return true;
   }
 
@@ -1779,6 +1863,7 @@ export class UI {
     const words = text.trim().split(/\s+/).length;
     this.toastTimer = Math.min(7, Math.max(2.8, 1.6 + 0.26 * words));
     this.placeToast(t);
+    this.measureInsets();
   }
 
   /**
@@ -1820,7 +1905,10 @@ export class UI {
   private hideToast(): void {
     this.toastTimer = 0;
     this.toastHover = false;
-    $(this.root, '#toast').classList.add('hide');
+    const t = $(this.root, '#toast');
+    if (t.classList.contains('hide')) return;
+    t.classList.add('hide');
+    this.measureInsets();
   }
 
   // ---- modals -------------------------------------------------------------------------

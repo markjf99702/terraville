@@ -82,8 +82,9 @@ export class Input {
     g.renderer.stopFlight();
     g.audio.unlock();
     g.ui.hideToolTip();
-    // A click on the map that closes a menu does nothing else.
+    // A click on the map that closes a menu does nothing else. On a phone the news log closes too, out of the way.
     if (g.ui.closeDropdownIfOpen()) return;
+    g.ui.closeLogIfCompact();
     this.canvas.setPointerCapture(e.pointerId);
     const p = this.local(e);
     this.pointers.set(e.pointerId, { ...p, type: e.pointerType });

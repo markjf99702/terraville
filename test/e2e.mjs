@@ -1270,6 +1270,207 @@ try {
     }
   });
 
+  await test('at street level a zone and an airport go flush against every edge and corner, clear of every panel and card', async () => {
+    const views = [
+      ['1280x800', DESK, false],
+      ['1024x768', { viewport: { width: 1024, height: 768 }, isMobile: true, hasTouch: true }, true],
+      ['844x390', { viewport: { width: 844, height: 390 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, true],
+      ['390x844', PHONE, true],
+    ];
+    const spots = [[-1, -1, 'top left'], [0, -1, 'top'], [1, -1, 'top right'], [1, 0, 'right'], [1, 1, 'bottom right'], [0, 1, 'bottom'], [-1, 1, 'bottom left'], [-1, 0, 'left']];
+    const wrong = [];
+    for (const [view, opts, touch] of views) {
+      const ctx = await profile(opts);
+      const { page, problems } = await open(ctx);
+      const pick = (tool) => (touch ? page.tap(`[data-tool="${tool}"]`) : page.click(`[data-tool="${tool}"]`));
+      const press = async (p) => {
+        if (touch) return page.touchscreen.tap(p.x, p.y);
+        await page.mouse.move(p.x, p.y);
+        await page.mouse.down();
+        await page.mouse.up();
+      };
+      for (const panel of ['checklist', 'Inspect card', 'news log', 'overview map', 'goal card']) {
+        // Open, flat land everywhere, plenty of money, the clock stopped (the paused badge up) and one card open.
+        if (panel === 'goal card') await page.evaluate(() => { window.__terraville.startScenario('gridlock'); window.__terraville.ui.closeModal(); });
+        else if (panel === 'checklist') await found(page);
+        await page.evaluate((panel) => {
+          const g = window.__terraville;
+          const w = g.world;
+          for (let i = 0; i < w.n; i++) {
+            if (w.occ[i]) w.remove(w.occ[i]);
+            w.water[i] = 0; w.height[i] = 6; w.trees[i] = 0; w.net[i] = 0; w.rubble[i] = 0; w.fire[i] = 0; w.flood[i] = 0;
+          }
+          w.dirtyAll(true);
+          w.city.funds = 1e7;
+          g.setSpeed(0);
+          const $ = (s) => document.querySelector(s);
+          // Each card in turn: the checklist and the goal card unfolded, the others put away.
+          const head = $('#guide:not([hidden]) button.guide-head[aria-expanded="true"]');
+          if (head && panel !== 'checklist') head.click();
+          const folded = $('#guide:not([hidden]) .guide-next[aria-expanded="false"], #goal.folded .goal-head');
+          if (folded && (panel === 'checklist' || panel === 'goal card')) folded.click();
+          g.ui.hideInspect();
+          if (!$('#log').hidden) $('#tkLog').click();
+          if (panel === 'Inspect card') {
+            g.setTool('query');
+            const b = w.place('nuclear', Math.floor(w.w / 2), Math.floor(w.h / 2));
+            g.ui.inspect(b.x, b.y);
+          }
+          if (panel === 'overview map') {
+            g.ui.setOverlay('landValue');
+            const t = $('#mmToggle');
+            if (!t.hidden && t.getAttribute('aria-pressed') !== 'true') t.click();
+          } else if (g.renderer.overlay !== 'none') g.ui.setOverlay('none');
+        }, panel);
+        for (const kind of ['res', 'airport']) {
+          await pick(kind);
+          if (panel === 'news log') {
+            if (await page.evaluate(() => document.querySelector('#log').hidden)) await (touch ? page.tap('#tkLog') : page.click('#tkLog'));
+            // On a phone the news log closes when the map is touched.
+            if (view === '844x390' || view === '390x844') {
+              if (await page.evaluate(() => !document.querySelector('#toast').classList.contains('hide'))) await page.tap('#toast');
+              // Somewhere the map shows, well clear of anything over it.
+              const at = await page.evaluate(() => {
+                const map = document.querySelector('#map');
+                const open = (x, y) => [[0, 0], [-12, 0], [12, 0], [0, -12], [0, 12]].every(([dx, dy]) => document.elementFromPoint(x + dx, y + dy) === map);
+                for (let y = 20; y < innerHeight - 20; y += 6) for (let x = 20; x < innerWidth - 20; x += 6) if (open(x, y)) return { x, y };
+              });
+              await page.touchscreen.tap(at.x, at.y);
+              await page.waitForFunction(() => document.querySelector('#log').hidden, null, { timeout: 2000 }).catch(() => {});
+              const closed = await page.evaluate(() => {
+                const g = window.__terraville;
+                for (const b of [...g.world.buildings.values()]) g.world.remove(b.id);
+                return document.querySelector('#log').hidden;
+              });
+              if (!closed) wrong.push(`${view}: a touch on the map left the news log open`);
+            }
+          }
+          const size = kind === 'res' ? 3 : 6;
+          for (const [px, py, name] of spots) {
+            // The camera as far over as it goes, the footprint flush against that edge (in the middle of the room left
+            // along it), and every tile of it on open map.
+            const t = await page.evaluate(([px, py, size]) => {
+              const g = window.__terraville;
+              const r = g.renderer;
+              const w = g.world;
+              r.stopFlight();
+              r.cam.zoom = 24;
+              r.cam.x = px < 0 ? -1e6 : px > 0 ? 1e6 : w.w / 2;
+              r.cam.y = py < 0 ? -1e6 : py > 0 ? 1e6 : w.h / 2;
+              r.clampCamera();
+              const c = r.freeCentre();
+              const x = px < 0 ? 0 : px > 0 ? w.w - size : Math.max(0, Math.min(w.w - size, Math.floor(c.x) - Math.floor(size / 2)));
+              const y = py < 0 ? 0 : py > 0 ? w.h - size : Math.max(0, Math.min(w.h - size, Math.floor(c.y) - Math.floor(size / 2)));
+              const canvas = document.querySelector('#map');
+              const under = new Set();
+              for (let ty = y; ty < y + size; ty++) for (let tx = x; tx < x + size; tx++) {
+                const a = r.tileToScreen(tx, ty);
+                for (const [dx, dy] of [[12, 12], [3, 3], [21, 3], [3, 21], [21, 21]]) {
+                  const e = document.elementFromPoint(a.x + dx, a.y + dy);
+                  if (e !== canvas) under.add(e?.closest('[id]')?.id || 'off the screen');
+                }
+              }
+              const tap = r.tileToScreen(x + Math.floor((size - 1) / 2) + 0.5, y + Math.floor((size - 1) / 2) + 0.5);
+              return { x, y, under: [...under], tap, insets: Object.values(r.insets).map(Math.round).join(' ') };
+            }, [px, py, size]);
+            // A frame, as a person's would, between moving the map and touching it.
+            await page.evaluate(() => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok))));
+            const where = `${view}, ${panel}, ${kind === 'res' ? 'a zone' : 'an airport'} at the ${name}`;
+            if (t.under.length) {
+              wrong.push(`${where}: under ${t.under.join(', ')} (the map's edges come in ${t.insets})`);
+              continue;
+            }
+            await press(t.tap);
+            // On a touch screen the first tap shows the airport, clear of its Build card; the second builds it.
+            if (touch && kind === 'airport') {
+              await page.evaluate(() => new Promise((ok) => requestAnimationFrame(ok)));
+              const shown = await page.evaluate(({ x, y }) => {
+                const p = window.__terraville.renderer.preview;
+                const card = document.querySelector('#placeCard').getBoundingClientRect();
+                const r = window.__terraville.renderer;
+                const a = r.tileToScreen(x, y);
+                const b = r.tileToScreen(x + 6, y + 6);
+                return { at: p?.rects.map((q) => [q.x, q.y]), clear: card.right <= a.x || card.left >= b.x || card.bottom <= a.y || card.top >= b.y };
+              }, t);
+              if (JSON.stringify(shown.at) !== JSON.stringify([[t.x, t.y]]) || !shown.clear) wrong.push(`${where}: shown at ${JSON.stringify(shown.at)}${shown.clear ? '' : ', under its Build card'}`);
+              await press(t.tap);
+            }
+            const built = await page.evaluate(({ x, y, kind }) => {
+              const g = window.__terraville;
+              const b = g.world.buildingAt(x, y);
+              const ok = !!b && b.kind === kind && b.x === x && b.y === y;
+              if (b) g.world.remove(b.id);
+              return ok;
+            }, { ...t, kind });
+            if (!built) wrong.push(`${where}: not built there`);
+          }
+        }
+      }
+      assert.deepEqual(problems, []);
+      await ctx.close();
+    }
+    assert.deepEqual(wrong, []);
+  });
+
+  await test('closing a card leaves the map where it was, and the edge it let in goes back only as the map is moved', async () => {
+    const ctx = await profile(DESK);
+    const { page, problems } = await open(ctx);
+    await found(page);
+    const insets = () => page.evaluate(() => ({ ...window.__terraville.renderer.insets }));
+    // A long news log opens: the side it is kept clear of lets that edge of the map in further.
+    await page.evaluate(() => {
+      const g = window.__terraville;
+      for (let k = 0; k < 30; k++) g.sim.messages.push({ text: `News ${k} from city hall.`, kind: 'info', month: g.world.city.month });
+    });
+    const before = await insets();
+    await page.click('#tkLog');
+    await page.waitForTimeout(200);
+    const during = await insets();
+    const side = ['l', 't', 'r', 'b'].sort((a, b) => (during[b] - before[b]) - (during[a] - before[a]))[0];
+    assert.ok(during[side] - before[side] > 100, `the log lets the map in further from one side: ${JSON.stringify(before)} then ${JSON.stringify(during)}`);
+    // That edge brought in as far as it goes.
+    const edge = (side) => page.evaluate((side) => {
+      const r = window.__terraville.renderer;
+      const a = r.tileToScreen(0, 0);
+      const b = r.tileToScreen(r.world.w, r.world.h);
+      return { l: a.x, t: a.y, r: r.cssW - b.x, b: r.cssH - b.y }[side];
+    }, side);
+    await page.evaluate((side) => {
+      const r = window.__terraville.renderer;
+      r.cam.zoom = 24;
+      if (side === 'l' || side === 'r') r.cam.x = side === 'l' ? -1e6 : 1e6;
+      else r.cam.y = side === 't' ? -1e6 : 1e6;
+      r.clampCamera();
+    }, side);
+    const was = await edge(side);
+    assert.ok(Math.abs(was - during[side]) < 1, `the edge came in ${Math.round(was)} px`);
+    // The log closes: the map stays put, and a 10 px drag back out moves it 10 px, not back to the panels at once.
+    await page.click('#tkLog');
+    await page.waitForTimeout(200);
+    assert.ok(Math.abs((await edge(side)) - was) < 1, 'closing the log leaves the map where it was');
+    const [dx, dy] = { l: [-5, 0], r: [5, 0], t: [0, -5], b: [0, 5] }[side];
+    await page.mouse.move(640, 400);
+    await page.mouse.down({ button: 'right' });
+    await page.mouse.move(640 + dx, 400 + dy);
+    await page.mouse.move(640 + 2 * dx, 400 + 2 * dy);
+    await page.mouse.up({ button: 'right' });
+    const moved = was - (await edge(side));
+    assert.ok(moved > 8 && moved < 12, `a 10 px drag moved the edge ${Math.round(moved)} px`);
+    // Moved away and back, the room the log made is gone.
+    await page.evaluate((side) => {
+      const r = window.__terraville.renderer;
+      if (side === 'l' || side === 'r') r.cam.x = side === 'l' ? 1e6 : -1e6;
+      else r.cam.y = side === 't' ? 1e6 : -1e6;
+      r.clampCamera();
+      if (side === 'l' || side === 'r') r.cam.x = side === 'l' ? -1e6 : 1e6;
+      else r.cam.y = side === 't' ? -1e6 : 1e6;
+      r.clampCamera();
+    }, side);
+    assert.ok(Math.abs((await edge(side)) - (await insets())[side]) < 1, 'the edge now comes in only as far as the panels left');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('the editor opens on the whole map, between its panels, and Whole map or the 0 key bring it back', async () => {
     for (const opts of [DESK, PHONE]) {
       const ctx = await profile(opts);

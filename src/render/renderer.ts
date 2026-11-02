@@ -125,6 +125,11 @@ export class Renderer {
    * so that every tile can be brought clear of them. Measured by the page (see UI.measureInsets).
    */
   insets: Insets = { ...NO_INSETS };
+  /**
+   * How far each edge of the map may still come in past the insets, because it was there when a panel shrank or closed:
+   * the map stays put rather than jump, and the extra room goes as the camera moves back in.
+   */
+  private held: Insets = { ...NO_INSETS };
   dpr = 1;
   cssW = 800;
   cssH = 600;
@@ -210,6 +215,7 @@ export class Renderer {
     this.sim = sim;
     this.selected = null;
     this.flight = null;
+    this.held = { ...NO_INSETS };
     this.field = new TerrainField(world);
     if (!this.vehicles) this.vehicles = new Vehicles(world);
     else this.vehicles.setWorld(world);
@@ -295,18 +301,49 @@ export class Renderer {
    */
   clampCamera(edge: Insets = this.insets): void {
     const z = this.cam.zoom;
+    const own = edge === this.insets;
+    const h = this.held;
+    const e = own ? { l: Math.max(edge.l, h.l), t: Math.max(edge.t, h.t), r: Math.max(edge.r, h.r), b: Math.max(edge.b, h.b) } : edge;
     const fit = (at: number, view: number, size: number, lo: number, hi: number) => {
       const min = (view / 2 - lo) / z; // the map's near edge `lo` px in from the screen's
       const max = size - (view / 2 - hi) / z; // and its far edge `hi` px in from the other side
       return min > max ? (min + max) / 2 : Math.max(min, Math.min(max, at));
     };
-    this.cam.x = fit(this.cam.x, this.cssW, this.world.w, edge.l, edge.r);
-    this.cam.y = fit(this.cam.y, this.cssH, this.world.h, edge.t, edge.b);
+    this.cam.x = fit(this.cam.x, this.cssW, this.world.w, e.l, e.r);
+    this.cam.y = fit(this.cam.y, this.cssH, this.world.h, e.t, e.b);
+    if (own) {
+      const now = this.edgesIn();
+      this.held = { l: Math.max(0, Math.min(h.l, now.l)), t: Math.max(0, Math.min(h.t, now.t)), r: Math.max(0, Math.min(h.r, now.r)), b: Math.max(0, Math.min(h.b, now.b)) };
+    }
+  }
+
+  /** How far in from each side of the screen each edge of the map is now, in CSS pixels. */
+  private edgesIn(): Insets {
+    const a = this.tileToScreen(0, 0);
+    const b = this.tileToScreen(this.world.w, this.world.h);
+    return { l: a.x, t: a.y, r: this.cssW - b.x, b: this.cssH - b.y };
+  }
+
+  /**
+   * Set how far the panels reach in over the map (see insets). An edge of the map that is in further than the new
+   * insets allow, because a panel shrank or closed, is held there until the camera moves back in.
+   */
+  setInsets(e: Insets): void {
+    const was = this.insets;
+    this.insets = e;
+    if (!this.world) return;
+    const now = this.edgesIn();
+    for (const k of ['l', 't', 'r', 'b'] as const) {
+      // Only room the old insets gave, and the new ones don't, is held.
+      if (e[k] < was[k]) this.held[k] = Math.max(this.held[k], Math.min(now[k], was[k]));
+      if (this.held[k] <= e[k]) this.held[k] = 0;
+    }
   }
 
   /** Zoom and move so the whole map fits in a rectangle of the screen (CSS pixels), in its middle. */
   fitRect(l: number, t: number, r: number, b: number): void {
     this.flight = null;
+    this.held = { ...NO_INSETS };
     const { w, h } = this.world;
     const z = Math.max(this.minZoom(), Math.min(96, (r - l) / w, (b - t) / h));
     this.cam.zoom = z;
