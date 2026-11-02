@@ -1682,6 +1682,90 @@ await test('with its only plant on fire, the city says so instead of asking for 
   assert.equal(sim.messages.filter((m: any) => m.text.startsWith('Zones are waiting')).at(-1).text, 'Zones are waiting for electricity. Build a power plant and connect it.');
 }));
 
+await test("a town's only plant burning down is one alert that every zone is dark, and the fire's end says what it burned", () => seeded(42, () => {
+  const g = town();
+  const w = g.world;
+  const sim = g.sim;
+  const played: string[] = [];
+  g.audio = { play: (s: string) => played.push(s) };
+  const plant = [...w.buildings.values()].find((b: any) => b.kind === 'coal');
+  const from = sim.messages.length;
+  sim.disasters.ignite(plant.x, plant.y);
+  let month = -1;
+  for (let k = 0; k < 20 && w.buildings.has(plant.id); k++) {
+    weeks(g, 1);
+    if (!w.buildings.has(plant.id)) month = w.city.month;
+  }
+  assert.equal(w.buildings.has(plant.id), false, 'the plant never burned down');
+  weeks(g, 4);
+  const news = sim.messages.slice(from);
+  const lost = news.filter((m: any) => /coal plant burned down/.test(m.text));
+  assert.deepEqual(lost.map((m: any) => [m.text, m.kind, m.x, m.y]), [['The coal plant burned down. Every zone is dark until another plant is built.', 'alert', plant.x + 2, plant.y + 2]]);
+  assert.equal(news.filter((m: any) => m.month === month && m.text.startsWith('Zones are waiting')).length, 0, 'the new-city line followed in the same month');
+  assert.deepEqual(news.filter((m: any) => m.text.startsWith('The fire is out')).map((m: any) => [m.text, m.kind]), [['The fire is out. It burned down a building.', 'info']]);
+  assert.equal(played.filter((s) => s === 'crumble').length, 1, 'one rumble as it came down');
+}));
+
+await test('a tornado or monster ends with one line on what it wrecked, and a lost station or landmark is news at its spot', () => {
+  // Over open country it wrecks nothing, and says only that it is over.
+  const empty = new Sim(flat());
+  empty.disasters.roamers.push({ kind: 'tornado', x: 20, y: 15, px: 20, py: 15, vx: 0, vy: 0, weeks: 3, heading: 0 });
+  for (let k = 0; k < 5; k++) empty.step();
+  assert.deepEqual(empty.messages.filter((m) => /tornado/i.test(m.text)).map((m) => [m.text, m.kind]), [['The tornado has blown itself out.', 'info']]);
+  // Through a town it counts the buildings it took: not the empty lots.
+  const w = flat(60, 40);
+  for (let y = 12; y < 28; y += 3) for (let x = 22; x < 38; x += 3) w.setLevel(w.place('res', x, y), y < 20 ? 2 : 0);
+  const sim = new Sim(w);
+  const monster = { kind: 'monster' as const, x: 30, y: 19, px: 30, py: 19, vx: 0, vy: 0, weeks: 1, heading: 0 };
+  sim.disasters.roamers.push(monster);
+  const random = Math.random;
+  Math.random = () => 0; // everything it reaches comes down
+  try {
+    sim.disasters.week();
+  } finally {
+    Math.random = random;
+  }
+  const homes = (monster as any).wrecked;
+  assert.ok(homes > 0, 'it wrecked nothing');
+  assert.equal(sim.messages.at(-1)!.text, `The monster has gone back to the water. It wrecked ${homes === 1 ? 'a building' : `${homes} buildings`}.`);
+  // A station or a landmark lost is news, named apart from another of its kind, and an alert for the last landmark.
+  const t = flat(60, 40);
+  const [p1, p2] = [t.place('police', 2, 2), t.place('police', 40, 30)];
+  const stadium = t.place('stadium', 10, 10);
+  const lot = t.place('res', 20, 20);
+  t.setLevel(lot, 3);
+  const park = t.place('park', 30, 2);
+  const s2 = new Sim(t);
+  s2.disasters.destroy(p1, 'tornado');
+  s2.disasters.destroy(stadium, 'fire');
+  s2.disasters.destroy(lot, 'earthquake');
+  s2.disasters.destroy(park, 'flood');
+  s2.disasters.destroy(p2, 'earthquake');
+  assert.deepEqual(s2.messages.map((m) => [m.text, m.kind, m.x, m.y]), [
+    ['The tornado wrecked a police station.', 'warn', 3, 3],
+    ['The stadium burned down.', 'alert', 12, 12],
+    ['The earthquake brought down the police station.', 'warn', 41, 31],
+  ]);
+});
+
+await test('a flood says when its waters have gone down, and what they washed away; a save keeps the count', () => seeded(3, () => {
+  const w = flat(40, 30);
+  w.height.fill(1);
+  for (let y = 0; y < 30; y++) for (let x = 0; x < 4; x++) { w.water[y * w.w + x] = 1; w.height[y * w.w + x] = -4; }
+  for (let y = 2; y < 28; y += 3) w.setLevel(w.place('res', 4, y), 2);
+  let sim = new Sim(w);
+  sim.disasters.trigger('flood');
+  sim.step();
+  const run = sim.saveRun();
+  assert.ok(run.floodWrecked! > 0, 'the flood took nothing');
+  sim = new Sim(World.deserialize(JSON.parse(JSON.stringify(w.serialize(run)))));
+  for (let k = 0; k < 20; k++) sim.step();
+  const down = sim.messages.filter((m) => m.text.startsWith('The flood waters'));
+  assert.equal(down.length, 1);
+  assert.match(down[0].text, /^The flood waters have gone down\. They washed away (a building|\d+ buildings)\.$/);
+  assert.equal(down[0].kind, 'info');
+}));
+
 await test('undo refunds only within three months of the action, however often it was undone and redone since', () => seeded(42, () => {
   const g = town();
   drag(g, 'nuclear', 52, 20);

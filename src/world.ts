@@ -854,9 +854,11 @@ export interface SavedRun {
   migration?: number;
   messages: { text: string; kind: SavedMessageKind; x?: number; y?: number; month: number }[];
   cooldown: [string, number][];
-  roamers: { kind: 'tornado' | 'monster'; x: number; y: number; vx: number; vy: number; weeks: number; heading: number }[];
+  roamers: { kind: 'tornado' | 'monster'; x: number; y: number; vx: number; vy: number; weeks: number; heading: number; wrecked?: number }[];
   floodLevel: number;
   floodAge: number;
+  /** Buildings the flood under way has washed away. */
+  floodWrecked?: number;
 }
 
 /** The news the log shows, and so what a save keeps. */
@@ -891,6 +893,7 @@ function cleanRun(raw: unknown, w: number, h: number): SavedRun | null {
     floodLevel: num(s.floodLevel, 0, -1000, 1000),
     floodAge: Math.floor(num(s.floodAge, 0, 0, 1e6)),
   };
+  if (s.floodWrecked !== undefined) run.floodWrecked = Math.floor(num(s.floodWrecked, 0, 0, 1e5));
   if (s.lastPop !== undefined) run.lastPop = Math.floor(num(s.lastPop, 0, 0));
   if (s.migration !== undefined) run.migration = Math.round(num(s.migration, 0));
   for (const v of list(s.messages, SAVED_MESSAGES)) {
@@ -916,6 +919,7 @@ function cleanRun(raw: unknown, w: number, h: number): SavedRun | null {
       vy: num(r.vy, 0, -4, 4),
       weeks: Math.min(60, Math.floor(weeks)),
       heading: num(r.heading, 0, -1e6, 1e6),
+      wrecked: Math.floor(num(r.wrecked, 0, 0, 1e5)),
     });
   }
   return run;

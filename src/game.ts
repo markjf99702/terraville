@@ -514,6 +514,8 @@ export class Game {
           break;
         case 'destroyed':
           this.renderer.vehicles.addDust(e.x, e.y);
+          // A plant, a service or a landmark coming down is heard; lots go with the dust alone.
+          if (!isZone(e.kind) && e.kind !== 'park') this.audio.play('crumble');
           break;
         case 'month':
           this.minimap.markDirty();

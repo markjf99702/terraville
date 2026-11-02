@@ -25,6 +25,8 @@ export interface Roamer {
   vy: number;
   weeks: number;
   heading: number;
+  /** Buildings it has wrecked so far, for the line it ends with. */
+  wrecked?: number;
 }
 
 /**
@@ -43,6 +45,21 @@ interface Blaze {
 /** How near a new fire must be to one already burning to be part of it, in tiles. */
 const BLAZE_REACH = 6;
 
+/** What a disaster does to a building it takes, in the news: 'The tornado wrecked the fire station.' */
+const LOST: Record<string, (what: string) => string> = {
+  fire: (what) => `${what[0].toUpperCase()}${what.slice(1)} burned down.`,
+  tornado: (what) => `The tornado wrecked ${what}.`,
+  monster: (what) => `The monster wrecked ${what}.`,
+  earthquake: (what) => `The earthquake brought down ${what}.`,
+  flood: (what) => `The flood washed away ${what}.`,
+  meltdown: (what) => `The meltdown destroyed ${what}.`,
+};
+
+/** '6 buildings', or 'a building'. */
+function buildings(n: number): string {
+  return n === 1 ? 'a building' : `${n.toLocaleString('en-US')} buildings`;
+}
+
 export class Disasters {
   roamers: Roamer[] = [];
   /** Seconds of screen shake left; the renderer counts it down. */
@@ -51,6 +68,8 @@ export class Disasters {
   lastQuake: { x: number; y: number } | null = null;
   private floodLevel = 0;
   private floodAge = 0;
+  /** Buildings the flood under way has washed away, for the line it ends with. */
+  private floodWrecked = 0;
   /** While set, a disaster set off says nothing: a challenge's opening says it all in one line. */
   private quiet = false;
   /** Each burning tile's fire, by number, and each fire's record. */
@@ -70,18 +89,20 @@ export class Disasters {
   }
 
   /** A tornado or monster under way and a flood still rising, for a save. */
-  saveRun(): Pick<SavedRun, 'roamers' | 'floodLevel' | 'floodAge'> {
+  saveRun(): Pick<SavedRun, 'roamers' | 'floodLevel' | 'floodAge' | 'floodWrecked'> {
     return {
-      roamers: this.roamers.map(({ kind, x, y, vx, vy, weeks, heading }) => ({ kind, x, y, vx, vy, weeks, heading })),
+      roamers: this.roamers.map(({ kind, x, y, vx, vy, weeks, heading, wrecked }) => ({ kind, x, y, vx, vy, weeks, heading, wrecked: wrecked ?? 0 })),
       floodLevel: this.floodLevel,
       floodAge: this.floodAge,
+      floodWrecked: this.floodWrecked,
     };
   }
 
-  resume(run: Pick<SavedRun, 'roamers' | 'floodLevel' | 'floodAge'>): void {
+  resume(run: Pick<SavedRun, 'roamers' | 'floodLevel' | 'floodAge' | 'floodWrecked'>): void {
     this.roamers = run.roamers.map((r) => ({ ...r, px: r.x, py: r.y }));
     this.floodLevel = run.floodLevel;
     this.floodAge = run.floodAge;
+    this.floodWrecked = run.floodWrecked ?? 0;
   }
 
   week(): void {
@@ -276,14 +297,18 @@ export class Disasters {
     for (const i of burning) if (!map[i] || !this.blazes.has(map[i])) this.blazeFor(i % w, (i / w) | 0, 1, { x: i % w, y: (i / w) | 0 });
   }
 
-  /** Forget each fire that has nothing left alight. */
+  /** Each fire with nothing left alight is out: news, with what it burned down, if its start was. */
   private closeBlazes(): void {
     if (!this.blazes.size) return;
     const world = this.world;
     const map = this.blazeMap;
     const alight = new Set<number>();
     for (let i = 0; i < world.n; i++) if (world.fire[i]) alight.add(map[i]);
-    for (const id of this.blazes.keys()) if (!alight.has(id)) this.blazes.delete(id);
+    for (const [id, f] of this.blazes) {
+      if (alight.has(id)) continue;
+      this.blazes.delete(id);
+      if (f.told) this.say('out' + id, `The fire is out.${f.burned ? ` It burned down ${buildings(f.burned)}.` : ''}`, 'info', { x: f.x, y: f.y }, 0);
+    }
   }
 
   private spreadFire(): void {
@@ -361,17 +386,57 @@ export class Disasters {
     world.dirty(x, y, x, y);
   }
 
-  /** Wreck a building. Nuclear plants take the neighbourhood with them. */
-  destroy(b: Building, cause: string): void {
+  /**
+   * Wreck a building, by `cause` ('fire', 'tornado' and so on), and count it against the fire, the flood or `by`, the
+   * tornado or monster. Nuclear plants take the neighbourhood with them.
+   */
+  destroy(b: Building, cause: string, by?: Roamer): void {
     const world = this.world;
     if (!world.buildings.has(b.id)) return;
+    // An empty lot or a park is no building to count.
+    if (b.kind !== 'park' && !(isZone(b.kind) && b.level === 0)) {
+      if (by) by.wrecked = (by.wrecked ?? 0) + 1;
+      else if (cause === 'flood') this.floodWrecked++;
+      else if (cause === 'fire') {
+        const f = this.blazes.get(this.blazeMap[b.y * world.w + b.x]);
+        if (f) f.burned++;
+      }
+    }
     for (let dy = 0; dy < b.size; dy++) {
       for (let dx = 0; dx < b.size; dx++) world.fire[(b.y + dy) * world.w + b.x + dx] = 0;
     }
     world.remove(b.id, true);
     this.sim.powerDirty = true;
-    this.sim.emit({ type: 'destroyed', x: b.x + b.size / 2, y: b.y + b.size / 2 });
+    this.sim.emit({ type: 'destroyed', x: b.x + b.size / 2, y: b.y + b.size / 2, kind: b.kind });
+    if (!isZone(b.kind) && b.kind !== 'park') this.lost(b, cause);
     if (b.kind === 'nuclear' && cause !== 'meltdown') this.meltdown(b);
+  }
+
+  /**
+   * A power plant, service or landmark lost is news, at its spot: an alert for the city's last plant, which leaves every
+   * zone dark, or its last landmark of a kind; a warning otherwise.
+   */
+  private lost(b: Building, cause: string): void {
+    const world = this.world;
+    const name = buildingName(b).toLowerCase();
+    let others = false, plants = false, zones = false;
+    for (const o of world.buildings.values()) {
+      if (o.kind === b.kind) others = true;
+      if (BUILDINGS[o.kind].capacity) plants = true;
+      if (isZone(o.kind)) zones = true;
+    }
+    const lastPlant = !!BUILDINGS[b.kind].capacity && !plants;
+    // A meltdown says so itself; only the dark that follows is more to say.
+    if (cause === 'meltdown' && !lastPlant) return;
+    const what = `${others ? article(name) : 'the'} ${name}`;
+    let text = (LOST[cause] ?? LOST.earthquake)(what);
+    if (lastPlant && zones) {
+      text += ' Every zone is dark until another plant is built.';
+      this.sim.plantLost = world.city.month;
+    }
+    const landmark = b.kind === 'stadium' || b.kind === 'seaport' || b.kind === 'airport';
+    const c = Math.floor(b.size / 2);
+    this.say('lost' + b.id, text, lastPlant || (landmark && !others) ? 'alert' : 'warn', { x: b.x + c, y: b.y + c }, 0);
   }
 
   private meltdown(b: Building): void {
@@ -422,6 +487,7 @@ export class Disasters {
     }
     this.floodLevel = world.height[pickI] + 2.5 + Math.random() * 2.5;
     this.floodAge = 0;
+    this.floodWrecked = 0;
     world.flood[pickI] = 16;
     this.floodTile(pickI);
     const x = pickI % w;
@@ -474,6 +540,7 @@ export class Disasters {
       this.floodTile(j);
     }
     if (!any) return;
+    let left = 0;
     for (let i = 0; i < n; i++) {
       if (!flood[i]) continue;
       flood[i]--;
@@ -481,7 +548,12 @@ export class Disasters {
         const x = i % w;
         const y = (i / w) | 0;
         world.dirty(x, y, x, y);
-      }
+      } else left++;
+    }
+    if (!left) {
+      const lost = this.floodWrecked;
+      this.say('flooddown', `The flood waters have gone down.${lost ? ` They washed away ${buildings(lost)}.` : ''}`, 'info', undefined, 0);
+      this.floodWrecked = 0;
     }
   }
 
@@ -572,6 +644,11 @@ export class Disasters {
       r.y = Math.max(0.5, Math.min(world.h - 0.5, r.y));
       r.weeks--;
       this.smash(r);
+      if (r.weeks <= 0) {
+        const n = r.wrecked ?? 0;
+        const gone = r.kind === 'tornado' ? 'The tornado has blown itself out.' : 'The monster has gone back to the water.';
+        this.say('gone', `${gone}${n ? ` It wrecked ${buildings(n)}.` : ''}`, 'info', undefined, 0);
+      }
     }
     this.roamers = this.roamers.filter((r) => r.weeks > 0);
   }
@@ -587,7 +664,7 @@ export class Disasters {
         const i = y * world.w + x;
         const b = world.buildingAt(x, y);
         if (b && Math.random() < (r.kind === 'tornado' ? 0.55 : 0.7)) {
-          this.destroy(b, r.kind);
+          this.destroy(b, r.kind, r);
           // The monster leaves the wreck burning, and it can spread from there. Setting the building alight first
           // would come to nothing, since destroy() puts out its whole footprint.
           if (r.kind === 'monster' && Math.random() < 0.3) this.burnRubble(x, y);

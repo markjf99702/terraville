@@ -1,5 +1,5 @@
 // Small synthesized sound effects. Nothing plays until the first click.
-export type Sfx = 'click' | 'build' | 'zone' | 'bulldoze' | 'error' | 'alert' | 'coin' | 'fanfare' | 'terrain';
+export type Sfx = 'click' | 'build' | 'zone' | 'bulldoze' | 'error' | 'alert' | 'coin' | 'fanfare' | 'terrain' | 'crumble';
 
 export class Audio {
   enabled = true;
@@ -27,7 +27,8 @@ export class Audio {
     if (!this.enabled || !this.ctx || !this.master) return;
     const now = this.ctx.currentTime;
     const prev = this.last.get(s) ?? -1;
-    if (now - prev < (s === 'terrain' ? 0.12 : 0.05)) return;
+    // A tornado can take several buildings in a week: one rumble at a time.
+    if (now - prev < (s === 'terrain' ? 0.12 : s === 'crumble' ? 0.3 : 0.05)) return;
     this.last.set(s, now);
     switch (s) {
       case 'click': return this.tone(880, 0.04, 'square', 0.08);
@@ -36,6 +37,8 @@ export class Audio {
       case 'bulldoze': return this.noise(0.28, 400, 0.4);
       case 'error': return this.tone(140, 0.18, 'sawtooth', 0.2);
       case 'terrain': return this.noise(0.08, 250, 0.12);
+      // A building coming down: a short, low rumble.
+      case 'crumble': return this.noise(0.35, 200, 0.6);
       case 'coin': this.tone(988, 0.08, 'square', 0.15); return this.tone(1319, 0.2, 'square', 0.15, 0.08);
       case 'fanfare': {
         [523, 659, 784, 1047].forEach((f, k) => this.tone(f, 0.18, 'triangle', 0.25, k * 0.11));

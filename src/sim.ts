@@ -93,7 +93,7 @@ export type SimEvent =
   | { type: 'year'; surplus: boolean }
   | { type: 'class'; text: string }
   | { type: 'grow'; b: Building }
-  | { type: 'destroyed'; x: number; y: number }
+  | { type: 'destroyed'; x: number; y: number; kind: Kind }
   | { type: 'disaster'; kind: string; x: number; y: number };
 
 const MAX_TRIP = 80;
