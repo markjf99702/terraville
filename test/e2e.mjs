@@ -1160,6 +1160,41 @@ try {
     await ctx.close();
   });
 
+  await test('a screen reader hears the news, the city sign, the demand, the Inspect card, a tool\'s tip and the charts', async () => {
+    const ctx = await profile(DESK);
+    const { page, problems } = await open(ctx);
+    await found(page);
+    const name = await page.evaluate(() => window.__terraville.world.city.name);
+    await page.waitForFunction(() => document.querySelector('#announce').textContent.startsWith('Welcome to'));
+    assert.equal(await page.getAttribute('#ticker', 'aria-live'), null, 'the ticker is not read as well');
+    assert.equal(await page.getAttribute('#citySign', 'aria-label'), `${name}, 0 residents, village. City report`);
+    assert.match(await page.getAttribute('#rci', 'aria-label'), /^Demand: homes (high|moderate|low|negative), shops (high|moderate|low|negative), industry (high|moderate|low|negative)$/);
+    assert.equal(await page.getAttribute('#rci', 'role'), 'img');
+    await page.evaluate(() => window.__terraville.sim.say('test', 'An earthquake shakes the city.', 'alert'));
+    await page.waitForFunction(() => document.querySelector('#announceAlert').textContent === 'An earthquake shakes the city.');
+    // The Inspect card is a region named by its heading.
+    await page.evaluate(() => window.__terraville.ui.inspect(5, 5));
+    const title = await page.textContent('#inspect h3');
+    assert.equal(await page.getByRole('region', { name: title, exact: true }).count(), 1);
+    // A tool is described by its tip while the tip shows.
+    await page.hover('[data-tool="road"]');
+    assert.equal(await page.getAttribute('[data-tool="road"]', 'aria-describedby'), 'tooltip');
+    await page.mouse.move(640, 400);
+    assert.equal(await page.getAttribute('[data-tool="road"]', 'aria-describedby'), null);
+    // A chart is a picture with words.
+    await page.click('#topbar [data-act="charts"]');
+    await page.waitForFunction(() => document.querySelector('#ch1 canvas').getAttribute('aria-label'));
+    assert.equal(await page.getAttribute('#ch1 canvas', 'role'), 'img');
+    assert.equal(await page.getAttribute('#ch1 canvas', 'aria-label'), 'Residents and jobs: history starts after the first month.');
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => { const g = window.__terraville; for (let k = 0; k < 12; k++) g.sim.step(); });
+    await page.click('#topbar [data-act="charts"]');
+    await page.waitForFunction(() => document.querySelector('#ch2 canvas').getAttribute('aria-label')?.includes('latest'));
+    assert.match(await page.getAttribute('#ch2 canvas', 'aria-label'), /^City funds, latest: Funds \$[\d,]+$/);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('Settings lists the keys of the place it is opened in, from the toolbox, with redo', async () => {
     const ctx = await profile(DESK);
     const { page, problems } = await open(ctx);

@@ -119,6 +119,11 @@ export function lineChart(wrap: HTMLElement, series: Series[], o: ChartOpts): vo
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, W, H);
   const n = Math.max(...series.map((s) => s.values.length), 0);
+  // A screen reader has no picture: it hears the chart's title and where each line ends.
+  const title = wrap.querySelector('h4')?.textContent ?? 'Chart';
+  canvas.setAttribute('role', 'img');
+  canvas.setAttribute('aria-label', n < 2 ? `${title}: history starts after the first month.`
+    : `${title}, latest: ${series.map((s) => `${s.name} ${o.format(s.values[s.values.length - 1])}`).join(', ')}`);
   ctx.font = '11px Overpass, system-ui, sans-serif';
   const padL = 46;
   // Room for the longest name at the line ends.

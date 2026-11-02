@@ -133,10 +133,12 @@ export function buildShell(root: HTMLElement): { map: HTMLCanvasElement; minimap
     </div>
     <div id="ticker" class="panel"></div>
     <div id="log" class="panel" hidden></div>
-    <div id="inspect" class="panel" hidden></div>
+    <div id="inspect" class="panel" role="region" aria-labelledby="inspectTitle" hidden></div>
     <div id="tooltip" class="panel" hidden></div>
     <div id="cursorTip" hidden></div>
     <div id="toast" class="panel hide" role="status" aria-live="polite"></div>
+    <div id="announce" class="sr-only" aria-live="polite"></div>
+    <div id="announceAlert" class="sr-only" aria-live="assertive"></div>
     <button id="pausedPill" class="panel" hidden title="Resume (Space)">${ICONS.pause}<b>Paused</b><span class="by-key">Space to resume</span><span class="by-touch">Tap to resume</span></button>
     <div id="dropRoot"></div>
     <div id="modalRoot" hidden></div>
@@ -380,11 +382,11 @@ export class UI {
   private buildTopbarCity(): void {
     const top = $(this.root, '#topbar');
     top.innerHTML = `
-      <button class="sign" id="citySign" aria-label="City report"><b id="signName"></b><small id="signSub"><span id="signPop"></span>${SEP}<span id="signClass"></span></small></button>
+      <button class="sign" id="citySign"><b id="signName"></b><small id="signSub"><span id="signPop"></span>${SEP}<span id="signClass"></span></small></button>
       <div class="panel stat-strip">
         <div class="stat" id="stDateBox"><span class="label" id="stDateLabel">Date</span><span class="value" id="stDate"></span></div>
         <div class="stat" id="stFundsBox"><span class="label">Funds</span><span class="value" id="stFunds"></span><span class="delta" id="stDelta"></span></div>
-        <div class="rci" title="Demand for residential, commercial and industrial land">
+        <div class="rci" id="rci" role="img" title="Demand for residential, commercial and industrial land">
           <div class="bar"><div class="fill r" id="rciR"></div></div>
           <div class="bar"><div class="fill c" id="rciC"></div></div>
           <div class="bar"><div class="fill i" id="rciI"></div></div>
@@ -569,6 +571,15 @@ export class UI {
     bar('rciR', city.demand.r);
     bar('rciC', city.demand.c);
     bar('rciI', city.demand.i);
+    // What the bars show, in words, rewritten only when the words change.
+    const word = (v: number) => (v >= 0.45 ? 'high' : v >= 0.1 ? 'moderate' : v > -0.1 ? 'low' : 'negative');
+    const rci = this.root.querySelector('#rci');
+    const said = `Demand: homes ${word(city.demand.r)}, shops ${word(city.demand.c)}, industry ${word(city.demand.i)}`;
+    if (rci && rci.getAttribute('aria-label') !== said) rci.setAttribute('aria-label', said);
+    // The sign opens the report, and says what it shows.
+    const sign = this.root.querySelector('#citySign');
+    const name = `${city.name}, ${s.residents.toLocaleString()} residents, ${cityClass(s.residents).toLowerCase()}. City report`;
+    if (sign && sign.getAttribute('aria-label') !== name) sign.setAttribute('aria-label', name);
   }
 
   tick(dt: number): void {
@@ -705,11 +716,15 @@ export class UI {
     if (owner && owner !== this.tipOwner) return;
     window.clearTimeout(this.tipTimer);
     $(this.root, '#tooltip').hidden = true;
+    this.tipOwner?.removeAttribute('aria-describedby');
     this.tipOwner = null;
   }
 
   private showToolTip(b: HTMLElement, t: ToolDef): void {
     window.clearTimeout(this.tipTimer);
+    // While its tip shows, the tool is described by it: cost, upkeep and what it does.
+    if (this.tipOwner !== b) this.tipOwner?.removeAttribute('aria-describedby');
+    b.setAttribute('aria-describedby', 'tooltip');
     this.tipOwner = b;
     const tip = $(this.root, '#tooltip');
     const cost = t.cost ? `<span class="cost">${t.kind === 'line' || t.id === 'bulldoze' || t.id === 'trees' || t.id === 'park' ? `$${t.cost} a tile` : money(t.cost)}${t.building && BUILDINGS[t.building].upkeep ? ` · ${money(BUILDINGS[t.building].upkeep)}/mo upkeep` : ''}</span>` : '';
@@ -1043,6 +1058,7 @@ export class UI {
   onMessage(m: Message): void {
     this.lastMessage = m;
     this.renderTicker();
+    this.announce(m);
     if (m.kind === 'alert') {
       const t = $(this.root, '#ticker');
       t.classList.remove('flash');
@@ -1050,6 +1066,19 @@ export class UI {
       t.classList.add('flash');
     }
     if (!$(this.root, '#log').hidden) this.renderLog();
+  }
+
+  /**
+   * Say a piece of news to a screen reader, an alert at once: the ticker itself isn't a live region, so nothing is
+   * read twice. News a toast also shows (a new size class, say) is left to the toast.
+   */
+  private announce(m: Message): void {
+    window.setTimeout(() => {
+      const toast = $(this.root, '#toast');
+      if (!toast.classList.contains('hide') && toast.textContent === m.text) return;
+      const r = $(this.root, m.kind === 'alert' ? '#announceAlert' : '#announce');
+      r.textContent = m.text;
+    }, 0);
   }
 
   private renderTicker(): void {
@@ -1127,7 +1156,7 @@ export class UI {
       ? `<button class="btn small" id="inLayer" style="margin-top:10px">${layer === 'power' ? 'Show the power grid' : 'Show its reach'}</button>` : '';
     // Sentences read as text; figures stay in the card's mono.
     const prose = new Set(['Does', 'Land value it adds']);
-    card.innerHTML = `<button class="iconbtn close" aria-label="Close">${ICONS.close}</button><h3>${esc(d.title)}</h3><dl>${d.rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd${prose.has(k) ? ' class="text"' : ''}>${esc(v)}</dd>`).join('')}</dl>${showLayer}${d.note ? `<p class="note why">${esc(d.note)}</p>` : ''}${up ? `
+    card.innerHTML = `<button class="iconbtn close" aria-label="Close">${ICONS.close}</button><h3 id="inspectTitle">${esc(d.title)}</h3><dl>${d.rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd${prose.has(k) ? ' class="text"' : ''}>${esc(v)}</dd>`).join('')}</dl>${showLayer}${d.note ? `<p class="note why">${esc(d.note)}</p>` : ''}${up ? `
       <div class="upgrade"><p class="note">Upgrade to ${article(up.name)} <b>${esc(up.name.toLowerCase())}</b>: land value rises by <span class="num">${money(UPGRADE_LV * 40)}</span>/acre across the whole city, and upkeep by <span class="num">${money(up.upkeep)}</span>/mo.</p>
       <button class="btn small primary" id="inUpgrade">Upgrade for ${money(up.cost)}</button></div>` : outdone ? `
       <div class="upgrade"><p class="note">Only the city's most upgraded ${esc(BUILDINGS[b.kind].name.toLowerCase())} raises land value, so this one has no upgrade.</p></div>` : ''}`;
