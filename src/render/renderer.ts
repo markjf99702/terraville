@@ -5,6 +5,7 @@
 import { ROAD, isZone } from '../defs';
 import type { Sim } from '../sim';
 import type { World } from '../world';
+import { lessMotion } from '../motion';
 import { hash3 } from '../rng';
 import { TerrainField, paintTerrain } from './terrainPaint';
 import { CAR_COLORS, DC, Emitter, buildingEmitters, drawBuilding, drawNet, drawRadiation, drawRubble, drawTrees } from './sprites';
@@ -661,7 +662,8 @@ export class Renderer {
   }
 
   private drawPowerWarnings(ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number): void {
-    if ((this.time % 1.2) > 0.75) return;
+    // The bolts blink, or with less motion asked for, stay lit.
+    if (!lessMotion() && this.time % 1.2 > 0.75) return;
     for (const b of this.world.buildings.values()) {
       if (b.powered || !isZone(b.kind)) continue;
       if (b.x > x1 || b.y > y1 || b.x + b.size < x0 || b.y + b.size < y0) continue;

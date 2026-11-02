@@ -4,6 +4,7 @@ import {
   BUILDINGS, CITY_CLASSES, CITY_TOOLS, DIFFICULTIES, Difficulty, EDITOR_TOOLS, GRADE_COST, Kind, MAP_SIZES, SEP, ToolDef, Upgrade,
   article, buildingName, cityClass, isZone, nextUpgrade,
 } from './defs';
+import { lessMotion } from './motion';
 import { Minimap } from './render/minimap';
 import { Renderer, SLOPE_CLASSES } from './render/renderer';
 import { hashString, makeRng, pick, randomSeedName } from './rng';
@@ -787,7 +788,8 @@ export class Game {
       if (r.overlay === 'power') r.refreshOverlay();
     }
     r.running = running;
-    if (this.mode === 'title') {
+    // The title screen's map drifts slowly, unless the system asks for less motion.
+    if (this.mode === 'title' && !lessMotion()) {
       const c = r.cam;
       c.x += this.titleDrift.vx * dt;
       c.y += this.titleDrift.vy * dt;

@@ -5,6 +5,7 @@ import {
   AUTO_GRADE, BRIDGE_COST, BUILDINGS, CITY_CLASSES, DISASTER_POP, GRADE_COST, Kind, LANDMARK_LIMITS, LANDMARK_NEEDS, NET_COST,
   NET_MAX_SLOPE, NET_UPKEEP, POWER, ROAD, UPGRADES, UPGRADE_LV, ZONE_LV_GATE, ZONE_POP,
 } from '../defs';
+import { lessMotion } from '../motion';
 import { DC, drawBuilding, drawNet, drawTrees } from '../render/sprites';
 import { TerrainField, paintTerrain } from '../render/terrainPaint';
 import { zoneTitle } from '../sim';
@@ -337,7 +338,7 @@ export function buildGuide(): HTMLElement {
   root.querySelector('.guide-nav')!.addEventListener('click', (e) => {
     const bt = (e.target as HTMLElement).closest<HTMLElement>('[data-go]');
     if (!bt) return;
-    root.querySelector(`#guide-${bt.dataset.go}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    root.querySelector(`#guide-${bt.dataset.go}`)?.scrollIntoView({ behavior: lessMotion() ? 'auto' : 'smooth', block: 'start' });
   });
   return root;
 }

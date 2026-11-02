@@ -1101,6 +1101,36 @@ try {
     await ctx.close();
   });
 
+  await test('with less motion asked for, the title map holds still, a dark lot\'s bolt stays lit, and the Drive cloud stops pulsing', async () => {
+    const ctx = await profile({ ...DESK, reducedMotion: 'reduce' });
+    const { page, problems } = await open(ctx);
+    const cam = () => page.evaluate(() => ({ ...window.__terraville.renderer.cam }));
+    const before = await cam();
+    await page.waitForTimeout(1200);
+    assert.deepEqual(await cam(), before, 'the title camera drifted');
+    await found(page);
+    // A lot with no power, on its own on dry land, at the middle of the screen.
+    await page.evaluate(() => {
+      const g = window.__terraville;
+      const w = g.world;
+      let at = null;
+      for (let y = 10; y < w.h - 10 && !at; y++) for (let x = 10; x < w.w - 10 && !at; x++) if (w.canPlace('res', x, y).ok) at = [x, y];
+      w.place('res', at[0], at[1]);
+      g.renderer.cam.zoom = 40;
+      g.renderer.centerOn(at[0] + 1.5, at[1] + 1.5);
+    });
+    const shots = [];
+    for (let k = 0; k < 6; k++) {
+      shots.push((await page.screenshot({ clip: { x: 620, y: 380, width: 40, height: 40 } })).toString('base64'));
+      await page.waitForTimeout(230);
+    }
+    assert.equal(new Set(shots).size, 1, 'the bolt blinked');
+    await page.evaluate(() => document.querySelector('#driveBtn').setAttribute('data-s', 'busy'));
+    assert.equal(await page.$eval('#driveBtn svg', (s) => getComputedStyle(s).animationName), 'none');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('Settings lists the keys of the place it is opened in, from the toolbox, with redo', async () => {
     const ctx = await profile(DESK);
     const { page, problems } = await open(ctx);
