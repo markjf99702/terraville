@@ -188,6 +188,19 @@ try {
     await ctx.close();
   });
 
+  await test('a first visit starts with Start a new city; once a city is saved, Continue comes first', async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    const first = () => page.$$eval('.title-actions .btn', (bs) => bs.map((b) => `${b.dataset.act}${b.classList.contains('primary') ? '*' : ''}`).slice(0, 2));
+    assert.deepEqual(await first(), ['quick*', 'editor'], 'Start a new city is first, and the main choice');
+    await found(page);
+    await page.reload();
+    await titleUp(page);
+    assert.deepEqual(await first(), ['continue*', 'quick'], 'Continue is first and the main choice; Start a new city is a plain button');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('a damaged list of saves still opens on the title screen, with Continue', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);
@@ -2146,6 +2159,8 @@ try {
       return { text: b.querySelector('span').textContent, inSight: r.top >= 0 && r.bottom <= innerHeight && r.right <= innerWidth };
     }));
     assert.equal(choices.length, 6, 'Continue is offered');
+    assert.equal(choices[0].text, `Continue ${await t.evaluate(() => window.__terraville.latestLocal().name)}`, 'first');
+    assert.deepEqual(await t.$$eval('.title-actions .btn.primary', (bs) => bs.map((x) => x.dataset.act)), ['continue'], 'as the main choice');
     assert.deepEqual(choices.filter((c) => !c.inSight).map((c) => c.text), [], 'every choice is in sight without scrolling');
     assert.deepEqual(inT, []);
     await se.close();
@@ -2585,6 +2600,8 @@ try {
     await b.waitForSelector('[data-act="continue-drive"]');
     assert.equal(await b.textContent('[data-act="continue-drive"] span'), `Continue ${name}`);
     assert.match(await b.textContent('[data-act="continue-drive"] small'), /^From Mac · /);
+    assert.deepEqual(await b.$$eval('.title-actions .btn.primary', (bs) => bs.map((x) => x.dataset.act)), ['continue-drive'], 'it is the main choice');
+    assert.equal(await b.$eval('.title-actions .btn', (x) => x.dataset.act), 'continue-drive', 'and the first');
     await b.click('[data-act="continue-drive"]');
     await b.waitForFunction(() => window.__terraville.mode === 'city');
     assert.equal(await b.evaluate(() => { window.__terraville.setSpeed(0); return window.__terraville.world.city.month; }), 12);

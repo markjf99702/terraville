@@ -337,11 +337,11 @@ export class UI {
         </div>
         <p class="lede">Shape a landscape, then grow a city on it. Zone homes, shops and factories, string the power lines, balance the books, and keep an eye on the sky.</p>
         <div class="title-actions">
-          <button class="btn primary" data-act="quick"><span>Start a new city</span><small>Random land</small></button>
+          ${last ? `<button class="btn primary" data-act="continue"><span>Continue ${esc(last.name)}</span><small class="num">${dateLabel(last.date)} · pop ${last.pop.toLocaleString()}</small></button>` : ''}
+          <button class="btn${last ? '' : ' primary'}" data-act="quick"><span>Start a new city</span><small>Random land</small></button>
           <button class="btn" data-act="editor"><span>Shape the land first</span><small>Terrain editor</small></button>
           <button class="btn" data-act="challenges"><span>Challenges</span><small>Cities in trouble</small></button>
           <button class="btn" data-act="guide"><span>Strategy guide</span><small>How cities grow</small></button>
-          ${last ? `<button class="btn" data-act="continue"><span>Continue ${esc(last.name)}</span><small class="num">${dateLabel(last.date)} · pop ${last.pop.toLocaleString()}</small></button>` : ''}
           <button class="btn" data-act="open"><span>Open a saved city</span><small>Saves and city codes</small></button>
           <div id="titleDrive" class="title-drive"></div>
         </div>
@@ -409,11 +409,14 @@ export class UI {
         box.innerHTML = '';
         if (!best || (here && here.savedAt >= best.saved)) return;
         this.titleCopy = best;
-        const btn = el(`<button class="btn" data-act="continue-drive"><span>Continue ${esc(best.name)}</span><small class="num">From ${esc(best.label)} · ${ago(best.saved)}</small></button>`);
+        // The newest city anywhere comes first, as the main choice, and what was first steps back a place.
+        const btn = el(`<button class="btn primary" data-act="continue-drive"><span>Continue ${esc(best.name)}</span><small class="num">From ${esc(best.label)} · ${ago(best.saved)}</small></button>`);
+        const actions = this.root.querySelector('#title .title-actions');
         const old = this.root.querySelector('#title [data-act="continue"]');
         // The same city, older, is not worth a second button.
-        if (old && here?.city === best.city) old.replaceWith(btn);
-        else this.root.querySelector('#title [data-act="open"]')?.before(btn);
+        if (old && here?.city === best.city) old.remove();
+        actions?.querySelector('.btn.primary')?.classList.remove('primary');
+        actions?.prepend(btn);
       }, () => {
         box.innerHTML = '';
       });
