@@ -19,8 +19,13 @@ const WEBKIT = typeof navigator !== 'undefined' && (
   /iPad|iPhone|iPod/.test(navigator.userAgent) ||
   (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) ||
   /^((?!chrome|chromium|android|crios|fxios|edg).)*safari/i.test(navigator.userAgent));
+const ANDROID = typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent);
 const PIXEL_BUDGET = WEBKIT ? 12_000_000 : 32_000_000;
-const MAX_LOD = WEBKIT ? 32 : 64;
+/**
+ * Phones draw street level at 32 px a tile at most, as iPhones always have: a patch takes about 100 ms to paint at 32
+ * on a slow phone, and 330 at 64.
+ */
+const MAX_LOD = WEBKIT || ANDROID ? 32 : 64;
 /**
  * While a brush is held, the chunks it changes are redrawn at no more than this detail, and sharpened once it lifts: a
  * chunk takes about 8 ms to paint at 16 px a tile and 88 ms at 64.

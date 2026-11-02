@@ -1394,6 +1394,25 @@ try {
     await ctx.close();
   });
 
+  await test('an Android phone draws street level at 32 px a tile at most, as an iPhone does', async () => {
+    const android = 'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
+    for (const [opts, most] of [[{ ...PHONE, userAgent: android }, 32], [DESK, 64]]) {
+      const ctx = await profile(opts);
+      const { page, problems } = await open(ctx);
+      await found(page);
+      await page.evaluate(() => {
+        const r = window.__terraville.renderer;
+        r.cam.zoom = 80;
+        r.centerOn(r.world.w / 2, r.world.h / 2);
+      });
+      await page.waitForTimeout(2000);
+      const top = await page.evaluate(() => Math.max(...[...window.__terraville.renderer.chunks.values()].map((c) => c.L)));
+      assert.equal(top, most, `${opts.userAgent ? 'Android' : 'a laptop'} painted the street at ${top} px a tile`);
+      assert.deepEqual(problems, []);
+      await ctx.close();
+    }
+  });
+
   await test('the cost tip draws its middle dots and says why lots are blocked', async () => {
     const ctx = await profile(DESK);
     const { page, problems } = await open(ctx);
