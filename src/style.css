@@ -812,6 +812,8 @@ kbd { font: 600 11.5px var(--mono); padding: 1px 6px; border: 1px solid var(--li
   transition: opacity 0.25s;
 }
 #toast.hide { opacity: 0; pointer-events: none; }
+/* Under a dialog that fills the screen: at its foot, letting taps through to the dialog's buttons beneath. */
+#toast.at-bottom { top: auto; bottom: calc(var(--bottom) + 12px); pointer-events: none; }
 /* A warning: the caution border and diamond, as the ticker marks its warnings. */
 #toast.warn { border-color: var(--caution); }
 #toast .caution { width: 10px; height: 10px; }

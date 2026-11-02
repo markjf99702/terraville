@@ -894,6 +894,46 @@ try {
     await ctx.close();
   });
 
+  await test("a toast never sits on a dialog's heading: an old one goes when a dialog opens or the screen changes, and one raised in a dialog shows below the heading", async () => {
+    const shown = (page) => page.evaluate(() => !document.querySelector('#toast').classList.contains('hide'));
+    // Clear of the dialog's heading: wholly above it or wholly below it.
+    const clear = (page) => page.evaluate(() => {
+      const t = document.querySelector('#toast').getBoundingClientRect();
+      const h = document.querySelector('.modal header').getBoundingClientRect();
+      return t.bottom <= h.top || t.top >= h.bottom;
+    });
+    const ctx = await profile(DESK);
+    const { page, problems } = await open(ctx);
+    await page.click('[data-act="editor"]');
+    await page.waitForFunction(() => window.__terraville.mode === 'editor');
+    assert.equal(await shown(page), true, "the editor's opening words are up");
+    await page.click('#topbar [data-act="menu"]');
+    await page.click('[role="menu"] button:has-text("Settings")');
+    assert.equal(await shown(page), false, 'Settings opened a moment later hides them');
+    await page.keyboard.press('Escape');
+    // A notice from one screen goes with it.
+    await page.evaluate(() => window.__terraville.ui.toast('Random disasters are off.'));
+    await page.evaluate(() => window.__terraville.showTitle());
+    assert.equal(await shown(page), false, 'the title screen starts without the last screen\'s notice');
+    // In the Budget, Repay with too little money says so below the heading, in a wide window and on a phone, where the
+    // Budget fills the screen.
+    for (const opts of [DESK, PHONE]) {
+      const c = await profile(opts);
+      const { page: p, problems: inP } = await open(c);
+      await found(p);
+      await p.evaluate(() => { const city = window.__terraville.world.city; city.loan = 10000; city.funds = 500; });
+      await p.click('#topbar [data-act="budget"]');
+      await p.click('.modal button:has-text("Repay $10,000")');
+      assert.match(await p.textContent('#toast'), /Not enough money to repay that/);
+      assert.equal(await clear(p), true, `${opts.viewport.width} px: the toast keeps off the Budget's heading`);
+      await p.click('.modal footer .btn.primary');
+      assert.deepEqual(inP, []);
+      await c.close();
+    }
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test("on a phone the terrain editor's opening toast stays clear of the brushes it points to", async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

@@ -276,6 +276,7 @@ export class UI {
     this.root.dataset.mode = 'title';
     this.closeModal();
     this.closeDropdown();
+    this.hideToast(); // a notice about the last screen has nothing to say about this one
     for (const id of ['#topbar', '#toolbox', '#editorPanel', '#minimapCard', '#ticker', '#log', '#inspect', '#guide', '#goal']) $(this.root, id).hidden = true;
     this.measureInsets();
     const t = $(this.root, '#title');
@@ -421,6 +422,7 @@ export class UI {
 
   enterEditor(): void {
     this.root.dataset.mode = 'editor';
+    this.hideToast();
     this.showChrome();
     $(this.root, '#ticker').hidden = true;
     $(this.root, '#log').hidden = true;
@@ -437,6 +439,7 @@ export class UI {
   enterCity(): void {
     this.root.dataset.mode = 'city';
     this.lastMessage = null;
+    this.hideToast();
     this.showChrome();
     $(this.root, '#editorPanel').hidden = true;
     $(this.root, '#ticker').hidden = false;
@@ -1559,12 +1562,21 @@ export class UI {
   /**
    * Keep the toast off the checklist, the goal card and the editor's panel: on a phone it goes under whichever is up (it
    * is already under the stats), and in a wider window one that would run into the card moves left of it, between it and
-   * the tools.
+   * the tools. Raised while a dialog is open (Copied, say), it goes just below the dialog, or at the foot of the screen
+   * when the dialog fills it, and never over the dialog's heading.
    */
   private placeToast(t: HTMLElement): void {
     t.style.top = '';
     t.style.left = '';
     t.style.maxWidth = '';
+    t.classList.remove('at-bottom');
+    const dialog = this.modalOpen ? this.root.querySelector('#modalRoot .modal') : null;
+    if (dialog) {
+      const below = dialog.getBoundingClientRect().bottom + 8;
+      if (below + t.offsetHeight <= window.innerHeight - 8) t.style.top = `${Math.round(below)}px`;
+      else t.classList.add('at-bottom');
+      return;
+    }
     if ($(this.root, '#topbar').hidden) return;
     // On a phone the editor's panel sits at the bottom, clear of the toast: going under it would cover the brushes.
     const ids = this.narrow() ? ['#guide', '#goal'] : ['#guide', '#goal', '#editorPanel'];
@@ -1598,6 +1610,8 @@ export class UI {
     this.modalOpener = null;
     this.closeModal();
     this.closeDropdown();
+    // A notice from before belongs to what was on screen then; it would sit on the dialog's heading.
+    this.hideToast();
     const root = $(this.root, '#modalRoot');
     const width = spec.width ?? (spec.wide ? 860 : 0);
     const m = el(`<div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" tabindex="-1" ${width ? `style="width:min(${width}px,100%)"` : ''}>
@@ -1633,6 +1647,9 @@ export class UI {
     root.innerHTML = '';
     this.modalOpen = false;
     this.modalLocked = false;
+    // A toast that was placed under the dialog goes back to its usual place.
+    const toast = $(this.root, '#toast');
+    if (!toast.classList.contains('hide')) this.placeToast(toast);
     const back = this.modalOpener;
     this.modalOpener = null;
     const f = this.modalClose;
