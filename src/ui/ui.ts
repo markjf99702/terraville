@@ -2478,7 +2478,8 @@ export class UI {
           : this.btn('Leave', 'primary', async () => {
               this.closeModal();
               if (city && g.settings.autosave && !(await g.saveCity())) return this.confirmQuit(true);
-              if (!city && !g.saveDraftNow()) return this.confirmQuit(true);
+              // Land that can't be kept here (storage blocked, or autosave off) was said to be lost: it isn't tried.
+              if (!city && g.keepsDraft() && !g.saveDraftNow()) return this.confirmQuit(true);
               g.showTitle();
             }),
       ],

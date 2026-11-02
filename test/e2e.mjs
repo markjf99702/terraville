@@ -1363,6 +1363,15 @@ try {
     const fresh = await page.evaluate(() => window.__terraville.terrain.seed);
     await page.evaluate(() => window.__terraville.showTitle());
     assert.equal((await draft()).seed, fresh, 'new land is kept as it is, untouched');
+    // With storage blocked no land can be kept: leaving says so once, and goes.
+    await page.evaluate(() => { Storage.prototype.setItem = () => { throw new DOMException('Storage is blocked.', 'SecurityError'); }; });
+    await page.click('[data-act="editor"]');
+    await page.waitForFunction(() => window.__terraville.mode === 'editor');
+    await page.click('#topbar [data-act="menu"]');
+    await page.click('[role="menu"] button:has-text("Back to the title screen")');
+    assert.equal(await page.textContent('.modal .body'), 'Unsaved terrain will be lost.');
+    await page.click('.modal footer .btn.primary');
+    await page.waitForFunction(() => window.__terraville.mode === 'title' && !document.querySelector('.modal'), null, { timeout: 5000 });
     assert.deepEqual(problems, []);
     await ctx.close();
   });
