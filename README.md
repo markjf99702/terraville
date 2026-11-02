@@ -36,7 +36,7 @@ Play it at [terraville.junkdrawer.works](https://terraville.junkdrawer.works/), 
 - *Gridlock* (1955): grow downtown without the traffic grinding to a halt.
 - *Smog Valley* (1968): grow a valley town without choking on the smoke from its coal plants.
 - *Aftershock* (1989): rebuild after an earthquake and keep growing.
-- *Monster Bay* (1957): something in the bay comes ashore whenever the air is smoky.
+- *Monster Bay* (1957): something in the bay surfaces every two years, and comes ashore if the air is smoky.
 
 The Challenges list marks each one you have won in this browser, with the year you won it in.
 

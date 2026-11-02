@@ -241,7 +241,7 @@ export const SCENARIOS: Scenario[] = [
     blurb: 'Something lives in the bay. Every two years it surfaces, and if the air is smoky it comes ashore. Keep the people on your side.',
     goal: 'After 10 years, have at least 18,000 residents and approval above 60%.',
     win: 'Whatever lives in the bay, the city stands with you.',
-    lose: 'The city never won its people over, and the bay is still watching.',
+    lose: 'The city fell short, and the bay is still watching.',
     kind: 'hold',
     terrain: { seed: 'monster-bay-2', style: 'island', hills: 30, water: 45 },
     city: {
