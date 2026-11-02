@@ -4,7 +4,7 @@ import { World, encodeArray, decodeArray } from '../src/world';
 import { Sim } from '../src/sim';
 import { generateTerrain, cleanTerrain, DEFAULT_TERRAIN } from '../src/terrain';
 import { linePath, planLine, applyLine, planZones, applyBuildings, planBulldoze, levelCost } from '../src/tools';
-import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST, UPGRADE_LV, Kind, buildingName, upkeepOf } from '../src/defs';
+import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST, UPGRADE_LV, Kind, BUILDINGS, article, buildingName, upkeepOf } from '../src/defs';
 import { DAMAGED_CODE, encode, encodeNow, decode, listSlots, pushSaved, saveCode, SlotMeta } from '../src/save';
 import { Drive, GisOAuth2 } from '../src/drive';
 import { makeRng } from '../src/rng';
@@ -428,6 +428,17 @@ await test('the landmark limits: 18,000 residents, 5,000 shop jobs, 4,000 factor
   for (let k = 0; k < 6; k++) w.setLevel(w.place('ind', 1 + k * 3, 9), 4); // 4,560 jobs
   const sim = new Sim(w);
   assert.deepEqual(sim.capped, { res: true, com: true, ind: true });
+  // The news names each limit, as the toolbox tips do.
+  sim.computeDemand();
+  assert.deepEqual(sim.messages.map((m) => m.text), [
+    'Housing has stopped at 18,000 residents until the city builds a stadium.',
+    'Commerce has stopped at 5,000 jobs until the city builds an airport.',
+    'Industry has stopped at 4,000 jobs until the city builds a seaport.',
+  ]);
+  assert.deepEqual(['stadium', 'airport', 'seaport'].map((k) => BUILDINGS[k as Kind].blurb), [
+    'Needed before housing passes 18,000 residents.', 'Needed before commerce passes 5,000 jobs.', 'Needed before industry passes 4,000 jobs. Must touch water.',
+  ]);
+  assert.deepEqual(['international airport', 'jet terminal', 'Upgrade'].map(article), ['an', 'a', 'an']);
   w.place('stadium', 1, 14);
   w.place('airport', 6, 14);
   w.place('seaport', 13, 14);
@@ -456,7 +467,7 @@ await test('past its limit, industry stops growing until a seaport opens', () =>
   try {
     months(24);
     assert.deepEqual(small.map((b) => b.level), [1, 1, 1]);
-    assert.ok(sim.messages.some((m) => m.text === 'Industry has stalled. Factories need a seaport to ship goods.'));
+    assert.ok(sim.messages.some((m) => m.text === 'Industry has stopped at 4,000 jobs until the city builds a seaport.'));
     w.place('seaport', 40, 20);
     months(24);
   } finally {

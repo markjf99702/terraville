@@ -1051,6 +1051,42 @@ try {
     await phone.close();
   });
 
+  await test('Settings lists the keys of the place it is opened in, from the toolbox, with redo', async () => {
+    const ctx = await profile(DESK);
+    const { page, problems } = await open(ctx);
+    const keys = async () => {
+      await page.click('[data-act="menu"]');
+      await page.click('.dropdown button:has-text("Settings and keys")');
+      const rows = await page.$$eval('.modal dl.keys dt', (dts) => dts.map((dt) => [dt.textContent.replace(/\s+/g, ' ').trim(), dt.nextElementSibling.textContent]));
+      const heads = await page.$$eval('.modal .cols h3', (h) => h.map((x) => x.textContent));
+      await page.keyboard.press('Escape');
+      return { rows, heads };
+    };
+    await found(page);
+    const city = await keys();
+    assert.deepEqual(city.heads, ['Options', 'Keys', 'Touch']);
+    assert.deepEqual(city.rows, [
+      ['Space', 'Pause or resume'], [', .', 'Slower, faster'], ['Q B', 'Inspect, bulldoze'], ['R T P', 'Road, rail, power line'],
+      ['1 2 3', 'Residential, commercial, industrial'], ['K', 'Park'], ['G L', 'Plant trees, level land'],
+      ['Right-click', 'Bulldoze what is under the cursor'], ['Shift drag', 'Bulldoze an area, any tool'], ['Arrows', 'Move the map'],
+      ['+ −', 'Zoom'], ['[ ]', 'Level land brush size'], ['Ctrl Z', 'Undo'], ['Ctrl Shift Z or Ctrl Y', 'Redo'], ['Esc', 'Cancel or close'],
+    ]);
+    assert.equal(await page.getAttribute('[data-tool="level"]', 'aria-keyshortcuts'), 'l');
+    assert.equal(await page.getAttribute('[data-tool="police"]', 'aria-keyshortcuts'), null, 'no key, no shortcut');
+    // In the terrain editor, its own tools and none of the city's.
+    await page.goto(base);
+    await titleUp(page);
+    await page.click('[data-act="editor"]');
+    await page.waitForFunction(() => window.__terraville.mode === 'editor');
+    const editor = await keys();
+    assert.deepEqual(editor.rows, [
+      ['Q', 'Look around'], ['R F S L N', 'Raise, lower, smooth, flatten, roughen'], ['W D V G C', 'Water, dry land, spring, forest, clear trees'],
+      ['Arrows', 'Move the map'], ['+ −', 'Zoom'], ['[ ]', 'Brush size'], ['Ctrl Z', 'Undo'], ['Ctrl Shift Z or Ctrl Y', 'Redo'], ['Esc', 'Cancel or close'],
+    ]);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('a touch screen gets touch help: no key letters, no right-click in the tips, and a Touch list in Settings', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

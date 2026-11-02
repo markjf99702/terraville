@@ -2,8 +2,8 @@
 // Tables pull from the game's own data so the numbers cannot drift, and the
 // pictures are drawn with the game's renderer.
 import {
-  AUTO_GRADE, BRIDGE_COST, BUILDINGS, CITY_CLASSES, DISASTER_POP, GRADE_COST, Kind, NET_COST, NET_MAX_SLOPE, NET_UPKEEP,
-  POWER, ROAD, UPGRADES, UPGRADE_LV, ZONE_LV_GATE, ZONE_POP,
+  AUTO_GRADE, BRIDGE_COST, BUILDINGS, CITY_CLASSES, DISASTER_POP, GRADE_COST, Kind, LANDMARK_LIMITS, LANDMARK_NEEDS, NET_COST,
+  NET_MAX_SLOPE, NET_UPKEEP, POWER, ROAD, UPGRADES, UPGRADE_LV, ZONE_LV_GATE, ZONE_POP,
 } from '../defs';
 import { DC, drawBuilding, drawNet, drawTrees } from '../render/sprites';
 import { TerrainField, paintTerrain } from '../render/terrainPaint';
@@ -38,9 +38,9 @@ function sections(): Section[] {
     ['school', 'Raises land value within about 15 tiles'],
     ['hospital', 'Raises land value within about 18 tiles'],
     ['park', 'Raises land value nearby, soaks up a little pollution'],
-    ['stadium', 'Needed before housing passes 18,000 residents'],
-    ['airport', 'Needed before commerce passes 5,000 jobs'],
-    ['seaport', 'Needed before industry passes 4,000 jobs. Must touch water'],
+    ['stadium', LANDMARK_NEEDS.stadium.slice(0, -1)],
+    ['airport', LANDMARK_NEEDS.airport.slice(0, -1)],
+    ['seaport', LANDMARK_NEEDS.seaport.slice(0, -1)],
   ];
   return [
     {
@@ -91,9 +91,9 @@ function sections(): Section[] {
         <p>Taxes push all three bars at once. Each point above 7% pulls them down, and each point below pushes them up.</p>
         <p>Three limits stop a city cold until you build the landmark it needs, and the news ticker tells you when you hit one:</p>
         ${table(['Limit', 'Needs'], [
-          ['Housing past 18,000 residents', 'Stadium'],
-          ['Commerce past 5,000 jobs', 'Airport'],
-          ['Industry past 4,000 jobs', 'Seaport, touching water'],
+          [`Housing past ${LANDMARK_LIMITS.res.toLocaleString()} residents`, 'Stadium'],
+          [`Commerce past ${LANDMARK_LIMITS.com.toLocaleString()} jobs`, 'Airport'],
+          [`Industry past ${LANDMARK_LIMITS.ind.toLocaleString()} jobs`, 'Seaport, touching water'],
         ])}
         ${tip('If a bar is high but nothing grows, check the lots rather than the meter: power, a touching road, the commute, and land value: Inspect shows the most a lot can grow where it stands, and what holds it back.')}`,
     },

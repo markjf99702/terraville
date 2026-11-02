@@ -10,6 +10,24 @@ export type Kind =
   | 'park' | 'stadium' | 'seaport' | 'airport'
   | 'coal' | 'nuclear' | 'wind' | 'solar';
 
+/**
+ * Past these a city stops growing until it builds the landmark that goes with them: housing (residents) a stadium,
+ * commerce (jobs) an airport, industry (jobs) a seaport.
+ */
+export const LANDMARK_LIMITS = { res: 18000, com: 5000, ind: 4000 };
+const limit = (k: keyof typeof LANDMARK_LIMITS) => LANDMARK_LIMITS[k].toLocaleString('en-US');
+/** What each landmark is needed for, as its toolbox tip and the guide say it. */
+export const LANDMARK_NEEDS = {
+  stadium: `Needed before housing passes ${limit('res')} residents.`,
+  airport: `Needed before commerce passes ${limit('com')} jobs.`,
+  seaport: `Needed before industry passes ${limit('ind')} jobs. Must touch water.`,
+};
+
+/** 'a' or 'an', as said before `word`. */
+export function article(word: string): 'a' | 'an' {
+  return /^[aeiou]/i.test(word) ? 'an' : 'a';
+}
+
 export interface BuildingDef {
   kind: Kind;
   name: string;
@@ -36,9 +54,9 @@ export const BUILDINGS: Record<Kind, BuildingDef> = {
   school: { kind: 'school', name: 'School', size: 3, cost: 800, upkeep: 40, maxSpread: 9, blurb: 'Raises land value and draws families to nearby homes.' },
   hospital: { kind: 'hospital', name: 'Hospital', size: 3, cost: 1200, upkeep: 60, maxSpread: 9, blurb: 'Raises land value and lets neighbourhoods grow denser.' },
   park: { kind: 'park', name: 'Park', size: 1, cost: 10, upkeep: 0.3, maxSpread: 30, blurb: 'Raises land value and soaks up a little pollution.' },
-  stadium: { kind: 'stadium', name: 'Stadium', size: 4, cost: 3000, upkeep: 30, maxSpread: 8, blurb: 'Big residential cities demand one.' },
-  seaport: { kind: 'seaport', name: 'Seaport', size: 4, cost: 5000, upkeep: 50, pollution: 60, needsShore: true, maxSpread: 8, blurb: 'Lets industry export. Must touch water.' },
-  airport: { kind: 'airport', name: 'Airport', size: 6, cost: 10000, upkeep: 80, pollution: 90, maxSpread: 6, blurb: 'Big commercial cities need one.' },
+  stadium: { kind: 'stadium', name: 'Stadium', size: 4, cost: 3000, upkeep: 30, maxSpread: 8, blurb: LANDMARK_NEEDS.stadium },
+  seaport: { kind: 'seaport', name: 'Seaport', size: 4, cost: 5000, upkeep: 50, pollution: 60, needsShore: true, maxSpread: 8, blurb: LANDMARK_NEEDS.seaport },
+  airport: { kind: 'airport', name: 'Airport', size: 6, cost: 10000, upkeep: 80, pollution: 90, maxSpread: 6, blurb: LANDMARK_NEEDS.airport },
   coal: { kind: 'coal', name: 'Coal plant', size: 4, cost: 3000, upkeep: 25, capacity: 700, pollution: 255, maxSpread: 8, blurb: '700 MW. Cheap and dirty.' },
   nuclear: { kind: 'nuclear', name: 'Nuclear plant', size: 4, cost: 5000, upkeep: 60, capacity: 2000, maxSpread: 8, blurb: '2,000 MW and clean air. Rarely, a meltdown.' },
   wind: { kind: 'wind', name: 'Wind turbine', size: 1, cost: 250, upkeep: 2, capacity: 18, maxSpread: 40, blurb: '18 MW. Hilltops are fine.' },

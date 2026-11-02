@@ -1,5 +1,5 @@
 // Fires, floods, tornadoes, earthquakes, the monster, and meltdowns.
-import { DIFFICULTIES, DISASTER_POP, FIRE_WEEKS, RAIL, ROAD, buildingName, isZone } from './defs';
+import { DIFFICULTIES, DISASTER_POP, FIRE_WEEKS, RAIL, ROAD, article, buildingName, isZone } from './defs';
 import { type Sim, zoneTitle } from './sim';
 import type { Building, SavedRun } from './world';
 
@@ -510,5 +510,5 @@ export function firePlace(b: Building): string {
     return title === 'main street' ? 'the shops on main street' : title === 'heavy industry' ? 'the heavy industrial plant' : 'the ' + title;
   }
   const name = buildingName(b).toLowerCase();
-  return `${/^[aeiou]/.test(name) ? 'an' : 'a'} ${name}`;
+  return `${article(name)} ${name}`;
 }

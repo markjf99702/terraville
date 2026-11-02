@@ -2,7 +2,7 @@
 import { Audio } from './audio';
 import {
   BUILDINGS, CITY_CLASSES, CITY_TOOLS, DIFFICULTIES, Difficulty, EDITOR_TOOLS, GRADE_COST, Kind, MAP_SIZES, SEP, ToolDef, Upgrade,
-  buildingName, cityClass, isZone, nextUpgrade,
+  article, buildingName, cityClass, isZone, nextUpgrade,
 } from './defs';
 import { Minimap } from './render/minimap';
 import { Renderer, SLOPE_CLASSES } from './render/renderer';
@@ -1268,7 +1268,7 @@ export class Game {
     this.world.setLevel(b, b.level + 1);
     entry.after = this.world.areaSnapshot(area);
     const now = buildingName(b).toLowerCase();
-    const text = `The ${was} is now ${/^[aeiou]/.test(now) ? 'an' : 'a'} ${now}. Land value is up across the city.`;
+    const text = `The ${was} is now ${article(now)} ${now}. Land value is up across the city.`;
     this.ui.toast(text);
     this.sim?.say('upgrade', text, 'good', { x: b.x + b.size / 2, y: b.y + b.size / 2 }, 0);
     // Land value rises at once rather than at the month's end.

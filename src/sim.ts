@@ -2,7 +2,7 @@
 // Zones are re-evaluated a quarter at a time each week, and the expensive
 // map passes (traffic, pollution, crime, land value) run at month end.
 import {
-  BUILDINGS, DIFFICULTIES, DISASTER_POP, Kind, NET_UPKEEP, POWER, RAIL, ROAD, UPGRADE_LV, ZONE_LV_GATE, ZONE_POP, buildingName, cityClass,
+  BUILDINGS, DIFFICULTIES, DISASTER_POP, Kind, LANDMARK_LIMITS, NET_UPKEEP, POWER, RAIL, ROAD, UPGRADE_LV, ZONE_LV_GATE, ZONE_POP, buildingName, cityClass,
   CITY_CLASSES, dateLabel, isZone, upkeepOf,
 } from './defs';
 import { MinHeap } from './heap';
@@ -839,7 +839,8 @@ export class Sim {
     s.residents = res;
     s.comJobs = com;
     s.indJobs = ind;
-    this.capped = { res: res > 18000 && !s.hasStadium, com: com > 5000 && !s.hasAirport, ind: ind > 4000 && !s.hasSeaport };
+    const lim = LANDMARK_LIMITS;
+    this.capped = { res: res > lim.res && !s.hasStadium, com: com > lim.com && !s.hasAirport, ind: ind > lim.ind && !s.hasSeaport };
     s.workers = Math.round(res * 0.5);
     s.unemployment = s.workers > 0 ? clamp(1 - (com + ind) / s.workers, 0, 1) : 0;
     let fires = 0;
@@ -865,15 +866,15 @@ export class Sim {
     let i = valve(iTarget, Ji) + tax;
     if (this.capped.res) {
       r = Math.min(r, -0.05);
-      this.say('stadium', 'Residents want a stadium before more of them move in.', 'warn', undefined, 12);
+      this.say('stadium', `Housing has stopped at ${LANDMARK_LIMITS.res.toLocaleString('en-US')} residents until the city builds a stadium.`, 'warn', undefined, 12);
     }
     if (this.capped.com) {
       c = Math.min(c, -0.05);
-      this.say('airport', 'Commerce has stalled. Businesses need an airport.', 'warn', undefined, 12);
+      this.say('airport', `Commerce has stopped at ${LANDMARK_LIMITS.com.toLocaleString('en-US')} jobs until the city builds an airport.`, 'warn', undefined, 12);
     }
     if (this.capped.ind) {
       i = Math.min(i, -0.05);
-      this.say('seaport', 'Industry has stalled. Factories need a seaport to ship goods.', 'warn', undefined, 12);
+      this.say('seaport', `Industry has stopped at ${LANDMARK_LIMITS.ind.toLocaleString('en-US')} jobs until the city builds a seaport.`, 'warn', undefined, 12);
     }
     const d = city.demand;
     d.r = clamp(d.r * 0.5 + r * 0.5, -1, 1);

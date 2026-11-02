@@ -1,7 +1,7 @@
 // Everything in the DOM: top bar, toolbox, panels, dialogs, title screen.
 import {
-  BUILDINGS, DIFFICULTIES, DISASTER_POP, Difficulty, Kind, MAP_SIZES, ROAD, SEP, ToolDef, UPGRADE_LV, cityClass, dateLabel, isZone,
-  nextUpgrade,
+  BUILDINGS, DIFFICULTIES, DISASTER_POP, Difficulty, Kind, MAP_SIZES, ROAD, SEP, ToolDef, UPGRADE_LV, article, cityClass, dateLabel,
+  isZone, nextUpgrade,
 } from '../defs';
 import { DISASTER_NAMES, DisasterKind } from '../disasters';
 import { Game, SPEED_NAMES, randomCityName } from '../game';
@@ -608,7 +608,7 @@ export class UI {
     for (const list of groups.values()) {
       const g = el('<div class="toolgroup"></div>');
       for (const t of list) {
-        const b = el<HTMLButtonElement>(`<button class="tool" data-tool="${t.id}" aria-label="${esc(t.name)}"></button>`);
+        const b = el<HTMLButtonElement>(`<button class="tool" data-tool="${t.id}" aria-label="${esc(t.name)}"${t.key ? ` aria-keyshortcuts="${t.key}"` : ''}></button>`);
         b.appendChild(this.toolIcon(t));
         if (t.key) b.appendChild(el(`<span class="key">${t.key.toUpperCase()}</span>`));
         b.addEventListener('click', () => {
@@ -1114,7 +1114,7 @@ export class UI {
     // A second stadium, say, can't add anything: only the most upgraded one of each kind counts.
     const outdone = b && !up && nextUpgrade(b) && this.game.mode === 'city';
     card.innerHTML = `<button class="iconbtn close" aria-label="Close">${ICONS.close}</button><h3>${esc(d.title)}</h3><dl>${d.rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>${d.note ? `<p class="note why">${esc(d.note)}</p>` : ''}${up ? `
-      <div class="upgrade"><p class="note">Upgrade to a <b>${esc(up.name.toLowerCase())}</b>: land value rises by <span class="num">${money(UPGRADE_LV * 40)}</span>/acre across the whole city, and upkeep by <span class="num">${money(up.upkeep)}</span>/mo.</p>
+      <div class="upgrade"><p class="note">Upgrade to ${article(up.name)} <b>${esc(up.name.toLowerCase())}</b>: land value rises by <span class="num">${money(UPGRADE_LV * 40)}</span>/acre across the whole city, and upkeep by <span class="num">${money(up.upkeep)}</span>/mo.</p>
       <button class="btn small primary" id="inUpgrade">Upgrade for ${money(up.cost)}</button></div>` : outdone ? `
       <div class="upgrade"><p class="note">Only the city's most upgraded ${esc(BUILDINGS[b.kind].name.toLowerCase())} raises land value, so this one has no upgrade.</p></div>` : ''}`;
     $(card, '.close').onclick = () => this.hideInspect();
@@ -2175,6 +2175,32 @@ export class UI {
 
   // Settings -----------------------------------------------------------------------------------
 
+  /**
+   * The keys that work here, as a list: the clock's (in the city), each toolbox group's letters with their tools' names,
+   * then the map's and the editing keys. The tools come from the toolbox itself, so the list follows the mode.
+   */
+  private keysList(): string {
+    const city = this.game.mode === 'city';
+    const keys = (...k: string[]) => k.map((x) => `<kbd>${x}</kbd>`).join(' ');
+    const rows: [string, string][] = city ? [[keys('Space'), 'Pause or resume'], [keys(',', '.'), 'Slower, faster']] : [];
+    const groups = new Map<string, ToolDef[]>();
+    for (const t of this.game.tools()) if (t.key) groups.set(t.group, [...(groups.get(t.group) ?? []), t]);
+    for (const list of groups.values()) {
+      const names = list.map((t, k) => (k ? t.name.charAt(0).toLowerCase() + t.name.slice(1) : t.name));
+      rows.push([keys(...list.map((t) => t.key!.toUpperCase())), names.join(', ')]);
+    }
+    if (city) rows.push([keys('Right-click'), 'Bulldoze what is under the cursor'], [keys('Shift drag'), 'Bulldoze an area, any tool']);
+    rows.push(
+      [keys('Arrows'), 'Move the map'],
+      [keys('+', '−'), 'Zoom'],
+      [keys('[', ']'), city ? 'Level land brush size' : 'Brush size'],
+      [keys('Ctrl Z'), 'Undo'],
+      [`${keys('Ctrl Shift Z')} or ${keys('Ctrl Y')}`, 'Redo'],
+      [keys('Esc'), 'Cancel or close'],
+    );
+    return `<dl class="keys">${rows.map(([k, what]) => `<dt>${k}</dt><dd>${what}</dd>`).join('')}</dl>`;
+  }
+
   openSettings(): void {
     const g = this.game;
     const s = g.settings;
@@ -2182,7 +2208,7 @@ export class UI {
       `<label class="switch"><span>${label}<small>${hint}</small></span><input type="checkbox" data-set="${id}" ${s[id] ? 'checked' : ''}></label>`;
     const body = el(`<div class="cols">
       <div>
-        <h3>Settings</h3>
+        <h3>Options</h3>
         ${sw('sound', 'Sound effects', 'Clicks, construction and sirens.')}
         ${sw('traffic', 'Traffic and vehicles', 'Cars on busy roads.')}
         ${sw('night', 'Day and night', 'Streetlights and lit windows after dark. Time stops when paused.')}
@@ -2193,21 +2219,7 @@ export class UI {
       <div>
         ${touchScreen() ? TOUCH_HELP : ''}
         <h3>Keys</h3>
-        <div class="keys">
-          <kbd>Space</kbd><span>Pause or resume</span>
-          <kbd>, .</kbd><span>Slower, faster</span>
-          <kbd>1 2 3</kbd><span>Residential, commercial, industrial</span>
-          <kbd>R T P</kbd><span>Road, rail, power line</span>
-          <kbd>B</kbd><span>Bulldoze</span>
-          <kbd>Right-click</kbd><span>Bulldoze what is under the cursor</span>
-          <kbd>Shift drag</kbd><span>Bulldoze an area, any tool</span>
-          <kbd>Q</kbd><span>Inspect</span>
-          <kbd>Arrows</kbd><span>Move the map</span>
-          <kbd>+ −</kbd><span>Zoom</span>
-          <kbd>[ ]</kbd><span>Brush size</span>
-          <kbd>Ctrl Z</kbd><span>Undo</span>
-          <kbd>Esc</kbd><span>Cancel or close</span>
-        </div>
+        ${this.keysList()}
         <p class="note" style="margin-top:12px">Right-drag, middle-drag or Space-drag moves the map with any tool.</p>
         ${touchScreen() ? '' : TOUCH_HELP}
       </div>

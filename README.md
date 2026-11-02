@@ -65,9 +65,11 @@ In **Menu › Save, open and share**, choose **Connect Google Drive**. From then
 | `1` `2` `3` | Residential, commercial, industrial |
 | `R` `T` `P` | Road, rail, power line |
 | `B` / `Q` | Bulldoze / inspect |
+| `K` | Park |
+| `G` / `L` | Plant trees / level land |
 | `Space` | Pause or resume |
 | `,` `.` | Slower, faster |
-| `[` `]` | Brush size |
+| `[` `]` | Brush size (Level land, and the terrain editor's brushes) |
 | `Ctrl+Z`, `Ctrl+Shift+Z` or `Ctrl+Y` | Undo, redo |
 | `Esc` | Cancel, close |
 
