@@ -633,26 +633,40 @@ export class UI {
       }
       box.appendChild(g);
     }
-    if (this.game.mode === 'editor') {
-      const bb = el(`<div class="brushbox">
-        <label>Brush size <input type="range" id="brushSize" min="1" max="14" step="0.5"></label>
-        <label>Strength <input type="range" id="brushStrength" min="0.1" max="1.5" step="0.05"></label>
-      </div>`);
-      const size = $<HTMLInputElement>(bb, '#brushSize');
+    // The brushes' size (and in the editor, strength). In the city only Level land is a brush: it shows while that is
+    // the tool, under the tools, or at the end of the phone's row beside it.
+    const editor = this.game.mode === 'editor';
+    const bb = el(`<div class="brushbox" id="brushBox">
+      <label>Brush size <span class="num" id="brushTiles"></span><input type="range" id="brushSize" min="1" max="14" step="0.5"></label>
+      ${editor ? '<label>Strength <input type="range" id="brushStrength" min="0.1" max="1.5" step="0.05"></label>' : ''}
+    </div>`);
+    const size = $<HTMLInputElement>(bb, '#brushSize');
+    size.oninput = () => {
+      this.game.brush.radius = Number(size.value);
+      this.syncBrushSize();
+    };
+    if (editor) {
       const str = $<HTMLInputElement>(bb, '#brushStrength');
-      size.value = String(this.game.brush.radius);
       str.value = String(this.game.brush.strength);
-      size.oninput = () => (this.game.brush.radius = Number(size.value));
       str.oninput = () => (this.game.brush.strength = Number(str.value));
-      box.appendChild(bb);
     }
+    box.appendChild(bb);
+    this.syncBrushSize();
     this.syncTool();
   }
 
   nudgeBrush(d: number): void {
     this.game.brush.radius = Math.max(1, Math.min(14, this.game.brush.radius + d));
+    this.syncBrushSize();
+  }
+
+  /** Show the brush's size on its slider: tiles across, as its ring spans on the map. */
+  private syncBrushSize(): void {
+    const r = this.game.brush.radius;
     const s = this.root.querySelector<HTMLInputElement>('#brushSize');
-    if (s) s.value = String(this.game.brush.radius);
+    if (s) s.value = String(r);
+    const t = this.root.querySelector<HTMLElement>('#brushTiles');
+    if (t) t.textContent = `${Math.round(r * 2)} tiles`;
   }
 
   private toolIcon(t: ToolDef): HTMLElement {
@@ -698,7 +712,8 @@ export class UI {
     const cost = t.cost ? `<span class="cost">${t.kind === 'line' || t.id === 'bulldoze' || t.id === 'trees' || t.id === 'park' ? `$${t.cost} a tile` : money(t.cost)}${t.building && BUILDINGS[t.building].upkeep ? ` · ${money(BUILDINGS[t.building].upkeep)}/mo upkeep` : ''}</span>` : '';
     const touch = touchScreen();
     const zoneTip = t.building && isZone(t.building) ? `<p>${esc(BUILDINGS[t.building].blurb)} Drag to zone several 3×3 lots.</p>` : `<p>${esc((touch && t.touchTip) || t.tip)}</p>`;
-    tip.innerHTML = `<b>${esc(t.name)}${t.key && !touch ? ` <kbd>${t.key.toUpperCase()}</kbd>` : ''}</b>${cost}${zoneTip}`;
+    const keys = t.kind === 'brush' && !touch ? '<p><kbd>[</kbd> and <kbd>]</kbd> change the brush size.</p>' : '';
+    tip.innerHTML = `<b>${esc(t.name)}${t.key && !touch ? ` <kbd>${t.key.toUpperCase()}</kbd>` : ''}</b>${cost}${zoneTip}${keys}`;
     tip.hidden = false;
     const r = b.getBoundingClientRect();
     const narrow = window.innerWidth <= 820;
@@ -714,6 +729,13 @@ export class UI {
   syncTool(): void {
     for (const b of this.root.querySelectorAll<HTMLElement>('.tool')) {
       b.setAttribute('aria-pressed', String(b.dataset.tool === this.game.toolId));
+    }
+    const bb = this.root.querySelector<HTMLElement>('#brushBox');
+    if (bb && this.game.mode === 'city') {
+      const was = bb.hidden;
+      bb.hidden = this.game.toolId !== 'level';
+      // The toolbox scrolls in a short window, and the phone's row sideways: bring the slider into view by the tool.
+      if (was && !bb.hidden) bb.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
     const map = $(this.root, '#map');
     map.classList.toggle('grab', this.game.toolId === 'query' || this.game.toolId === 'pan');

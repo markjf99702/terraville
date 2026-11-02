@@ -17,7 +17,7 @@ import { Sim } from './sim';
 import { DEFAULT_TERRAIN, TerrainParams, TerrainStyle, addSpring, applyBrush, cleanTerrain, generateTerrain } from './terrain';
 import {
   Plan, applyBuildings, applyBulldoze, applyLine, applyTrees, linePath, planBulldoze, planLine, planParks, planPlace,
-  planTrees, planZones, rectTiles,
+  planTrees, planZones, rectTiles, levelCost,
 } from './tools';
 import type { UI } from './ui/ui';
 import { AreaSnapshot, Box, Building, World, WorldSnapshot, newCityState } from './world';
@@ -79,6 +79,9 @@ type TabNote =
 
 /** How long opening a city waits for the tab playing it to save and stop, should that tab not answer. */
 const HANDOVER_WAIT = 2000; // ms
+
+/** The radius of Level land's circle in a new city or a challenge, in tiles. */
+const CITY_BRUSH = 4;
 
 /** The terrain editor's opening toast. On a phone the brushes are along the bottom, and a touch screen has no wheel. */
 const EDITOR_HINT = () =>
@@ -451,6 +454,8 @@ export class Game {
     this.world.city.id = newCityId();
     this.applySettings();
     this.setTool('query');
+    // Level land starts at a modest circle, whatever size the terrain editor's brush was left at.
+    this.brush.radius = CITY_BRUSH;
     this.ui.enterCity();
     // One line: the checklist (or, once someone has done it, the guide) has the steps.
     const steps = this.ui.checklistShown() ? 'The checklist has the first steps.' : 'The strategy guide in the menu has the first steps.';
@@ -524,6 +529,8 @@ export class Game {
     this.world.city.id = newCityId();
     this.applySettings();
     this.setTool('query');
+    // Level land starts at a modest circle, whatever size the terrain editor's brush was left at.
+    this.brush.radius = CITY_BRUSH;
     this.ui.enterCity();
     // Look at the middle of whatever is built.
     let cx = 0, cy = 0, n = 0;
@@ -948,7 +955,13 @@ export class Game {
         } else {
           const s = this.world.slope(tx, ty);
           const cls = SLOPE_CLASSES.find((c) => s <= c.max)!;
-          this.ui.cursorTip(sx, sy, `${spent || `Hold to level${SEP}`}<b>${cls.label}</b> (<span class="num">${s.toFixed(1)} m</span>): ${cls.note}`, false);
+          // Before pressing, about what this circle costs to bring to the height under the pointer.
+          let ask = spent;
+          if (!ask) {
+            const est = levelCost(this.world, fx, fy, this.brush.radius, this.world.height[ty * this.world.w + tx]);
+            ask = `Hold to level${SEP}${est >= 1 ? `about <span class="num">${fmtMoney(est)}</span> to flatten this circle` : 'nothing here to level'}${SEP}`;
+          }
+          this.ui.cursorTip(sx, sy, `${ask}<b>${cls.label}</b> (<span class="num">${s.toFixed(1)} m</span>): ${cls.note}`, false);
         }
       }
       return;

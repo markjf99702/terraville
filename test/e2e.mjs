@@ -999,6 +999,58 @@ try {
     await ctx.close();
   });
 
+  await test('Level land in the city: its size slider shows with it, and its tip says about what a circle costs before the button goes down', async () => {
+    const ctx = await profile(DESK);
+    const { page, problems } = await open(ctx);
+    await found(page);
+    assert.equal(await page.isHidden('#brushBox'), true, 'no slider for the other tools');
+    await page.keyboard.press('l');
+    assert.equal(await page.isVisible('#brushBox'), true);
+    assert.equal(await page.textContent('#brushTiles'), '8 tiles', 'a new city starts with a modest circle');
+    const at = await page.evaluate(() => {
+      const g = window.__terraville;
+      const w = g.world;
+      const r = g.renderer;
+      r.cam.zoom = 16;
+      let best = null;
+      for (let y = 8; y < w.h - 8 && !best; y++) for (let x = 8; x < w.w - 8 && !best; x++) {
+        let dry = true;
+        for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) if (w.water[(y + dy) * w.w + x + dx] || w.occ[(y + dy) * w.w + x + dx]) dry = false;
+        if (dry) best = [x, y];
+      }
+      // A hill to level.
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) w.height[(best[1] + dy) * w.w + best[0] + dx] += 6 - Math.abs(dx) - Math.abs(dy);
+      w.dirty(best[0] - 3, best[1] - 3, best[0] + 3, best[1] + 3, true);
+      r.centerOn(best[0] + 0.5, best[1] + 0.5);
+      const p = r.tileToScreen(best[0] + 1.5, best[1] + 0.5);
+      return [Math.round(p.x), Math.round(p.y)];
+    });
+    const funds = await page.evaluate(() => window.__terraville.world.city.funds);
+    await page.mouse.move(at[0] - 3, at[1]);
+    await page.mouse.move(at[0], at[1]);
+    assert.match(await page.textContent('#cursorTip'), /^Hold to level · about \$[\d,]+ to flatten this circle · /);
+    assert.equal(await page.evaluate(() => window.__terraville.world.city.funds), funds, 'nothing spent before pressing');
+    await page.keyboard.press(']');
+    assert.equal(await page.textContent('#brushTiles'), '9 tiles');
+    await page.hover('[data-tool="level"]');
+    assert.match(await page.textContent('#tooltip'), /\[ and \] change the brush size\./);
+    await page.keyboard.press('q');
+    assert.equal(await page.isHidden('#brushBox'), true);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+    // On a phone the slider sits at the end of the row, beside the tool, and in view.
+    const phone = await profile();
+    const { page: p, problems: onPhone } = await open(phone);
+    await found(p);
+    await p.evaluate(() => document.querySelector('[data-tool="level"]').scrollIntoView());
+    await p.tap('[data-tool="level"]');
+    await p.waitForTimeout(400);
+    const box = await p.evaluate(() => document.querySelector('#brushBox').getBoundingClientRect().toJSON());
+    assert.ok(box.width > 100 && box.left >= 0 && box.right <= 390, `the slider is on screen: ${JSON.stringify(box)}`);
+    assert.deepEqual(onPhone, []);
+    await phone.close();
+  });
+
   await test('a touch screen gets touch help: no key letters, no right-click in the tips, and a Touch list in Settings', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

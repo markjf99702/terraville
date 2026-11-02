@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { World, encodeArray, decodeArray } from '../src/world';
 import { Sim } from '../src/sim';
 import { generateTerrain, cleanTerrain, DEFAULT_TERRAIN } from '../src/terrain';
-import { linePath, planLine, applyLine, planZones, applyBuildings, planBulldoze } from '../src/tools';
+import { linePath, planLine, applyLine, planZones, applyBuildings, planBulldoze, levelCost } from '../src/tools';
 import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST, UPGRADE_LV, Kind, buildingName, upkeepOf } from '../src/defs';
 import { DAMAGED_CODE, encode, encodeNow, decode, listSlots, pushSaved, saveCode, SlotMeta } from '../src/save';
 import { Drive, GisOAuth2 } from '../src/drive';
@@ -1314,6 +1314,34 @@ await test('Level land leaves water alone and charges nothing for it', () => {
   assert.equal(w.city.funds, 50000, `charged $${Math.round(50000 - w.city.funds)}`);
   assert.deepEqual(w.height, lake);
   assert.ok(!g.toasts.some((t: string) => t.startsWith('Levelled')), g.toasts.join(' / '));
+});
+
+await test('before it is pressed, Level land says about what flattening its circle costs, and holding it costs that', () => {
+  const w = flat(40, 30);
+  // A 2 by 2 bump 5 m high in the circle: 20 m of earth at $2.
+  for (const [x, y] of [[20, 14], [21, 14], [20, 15], [21, 15]]) w.height[y * w.w + x] = 8;
+  // What Level land leaves alone costs nothing: water, a road, a building.
+  w.water[16 * w.w + 23] = 1;
+  w.height[16 * w.w + 23] = -2;
+  w.setNet(ROAD, 24, 15);
+  w.height[15 * w.w + 24] = 10;
+  const home = w.place('res', 22, 18);
+  for (let y = 18; y < 21; y++) for (let x = 22; x < 25; x++) w.height[y * w.w + x] = 9;
+  assert.equal(levelCost(w, 22.5, 15.5, 4, 3), 40);
+  assert.equal(levelCost(w, 22.5, 15.5, 1, 3), 0, 'a small circle misses the bump');
+  const g = headless(w);
+  const tips: string[] = [];
+  g.ui.cursorTip = (_x: number, _y: number, html: string) => tips.push(html);
+  w.city.funds = 50000;
+  g.setTool('level');
+  g.brush.radius = 4;
+  g.pointerMove(22.5, 15.5, 0, 0);
+  assert.match(tips.at(-1)!.replace(/<[^>]+>/g, ''), /^Hold to level · about \$40 to flatten this circle · /);
+  g.pointerDown(22.5, 15.5, 0, 0);
+  for (let t = 0; t < 120; t++) g.brushTick(1 / 30);
+  g.pointerUp(22.5, 15.5, 0, 0);
+  assert.ok(Math.abs(50000 - w.city.funds - 40) < 0.5, `spent $${50000 - w.city.funds}`);
+  assert.equal(home.kind, 'res');
 });
 
 await test("Level land that moves only cents of earth doesn't toast 'Levelled for $0'", () => {

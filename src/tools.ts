@@ -307,3 +307,21 @@ export function applyTrees(world: World, plan: Plan): void {
     world.dirty(x, y, x, y);
   }
 }
+
+/**
+ * About what Level land costs to flatten its circle at (cx, cy) to `target`, in whole dollars: the earth between each
+ * tile and the target, over the tiles it moves (dry, with nothing built; the rim, where the brush has no strength, is
+ * left out).
+ */
+export function levelCost(world: World, cx: number, cy: number, r: number, target: number): number {
+  let moved = 0;
+  for (let y = Math.max(0, Math.floor(cy - r)); y <= Math.min(world.h - 1, Math.ceil(cy + r)); y++) {
+    for (let x = Math.max(0, Math.floor(cx - r)); x <= Math.min(world.w - 1, Math.ceil(cx + r)); x++) {
+      if (Math.hypot(x + 0.5 - cx, y + 0.5 - cy) >= r) continue;
+      const i = y * world.w + x;
+      if (world.occ[i] || world.net[i] || world.water[i]) continue;
+      moved += Math.abs(world.height[i] - target);
+    }
+  }
+  return Math.round(moved * GRADE_COST);
+}
