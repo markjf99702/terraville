@@ -486,6 +486,13 @@ input[type="range"] { width: 100%; accent-color: var(--sign-hi); margin: 0; touc
 /* On a touch screen, Bulldoze under what the card says; on a phone, where the card is the screen's width, in its title
    row by the close button, so the card is no taller. */
 #inspect .clear { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+/* News in the Inspect card's place: a year in debt (and the year's paper). */
+#inspect.news { width: 300px; }
+#inspect .news-h { margin: 10px 0 4px; font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); }
+#inspect .news-costs { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: 13px; }
+#inspect .news-costs li { display: flex; justify-content: space-between; gap: 12px; }
+#inspect .news-p { margin: 8px 0 0; font-size: 13px; line-height: 1.4; }
+#inspect .news-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 /* On a road or track: who passes along it, and the switch that shows them on the map. */
 #inspect .who { margin: 10px 0 0; padding-top: 9px; border-top: 1px solid var(--line); font-size: 13px; line-height: 1.4; }
 #inspect #inWho { margin-top: 8px; }
@@ -1122,7 +1129,7 @@ footer.jd-foot { display: block; margin: 0; padding: 4px 0 0; border: 0; font-si
   #minimapCard.show #minimap { height: 120px; }
   #minimapCard.show.mm-phone { width: 220px; } /* the layer's name keeps its room beside the overview map's button */
   #minimapCard .mm-row .iconbtn { display: none; } /* fingers pinch to zoom; the layer's name gets the room */
-  #inspect { right: calc(var(--right) + 8px); left: calc(var(--left) + 8px); width: auto; bottom: calc(var(--bottom) + 90px + var(--ticker-h, 38px)); max-height: none; overflow-y: visible; }
+  #inspect, #inspect.news { right: calc(var(--right) + 8px); left: calc(var(--left) + 8px); width: auto; bottom: calc(var(--bottom) + 90px + var(--ticker-h, 38px)); max-height: none; overflow-y: visible; }
   #inspect.can-clear h3 { padding-right: 168px; min-height: 28px; }
   #inspect .clear { position: absolute; top: 7px; right: 42px; margin: 0; padding: 0; border: none; }
   #inspect .clear .btn { height: 30px; position: relative; }

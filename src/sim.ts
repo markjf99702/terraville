@@ -42,6 +42,37 @@ export interface Budget {
   interest: number;
 }
 
+/** What a budget spends on, line by line, as the Budget's ledger names each. */
+export const COST_LINES: [Exclude<keyof Budget, 'taxIncome'>, string][] = [
+  ['transport', 'Roads and rail'],
+  ['police', 'Police'],
+  ['fire', 'Fire'],
+  ['services', 'Schools, hospitals, parks'],
+  ['landmarks', 'Stadium, seaport, airport'],
+  ['power', 'Power plants'],
+  ['interest', 'Loan interest'],
+];
+
+/** The most a city can borrow, in $10,000 steps. */
+export const LOAN_LIMIT = 30000;
+/** Month ends in debt in a row before the city is told it is broke. */
+export const BROKE_MONTHS = 12;
+
+/** Why a city in debt is short, and the ways out, for the card a year in debt brings (see Sim.brokeReport). */
+export interface BrokeReport {
+  owed: number;
+  months: number;
+  /** The three biggest monthly costs, biggest first. */
+  costs: { label: string; amount: number }[];
+  income: number;
+  spend: number;
+  tax: number;
+  /** The tax rate that would bring in what the city spends, as it stands; null if even the top rate would not. */
+  covers: number | null;
+  /** What the city can still borrow. */
+  loanRoom: number;
+}
+
 /** Everything a budget spends. */
 export function spending(b: Budget): number {
   return b.transport + b.police + b.fire + b.services + b.landmarks + b.power + b.interest;
@@ -92,6 +123,7 @@ export type SimEvent =
   | { type: 'month' }
   | { type: 'year'; surplus: boolean }
   | { type: 'class'; text: string }
+  | { type: 'broke' }
   | { type: 'grow'; b: Building }
   | { type: 'destroyed'; x: number; y: number; kind: Kind }
   | { type: 'disaster'; kind: string; x: number; y: number };
@@ -1028,6 +1060,33 @@ export class Sim {
       }
     }
     if (city.funds < 0) this.say('debt', 'The city is in debt. Raise taxes, cut costs, or take a loan.', 'alert', undefined, 3);
+    // A year in debt, in a row: no new rule, but a card says why, and the ways out.
+    city.debtMonths = city.funds < 0 ? city.debtMonths + 1 : 0;
+    if (city.debtMonths === BROKE_MONTHS) this.emit({ type: 'broke' });
+  }
+
+  /** Why the city is short of money, and the ways out: its biggest costs, the tax rate that would cover them, its loan room. */
+  brokeReport(): BrokeReport {
+    const city = this.world.city;
+    const b = this.stats.lastBudget;
+    const costs = COST_LINES.map(([k, label]) => ({ label, amount: b[k] }))
+      .filter((c) => c.amount >= 0.5)
+      .sort((a, c) => c.amount - a.amount)
+      .slice(0, 3);
+    const spend = spending(b);
+    // Taxes grow in step with the rate: a point's worth, times the points needed.
+    const point = this.projectTax(1);
+    const need = point > 0 ? Math.ceil(spend / point - 1e-9) : Infinity;
+    return {
+      owed: Math.max(0, -city.funds),
+      months: city.debtMonths,
+      costs,
+      income: b.taxIncome,
+      spend,
+      tax: city.tax,
+      covers: need <= 20 ? need : null,
+      loanRoom: Math.max(0, LOAN_LIMIT - city.loan),
+    };
   }
 
   /** What police, fire, and roads and rail cost a month at full funding, as the city stands. */
@@ -1077,7 +1136,7 @@ export class Sim {
 
   takeLoan(amount: number): boolean {
     const city = this.world.city;
-    if (city.loan + amount > 30000) return false;
+    if (city.loan + amount > LOAN_LIMIT) return false;
     city.loan += amount;
     city.funds += amount;
     return true;

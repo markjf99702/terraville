@@ -158,7 +158,7 @@ function sections(): Section[] {
           <li><b>7%</b> keeps demand neutral, and nobody minds it. Every point above it slows growth, and from 9% taxes are among the worries in the city report: Minor at first, Serious from 11% and Severe from 14%. Going below 7% lifts demand but wins no approval.</li>
           <li><b>Upkeep</b> is charged monthly: roads and rail by the tile, police and fire by the station (scaled by their funding), and each plant and service building.</li>
           <li><b>Loans</b> come in $10,000 steps up to $30,000 at 7% a year. They are worth it to fund a plant or a landmark that unlocks growth, not to cover running costs.</li>
-          <li><b>In debt</b> nothing new can be built, but bulldozing still works at $1 a tile, so you can clear away what the city can’t afford to run.</li>
+          <li><b>In debt</b> nothing new can be built, but bulldozing still works at $1 a tile, so you can clear away what the city can’t afford to run. After a year in debt a card says which costs are biggest, the tax rate that would cover them, and what the Budget can still lend.</li>
           <li><b>Underfunding</b> police or fire weakens their reach. Cutting roads and rail below 90% makes tiles crumble into rubble every month.</li>
         </ul>
         ${tip('The Budget pauses the game and shows last month and the year so far line by line. The History charts show whether income is keeping up with spending.')}`,

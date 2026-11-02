@@ -11,7 +11,7 @@ import { drawBuilding } from '../render/sprites';
 import { randomSeedName } from '../rng';
 import { DRIVE_HOME, DriveCopy } from '../drive';
 import { SaveFile, SlotMeta, challengeWins, decode, deleteSlot, encode, listSlots, loadSlot, storageAvailable } from '../save';
-import { passingSentence, spending } from '../sim';
+import { LOAN_LIMIT, passingSentence, spending } from '../sim';
 import type { Message, Passing } from '../sim';
 import { STYLE_NAMES, TerrainParams, TerrainStyle, hasSea } from '../terrain';
 import { GoalRow, GoalState, SCENARIOS, Scenario, isCount, lastYear, successLine } from '../scenarios';
@@ -264,6 +264,10 @@ export class UI {
   private inspectAt: { x: number; y: number } | null = null;
   /** The road or track tile whose travellers are tinted on the map (see showWho). */
   private whoAt: { x: number; y: number } | null = null;
+  /** The card in the Inspect card's place is news (see showNews), not what is on a tile. */
+  private newsShown = false;
+  /** News that came while the Inspect card was open, to show once it is closed. */
+  private newsWaiting: (() => void) | null = null;
   /** The layer the Inspect card showed (a station's reach, a plant's grid), and the one to put back when it closes. */
   private inspectLayer: { shown: Overlay; was: Overlay } | null = null;
   private modalClose: (() => void) | null = null;
@@ -603,6 +607,7 @@ export class UI {
   enterCity(): void {
     this.root.dataset.mode = 'city';
     this.lastMessage = null;
+    this.newsWaiting = null;
     this.hideToast();
     this.showChrome();
     $(this.root, '#editorPanel').hidden = true;
@@ -1531,6 +1536,9 @@ export class UI {
       this.hideInspect();
       return;
     }
+    // A tile asked about takes the place of any news there.
+    this.newsShown = false;
+    card.className = 'panel';
     const d = sim.describe(x, y);
     const b = this.game.world.buildingAt(x, y);
     // An upgrade waits while the landmark burns: it would be offered but for the fire.
@@ -1572,7 +1580,7 @@ export class UI {
       <button class="btn small primary" id="inUpgrade">Upgrade for ${money(up.cost)}</button></div>` : burning ? `
       <div class="upgrade"><p class="note">It can be upgraded once the fire is out.</p></div>` : outdone ? `
       <div class="upgrade"><p class="note">Only the city's most upgraded ${esc(BUILDINGS[b.kind].name.toLowerCase())} raises land value, so this one has no upgrade.</p></div>` : ''}${bulldoze}`;
-    $(card, '.close').onclick = () => this.hideInspect();
+    $(card, '.close').onclick = () => this.hideInspect(true);
     const lb = card.querySelector<HTMLButtonElement>('#inLayer');
     if (lb && layer) {
       lb.onclick = () => {
@@ -1723,9 +1731,17 @@ export class UI {
     this.game.renderer.trace = pass ? { homes: new Set(pass.homes), jobs: new Set(pass.jobs) } : null;
   }
 
-  hideInspect(): void {
+  /**
+   * Put the Inspect card away, or the news in its place. Closed by hand (its close button, or Escape), any news that came
+   * while it was open shows next.
+   */
+  hideInspect(closed = false): void {
     this.showWho(null);
-    $(this.root, '#inspect').hidden = true;
+    const wasNews = this.newsShown;
+    this.newsShown = false;
+    const card = $(this.root, '#inspect');
+    card.className = 'panel';
+    card.hidden = true;
     this.root.classList.remove('inspecting');
     this.inspectAt = null;
     this.game.renderer.selected = null;
@@ -1733,6 +1749,76 @@ export class UI {
     const l = this.inspectLayer;
     this.inspectLayer = null;
     if (l && this.game.renderer.overlay === l.shown) this.setOverlay(l.was);
+    const next = this.newsWaiting;
+    if (!wasNews && closed && next && this.game.mode === 'city') next();
+  }
+
+  // ---- news cards ----------------------------------------------------------------------
+
+  /**
+   * A card of news in the Inspect card's place, so it sits where that card does on every screen and leaves the clock
+   * running: the title, the body, and buttons that close it as they act. While the Inspect card is open it waits for it
+   * to be closed; news already showing is replaced.
+   */
+  private showNews(title: string, body: string, buttons: { label: string; primary?: boolean; act: () => void }[] = [], cls = ''): void {
+    const card = $(this.root, '#inspect');
+    if (!card.hidden && !this.newsShown) {
+      this.newsWaiting = () => this.showNews(title, body, buttons, cls);
+      return;
+    }
+    this.newsWaiting = null;
+    this.showWho(null);
+    this.inspectAt = null;
+    this.game.renderer.selected = null;
+    this.newsShown = true;
+    card.className = `panel news ${cls}`.trim();
+    card.innerHTML = `<button class="iconbtn close" aria-label="Close">${ICONS.close}</button><h3 id="inspectTitle">${title}</h3>${body}${buttons.length ? '<div class="news-btns"></div>' : ''}`;
+    $(card, '.close').onclick = () => this.hideInspect(true);
+    const row = card.querySelector('.news-btns');
+    for (const b of buttons) {
+      row?.appendChild(this.btn(b.label, `small${b.primary ? ' primary' : ''}`, () => {
+        this.hideInspect();
+        b.act();
+      }));
+    }
+    card.hidden = false;
+    this.root.classList.add('inspecting');
+    const log = $(this.root, '#log');
+    if (!log.hidden && (this.narrow() || this.overlaps(card, log))) {
+      log.hidden = true;
+      this.renderTicker();
+    }
+    this.fitInspect();
+    $(this.root, '#announce').textContent = card.querySelector('h3')?.textContent ?? '';
+  }
+
+  /** After a year in debt: why the city is short, and the ways out. No game over, and no new rule. */
+  broke(): void {
+    const sim = this.game.sim;
+    if (!sim) return;
+    const r = sim.brokeReport();
+    const city = this.game.world.city;
+    const m = (n: number) => `<span class="num">${money(n)}</span>`;
+    const costs = r.costs.map((c) => `<li><span>${esc(c.label)}</span>${m(c.amount)}</li>`).join('');
+    const net = r.income - r.spend;
+    const tax = net >= 0.5
+      ? `Taxes now bring in ${m(net)} a month more than that${r.owed > 0 ? `: about ${Math.ceil(r.owed / net)} months to clear the debt.` : '.'}`
+      : r.covers !== null
+        ? `Taxes bring in ${m(r.income)}. A tax rate of ${r.covers}% would cover these costs (it is ${r.tax}%), though each point above 7% slows growth.`
+        : `Taxes bring in ${m(r.income)}. Even the top rate, 20%, would not cover these costs: the city has to spend less.`;
+    const loan = r.loanRoom >= 10000
+      ? `The Budget can still lend ${m(r.loanRoom)}, at 7% a year.`
+      : `The city has borrowed all it can, ${m(LOAN_LIMIT)}.`;
+    this.showNews('City hall is broke', `
+      <p class="does">${esc(city.name)} has been in debt for a year, and owes ${m(r.owed)}. Nothing new can be built until it is out.</p>
+      <p class="news-h">Its biggest costs each month</p>
+      <ul class="news-costs">${costs}</ul>
+      <p class="news-p">${tax}</p>
+      <p class="news-p">${loan}</p>
+      <p class="news-p">Bulldozing still works in debt, at $1 a tile: clearing what the city can't run cuts its costs.</p>`, [
+      { label: 'Open the Budget', primary: true, act: () => this.openBudget() },
+      { label: 'Bulldoze', act: () => this.game.setTool('bulldoze') },
+    ], 'broke');
   }
 
   /** Whether the starter checklist is on screen. */
@@ -2100,7 +2186,7 @@ export class UI {
       return true;
     }
     if (!$(this.root, '#inspect').hidden) {
-      this.hideInspect();
+      this.hideInspect(true);
       return true;
     }
     return false;

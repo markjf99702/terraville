@@ -546,6 +546,9 @@ export class Game {
           this.ui.onMessage(e.message);
           if (e.message.kind === 'alert') this.audio.play('alert');
           break;
+        case 'broke':
+          this.ui.broke();
+          break;
         case 'class':
           // A big moment: more than a line in the ticker.
           this.audio.play('fanfare');

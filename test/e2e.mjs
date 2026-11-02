@@ -3427,6 +3427,57 @@ try {
     await ctx.close();
   });
 
+  await test('after a year in debt a card says why and the ways out, waiting for an open Inspect card, and its buttons act', async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await found(page);
+    const month = () => page.evaluate(() => {
+      const g = window.__terraville;
+      for (let k = 0; k < 4; k++) g.sim.step();
+    });
+    await page.evaluate(() => {
+      const g = window.__terraville;
+      g.setSpeed(0);
+      g.world.city.funds = -2500;
+      g.world.city.debtMonths = 10;
+      g.ui.inspect(5, 5);
+    });
+    await month();
+    assert.notEqual(await page.textContent('#inspect h3'), 'City hall is broke', 'eleven months is not yet a year');
+    await month();
+    // The Inspect card was open: the news waits for it to be closed by hand.
+    assert.notEqual(await page.textContent('#inspect h3'), 'City hall is broke');
+    await page.tap('#inspect .close');
+    assert.equal(await page.textContent('#inspect h3'), 'City hall is broke');
+    assert.equal(await page.getByRole('region', { name: 'City hall is broke' }).count(), 1);
+    const text = await page.textContent('#inspect');
+    assert.match(text, /has been in debt for a year, and owes \$2,\d{3}\. Nothing new can be built until it is out\./);
+    assert.match(text, /Its biggest costs each month/);
+    assert.match(text, /The Budget can still lend \$30,000, at 7% a year\./);
+    assert.match(text, /Bulldozing still works in debt, at \$1 a tile/);
+    await page.tap('#inspect .news-btns button:has-text("Open the Budget")');
+    await page.waitForSelector('.modal h2:has-text("Budget")');
+    assert.equal(await page.isHidden('#inspect'), true);
+    await page.keyboard.press('Escape');
+    // Once a spell: another month in debt brings no second card.
+    await month();
+    assert.equal(await page.isHidden('#inspect'), true);
+    // Out of debt and back in for a year: it comes again, and Bulldoze picks the bulldozer.
+    await page.evaluate(() => {
+      const g = window.__terraville;
+      g.world.city.funds = 1000;
+      for (let k = 0; k < 4; k++) g.sim.step();
+      g.world.city.funds = -2500;
+      g.world.city.debtMonths = 11;
+    });
+    await month();
+    await page.tap('#inspect .news-btns button:has-text("Bulldoze")');
+    assert.equal(await page.evaluate(() => window.__terraville.toolId), 'bulldoze');
+    assert.equal(await page.isHidden('#inspect'), true);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('a city in debt can still bulldoze, though it cannot build', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

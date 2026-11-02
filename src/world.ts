@@ -60,6 +60,8 @@ export interface CityState {
   loan: number;
   /** The mayor's approval, 0 to 100, as of the last month end. */
   approval: number;
+  /** Month ends in a row the city has closed in debt: at 12 a card says why, and the ways out. */
+  debtMonths: number;
   /**
    * Set when the city is a challenge: which one, the deadline month, and the outcome once decided, with the month it
    * was decided and whether the goal tracker has been closed since. For a goal that must hold to the end, also how many
@@ -91,6 +93,7 @@ export function newCityState(): CityState {
     classReached: 0,
     loan: 0,
     approval: 50,
+    debtMonths: 0,
   };
 }
 
@@ -124,6 +127,7 @@ function cleanCity(raw: unknown): CityState {
     loan: num(s.loan, 0, 0),
     // Saves from before approval was kept open at 50%, as every city used to.
     approval: num(s.approval, 50, 0, 100),
+    debtMonths: Math.floor(num(s.debtMonths, 0, 0)),
   };
   // Only the plain ids Terraville makes; a city without one gets a new id when it opens.
   if (typeof s.id !== 'string' || !/^[a-z0-9]{1,24}$/.test(s.id)) delete city.id;

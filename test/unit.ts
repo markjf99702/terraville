@@ -2056,6 +2056,43 @@ function town(): any {
   return g;
 }
 
+await test('a year in debt in a row brings the broke card once a spell, counted across a save, with the costs, the tax that covers them and the loan room', async () => {
+  const g = seeded(3, () => town());
+  const sim: Sim = g.sim;
+  const city = g.world.city;
+  let broke = 0;
+  sim.on((e) => { if (e.type === 'broke') broke++; });
+  const months = (n: number) => seeded(4, () => weeks(g, 4 * n));
+  city.funds = -5000;
+  months(6);
+  assert.equal(city.debtMonths, 6);
+  // Out of debt for a month: the count starts again.
+  city.funds = 50000;
+  months(1);
+  assert.equal(city.debtMonths, 0);
+  city.funds = -5000;
+  city.loan = 20000;
+  months(11);
+  assert.equal(broke, 0);
+  // Kept with the city: a save opened again carries on counting.
+  const back = await reopen(sim);
+  assert.equal(back.world.city.debtMonths, 11);
+  months(1);
+  assert.equal(broke, 1, 'at twelve months');
+  months(13);
+  assert.equal(broke, 1, 'once for each spell in debt');
+  const r = sim.brokeReport();
+  assert.equal(r.owed, -city.funds);
+  assert.equal(r.months, 25);
+  assert.equal(r.loanRoom, 10000);
+  // The three biggest costs, biggest first, as the Budget names them.
+  const b = sim.stats.lastBudget;
+  const lines = [['Roads and rail', b.transport], ['Police', b.police], ['Fire', b.fire], ['Schools, hospitals, parks', b.services], ['Stadium, seaport, airport', b.landmarks], ['Power plants', b.power], ['Loan interest', b.interest]] as [string, number][];
+  assert.deepEqual(r.costs.map((c) => c.label), lines.filter((l) => l[1] >= 0.5).sort((a, c) => c[1] - a[1]).slice(0, 3).map((l) => l[0]));
+  // The tax rate that covers them is the lowest that brings in what the city spends.
+  assert.ok(r.covers !== null && sim.projectTax(r.covers) >= r.spend && sim.projectTax(r.covers - 1) < r.spend, `${r.covers}%`);
+});
+
 await test('on a device too slow for the speed, a frame runs one week of the clock and drops the rest', () => {
   const g = headless(flat());
   g.speed = 4; // Ultra: 14 weeks a second
