@@ -48,10 +48,11 @@ const PAINT_POWER = 1.8;
 /** The map has come to rest this long, in seconds, after the camera last moved. */
 const SETTLE_S = 0.25;
 /**
- * Night lights are painted once for each patch, at this many pixels a tile (they are soft glows, and scale up well),
- * and laid over the dark every frame: a big city has thousands of them in view.
+ * Night lights are painted once for each patch and laid over the dark every frame: a big city has thousands of them in
+ * view. They are soft glows and scale up well, so they are painted at half the map's detail: 16 px a tile close in, and
+ * 8 further out, where many more patches are in view.
  */
-const LIGHT_LOD = 16;
+const LIGHT_LODS = [8, 16];
 /** Canvas pixels the patches' night lights may hold between them. */
 const LIGHT_BUDGET = WEBKIT ? 2_000_000 : 6_000_000;
 
@@ -248,8 +249,10 @@ export class Renderer {
           const c = this.chunks.get(this.key(cx, cy, L));
           if (c) c.dirty = true;
         }
-        const l = this.lights.get(this.key(cx, cy, LIGHT_LOD));
-        if (l) l.dirty = true;
+        for (const L of LIGHT_LODS) {
+          const l = this.lights.get(this.key(cx, cy, L));
+          if (l) l.dirty = true;
+        }
       }
     }
     this.overlayDirty = true;
@@ -691,7 +694,7 @@ export class Renderer {
       if (this.showTraffic && this.cam.zoom >= 10) this.drawCars(ctx, vx0, vy0, vx1, vy1);
       this.vehicles.draw(ctx, this.cam.zoom);
       const dark = this.darkness();
-      if (dark > 0.01) this.drawNight(ctx, dark, vx0, vy0, vx1, vy1);
+      if (dark > 0.01) this.drawNight(ctx, dark, vx0, vy0, vx1, vy1, wantL >= 32 ? 16 : 8);
     }
     this.hazardTimer -= dt;
     if (this.hazardTimer <= 0) {
@@ -770,7 +773,7 @@ export class Renderer {
     }
   }
 
-  private drawNight(ctx: CanvasRenderingContext2D, dark: number, x0: number, y0: number, x1: number, y1: number): void {
+  private drawNight(ctx: CanvasRenderingContext2D, dark: number, x0: number, y0: number, x1: number, y1: number, LL: number): void {
     const world = this.world;
     ctx.fillStyle = `rgba(10,16,46,${dark})`;
     ctx.fillRect(0, 0, world.w, world.h);
@@ -787,9 +790,9 @@ export class Renderer {
     let painted = false;
     for (let cy = cy0; cy <= cy1; cy++) {
       for (let cx = cx0; cx <= cx1; cx++) {
-        let l = this.lights.get(this.key(cx, cy, LIGHT_LOD));
+        let l = this.lights.get(this.key(cx, cy, LL));
         if (!l || (l.dirty && (!painted || performance.now() - start < PAINT_MS / 2))) {
-          l = this.paintLights(cx, cy);
+          l = this.paintLights(cx, cy, LL);
           painted = true;
         }
         l.used = this.time;
@@ -807,8 +810,8 @@ export class Renderer {
    * drawing marks none, at spots of its own. A power plant shows none: its beacons and its smoke say it runs. A lot
    * without power stays dark. A glow near the patch's edge is painted in each patch it reaches.
    */
-  private paintLights(cx: number, cy: number): Lights {
-    const k = this.key(cx, cy, LIGHT_LOD);
+  private paintLights(cx: number, cy: number, LL: number): Lights {
+    const k = this.key(cx, cy, LL);
     let l = this.lights.get(k);
     if (!l) {
       l = { canvas: null, dirty: false, used: this.time };
@@ -856,8 +859,8 @@ export class Renderer {
     }
     if (!l.canvas) {
       l.canvas = document.createElement('canvas');
-      l.canvas.width = l.canvas.height = CS * LIGHT_LOD;
-      this.lightPixels += CS * LIGHT_LOD * CS * LIGHT_LOD;
+      l.canvas.width = l.canvas.height = CS * LL;
+      this.lightPixels += CS * LL * CS * LL;
     }
     const g = l.canvas.getContext('2d');
     if (!g) {
@@ -866,7 +869,7 @@ export class Renderer {
     }
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.clearRect(0, 0, l.canvas.width, l.canvas.height);
-    g.setTransform(LIGHT_LOD, 0, 0, LIGHT_LOD, -tx0 * LIGHT_LOD, -ty0 * LIGHT_LOD);
+    g.setTransform(LL, 0, 0, LL, -tx0 * LL, -ty0 * LL);
     g.globalCompositeOperation = 'lighter';
     g.globalAlpha = 0.55;
     for (let j = 0; j < lamps.length; j += 2) g.drawImage(this.glow, lamps[j] + 0.05, lamps[j + 1] + 0.05, 0.9, 0.9);
@@ -896,8 +899,10 @@ export class Renderer {
       const y = (i / w) | 0;
       for (let cy = Math.floor((y - 1) / CS); cy <= Math.floor((y + 1) / CS); cy++) {
         for (let cx = Math.floor((x - 1) / CS); cx <= Math.floor((x + 1) / CS); cx++) {
-          const l = this.lights.get(this.key(cx, cy, LIGHT_LOD));
-          if (l) l.dirty = true;
+          for (const L of LIGHT_LODS) {
+            const l = this.lights.get(this.key(cx, cy, L));
+            if (l) l.dirty = true;
+          }
         }
       }
     }
@@ -917,12 +922,12 @@ export class Renderer {
     this.litPower = null;
   }
 
-  /** The lights of patches longest out of view go first, past LIGHT_BUDGET. */
+  /** The lights of patches longest out of view go first, past LIGHT_BUDGET; those in view this frame stay. */
   private evictLights(): void {
     if (this.lightPixels <= LIGHT_BUDGET) return;
     const list = [...this.lights.entries()].sort((a, b) => a[1].used - b[1].used);
     for (const [k, l] of list) {
-      if (this.lightPixels <= LIGHT_BUDGET * 0.8) break;
+      if (this.lightPixels <= LIGHT_BUDGET * 0.8 || l.used >= this.time) break;
       this.dropLights(l);
       this.lights.delete(k);
     }

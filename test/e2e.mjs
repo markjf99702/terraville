@@ -1725,6 +1725,40 @@ try {
     assert.ok(after < before - 50, `the home's brightest window went dark: ${before} before, ${after} after`);
     assert.deepEqual(problems, []);
     await ctx.close();
+
+    // An iPhone, which keeps less canvas, with the whole map in view and street lamps all over it: the lights painted
+    // once are kept, not painted again every frame.
+    const iphone = await profile({ ...PHONE, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1' });
+    const p = await open(iphone);
+    await found(p.page);
+    await p.page.evaluate(() => {
+      const g = window.__terraville;
+      const r = g.renderer;
+      window.glows = 0;
+      const draw = CanvasRenderingContext2D.prototype.drawImage;
+      CanvasRenderingContext2D.prototype.drawImage = function (img, ...rest) {
+        if (img === r.glow) window.glows++;
+        return draw.call(this, img, ...rest);
+      };
+      const w = g.world;
+      for (let y = 0; y < w.h; y++) for (let x = 0; x < w.w; x++) {
+        if (x % 6 && y % 6) continue;
+        const i = y * w.w + x;
+        if (w.occ[i]) w.remove(w.occ[i]);
+        w.water[i] = 0; w.trees[i] = 0; w.net[i] = 0;
+        w.setNet(1, x, y);
+      }
+      w.dirtyAll(true);
+      g.setSpeed(0);
+      r.simTime = r.dayLength / 2;
+      g.fitMap();
+    });
+    await p.page.waitForTimeout(1500);
+    await p.page.evaluate(() => { window.glows = 0; });
+    await p.page.evaluate(() => new Promise((ok) => { let n = 0; const f = () => (++n < 30 ? requestAnimationFrame(f) : ok()); requestAnimationFrame(f); }));
+    assert.equal(await p.page.evaluate(() => window.glows), 0, 'on an iPhone with the whole map in view, no glow was drawn again');
+    assert.deepEqual(p.problems, []);
+    await iphone.close();
   });
 
   await test('an Android phone draws street level at 32 px a tile at most, as an iPhone does', async () => {
