@@ -690,6 +690,30 @@ try {
     await ctx.close();
   });
 
+  await test("on a phone the RCI meter's bars grow from its zero line and stay inside it", async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await found(page);
+    const bars = (demand) => page.evaluate((d) => {
+      const g = window.__terraville;
+      g.world.city.demand = d;
+      g.ui.onFunds();
+      return [...document.querySelectorAll('.rci .fill')].map((f) => {
+        const bar = f.parentElement.getBoundingClientRect();
+        const fill = f.getBoundingClientRect();
+        return { top: fill.top - bar.top, bottom: fill.bottom - bar.top, mid: bar.height / 2, height: bar.height };
+      });
+    }, demand);
+    const [r, c, i] = await bars({ r: 0.25, c: 0.05, i: -0.1 });
+    assert.equal(c.bottom, c.mid, 'a little demand sits on the zero line');
+    assert.equal(r.bottom, r.mid);
+    assert.equal(i.top, i.mid, 'a surplus hangs from it');
+    const [, full] = await bars({ r: 0, c: -1, i: 0 });
+    assert.ok(full.bottom <= full.height, 'a full surplus stays off the C below it');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('on a phone, Inspect takes the bottom slot from the map layer card and the news log', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

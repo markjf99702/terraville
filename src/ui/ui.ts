@@ -507,10 +507,12 @@ export class UI {
     this.root.querySelector('#stFundsBox')?.classList.toggle('funds-low', city.funds < 0);
     const bar = (id: string, v: number) => {
       const e = this.root.querySelector<HTMLElement>('#' + id);
-      if (!e) return;
-      const h = Math.max(1, Math.abs(v) * 16);
+      // The zero line is the middle of the bar, which is shorter on a phone; full demand fills its half.
+      const mid = (e?.parentElement?.clientHeight ?? 0) / 2;
+      if (!e || !mid) return;
+      const h = Math.max(1, Math.abs(v) * (mid - 1));
       e.style.height = `${h}px`;
-      e.style.top = v >= 0 ? `${17 - h}px` : '17px';
+      e.style.top = v >= 0 ? `${mid - h}px` : `${mid}px`;
     };
     bar('rciR', city.demand.r);
     bar('rciC', city.demand.c);
