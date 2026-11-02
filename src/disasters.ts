@@ -307,7 +307,9 @@ export class Disasters {
       const b = world.buildings.get(id);
       if (b) this.destroy(b, 'flood');
     }
+    // The water takes the trees, and any fire in them with them: a fire needs something to burn.
     world.trees[i] = 0;
+    world.fire[i] = 0;
     const x = i % world.w;
     const y = (i / world.w) | 0;
     world.dirty(x, y, x, y);
@@ -462,6 +464,8 @@ export class Disasters {
         }
         if (world.trees[i] && r.kind === 'tornado') {
           world.trees[i] = 0;
+          // With the trees gone, a fire in them has nothing left to burn.
+          if (!world.occ[i] && !world.rubble[i]) world.fire[i] = 0;
           world.dirty(x, y, x, y);
         }
       }

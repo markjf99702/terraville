@@ -1149,6 +1149,46 @@ await test('the monster leaves fires burning in what it wrecks', () => {
   for (const i of burning) assert.ok(w.rubble[i] && !w.occ[i], `tile ${i} is not burning rubble`);
 });
 
+await test('a flood or a tornado over burning woods leaves no fire burning on bare ground', () => {
+  const bare = (w: World) => {
+    let n = 0;
+    for (let i = 0; i < w.n; i++) if (w.fire[i] && !w.occ[i] && !w.trees[i] && !w.rubble[i]) n++;
+    return n;
+  };
+  // A flood spreads over the wood from the shore, burning along its edge, and washes the trees away.
+  seeded(3, () => {
+    const w = flat(40, 30);
+    w.height.fill(1);
+    for (let y = 0; y < 30; y++) for (let x = 0; x < 4; x++) { w.water[y * w.w + x] = 1; w.height[y * w.w + x] = -4; }
+    for (let y = 5; y < 25; y++) for (let x = 4; x < 20; x++) w.trees[y * w.w + x] = 2;
+    const sim = new Sim(w);
+    for (let y = 5; y < 25; y++) w.fire[y * w.w + 4] = w.fire[y * w.w + 5] = 8;
+    sim.disasters.trigger('flood');
+    let flooded = 0, left = 0;
+    for (let t = 0; t < 4; t++) {
+      sim.step();
+      left += bare(w);
+    }
+    for (let i = 0; i < w.n; i++) if (w.flood[i]) flooded++;
+    assert.ok(flooded > 10, `the flood reached ${flooded} tiles`);
+    assert.equal(left, 0, `${left} tile-weeks of fire on bare, flooded ground`);
+  });
+  // A tornado through a burning forest tears up the trees, and the fire in them goes with them.
+  seeded(4, () => {
+    const w = flat(40, 30);
+    for (let y = 5; y < 25; y++) for (let x = 5; x < 35; x++) { w.trees[y * w.w + x] = 3; w.fire[y * w.w + x] = 8; }
+    const sim = new Sim(w);
+    sim.disasters.roamers.push({ kind: 'tornado', x: 20, y: 15, px: 20, py: 15, vx: 0, vy: 0, weeks: 10, heading: 0 });
+    for (let t = 0; t < 3; t++) {
+      sim.step();
+      assert.equal(bare(w), 0, `week ${t + 1}: fire on bare ground where the tornado went`);
+    }
+    let torn = 0;
+    for (let y = 5; y < 25; y++) for (let x = 5; x < 35; x++) if (!w.trees[y * w.w + x]) torn++;
+    assert.ok(torn > 5, `the tornado tore up ${torn} tiles of forest`);
+  });
+});
+
 await test('a save with rubble left burning for years opens with it put out', () => {
   const w = flat();
   w.fire[5 * w.w + 5] = 250; // burnt-down rubble from before the fix
