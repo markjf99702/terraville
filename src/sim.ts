@@ -8,7 +8,7 @@ import {
 import { MinHeap } from './heap';
 import { clamp } from './rng';
 import { shoreDistance } from './terrain';
-import { Building, SAVED_MESSAGES, SavedRun, World } from './world';
+import { Building, READOUT_NUMBERS, SAVED_MESSAGES, SavedReadouts, SavedRun, World } from './world';
 import { Disasters } from './disasters';
 
 export type MessageKind = 'info' | 'good' | 'warn' | 'alert';
@@ -166,8 +166,17 @@ export class Sim {
       migration: this.stats.migration,
       messages: this.messages.slice(-SAVED_MESSAGES).map(({ text, kind, x, y, month }) => ({ text, kind, x, y, month })),
       cooldown: [...this.cooldown],
+      readouts: this.readouts(),
       ...this.disasters.saveRun(),
     };
+  }
+
+  /** The figures the sign, the Report and the goal tracker read, for a save. */
+  private readouts(): SavedReadouts {
+    const s = this.stats;
+    const out = { zones: { ...s.zones }, vacant: { ...s.vacant }, vacantReady: { ...s.vacantReady }, cityClass: s.cityClass } as SavedReadouts;
+    for (const k of READOUT_NUMBERS) out[k] = s[k];
+    return out;
   }
 
   private resume(run: SavedRun): void {
@@ -179,6 +188,13 @@ export class Sim {
     this.messages = run.messages.map((m) => ({ ...m, id: this.msgId++ }));
     this.cooldown = new Map(run.cooldown);
     this.disasters.resume(run);
+    // Recounted in the middle of a month, from maps worked out afresh, the figures would jump as the city opens: it
+    // shows what it closed with until the next month end.
+    const r = run.readouts;
+    if (r) {
+      Object.assign(this.stats, { zones: { ...r.zones }, vacant: { ...r.vacant }, vacantReady: { ...r.vacantReady }, cityClass: r.cityClass });
+      for (const k of READOUT_NUMBERS) this.stats[k] = r[k];
+    }
   }
 
   private terrainDirty = false;

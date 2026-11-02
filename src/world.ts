@@ -1,7 +1,7 @@
 // The map and everything built on it. Pure data plus placement rules; the
 // simulation and renderer both read from here.
 import {
-  AUTO_GRADE, BUILDINGS, BuildingDef, Difficulty, FIRE_WEEKS, Kind, POWER, RAIL, ROAD, isZone, topLevel, ZONE_POP,
+  AUTO_GRADE, BUILDINGS, BuildingDef, CITY_CLASSES, Difficulty, FIRE_WEEKS, Kind, POWER, RAIL, ROAD, isZone, topLevel, ZONE_POP,
 } from './defs';
 
 export interface Building {
@@ -859,7 +859,43 @@ export interface SavedRun {
   floodAge: number;
   /** Buildings the flood under way has washed away. */
   floodWrecked?: number;
+  /** The city's figures as the last month closed, which the sign, the Report and the goal tracker show until the next. */
+  readouts?: SavedReadouts;
 }
+
+/** Counts of zones by kind. */
+interface ByZone {
+  res: number;
+  com: number;
+  ind: number;
+}
+
+/** What the city's figures said at the last month end, kept so that a city opens showing what it closed with. */
+export interface SavedReadouts {
+  residents: number;
+  comJobs: number;
+  indJobs: number;
+  workers: number;
+  unemployment: number;
+  avgLandValue: number;
+  avgPollution: number;
+  avgCrime: number;
+  avgTraffic: number;
+  zones: ByZone;
+  vacant: ByZone;
+  vacantReady: ByZone;
+  unpowered: number;
+  noRoad: number;
+  noTrip: number;
+  fires: number;
+  cityClass: string;
+}
+
+/** The readouts that are plain counts or averages, in the order a save lists them. */
+export const READOUT_NUMBERS = [
+  'residents', 'comJobs', 'indJobs', 'workers', 'unemployment', 'avgLandValue', 'avgPollution', 'avgCrime', 'avgTraffic',
+  'unpowered', 'noRoad', 'noTrip', 'fires',
+] as const;
 
 /** The news the log shows, and so what a save keeps. */
 export const SAVED_MESSAGES = 40;
@@ -894,6 +930,8 @@ function cleanRun(raw: unknown, w: number, h: number): SavedRun | null {
     floodAge: Math.floor(num(s.floodAge, 0, 0, 1e6)),
   };
   if (s.floodWrecked !== undefined) run.floodWrecked = Math.floor(num(s.floodWrecked, 0, 0, 1e5));
+  const readouts = cleanReadouts(s.readouts);
+  if (readouts) run.readouts = readouts;
   if (s.lastPop !== undefined) run.lastPop = Math.floor(num(s.lastPop, 0, 0));
   if (s.migration !== undefined) run.migration = Math.round(num(s.migration, 0));
   for (const v of list(s.messages, SAVED_MESSAGES)) {
@@ -923,6 +961,26 @@ function cleanRun(raw: unknown, w: number, h: number): SavedRun | null {
     });
   }
   return run;
+}
+
+/**
+ * Saved readouts, every figure a finite number in range and the size class one of the game's: or none at all, so the
+ * opened city works its figures out afresh, if any of it is malformed.
+ */
+function cleanReadouts(raw: unknown): SavedReadouts | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const r = raw as Record<string, unknown>;
+  const ok = (v: unknown, hi = 1e9) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= hi;
+  if (!READOUT_NUMBERS.every((k) => ok(r[k], k === 'unemployment' ? 1 : 1e9))) return undefined;
+  const zones = (v: unknown): ByZone | undefined => {
+    const z = record(v);
+    return ok(z.res) && ok(z.com) && ok(z.ind) ? { res: z.res as number, com: z.com as number, ind: z.ind as number } : undefined;
+  };
+  const [zs, vacant, ready] = [zones(r.zones), zones(r.vacant), zones(r.vacantReady)];
+  if (!zs || !vacant || !ready || !CITY_CLASSES.some((c) => c.name === r.cityClass)) return undefined;
+  const out = { zones: zs, vacant, vacantReady: ready, cityClass: r.cityClass as string } as SavedReadouts;
+  for (const k of READOUT_NUMBERS) out[k] = r[k] as number;
+  return out;
 }
 
 // Run-length + base64. Maps are mostly long runs of the same byte.

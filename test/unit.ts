@@ -960,6 +960,28 @@ await test('a reloaded city carries on as if it had never closed: traffic, budge
   }
 });
 
+await test('a reloaded city shows the figures it closed with: residents and land value do not jump as it opens', async () => {
+  const monster = SCENARIOS.find((x) => x.id === 'monster')!;
+  const random = Math.random;
+  try {
+    Math.random = makeRng(77);
+    const w = buildScenario(monster, 120, 100);
+    const sim = new Sim(w);
+    openScenario(sim);
+    for (let k = 0; k < 29; k++) sim.step(); // a week into a month
+    const back = await reopen(sim);
+    const figures = (s: Sim) => [s.stats.residents, s.stats.avgLandValue, s.stats.avgCrime, s.stats.comJobs + s.stats.indJobs, s.stats.cityClass, monster.check(s).status];
+    assert.deepEqual(figures(back), figures(sim));
+    // A code whose figures are damaged opens with them worked out afresh, rather than with nonsense.
+    const run = JSON.parse(JSON.stringify(sim.saveRun()));
+    run.readouts.residents = -5;
+    const fresh = new Sim(World.deserialize(JSON.parse(JSON.stringify(w.serialize(run)))));
+    assert.ok(fresh.stats.residents > 0 && Number.isFinite(fresh.stats.avgLandValue));
+  } finally {
+    Math.random = random;
+  }
+});
+
 await test('a monster mid-rampage is still on the map after a reload, and keeps going', async () => {
   const random = Math.random;
   try {
