@@ -1093,6 +1093,29 @@ try {
     await ctx.close();
   });
 
+  await test('a phone on its side gets one row of top bar, room for the map, menus that scroll, and panels clear of the notch', async () => {
+    const ctx = await profile({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+    const { page, problems } = await open(ctx);
+    // An iPhone held sideways: the notch at one end, the home bar along the bottom.
+    const cdp = await ctx.newCDPSession(page);
+    await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets: { left: 47, right: 47, top: 0, bottom: 21 } });
+    await found(page);
+    const box = (s) => page.evaluate((s) => { const r = document.querySelector(s).getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom }; }, s);
+    const [sign, stats, menu, tools, ticker, map, guide] = await Promise.all(['#citySign', '.stat-strip', '#topbar .menu', '#toolbox', '#ticker', '#minimapCard', '#guide'].map(box));
+    assert.ok(stats.top === sign.top && menu.top === sign.top, 'the stats share the first row with the sign and the menu');
+    assert.ok(sign.left >= 47 && menu.right <= 844 - 47, 'the top bar keeps clear of the notch at either end');
+    assert.ok(tools.top >= stats.bottom && tools.bottom <= 390 - 21, 'the tools run down the left, under the top bar and above the home bar');
+    assert.ok(ticker.right <= map.left && ticker.bottom <= 390 - 21, 'the ticker sits beside the map card');
+    assert.ok(guide.bottom - guide.top < 60, 'the checklist is one line until tapped');
+    await page.tap('[data-act="layers"]');
+    const dd = await box('.dropdown');
+    assert.ok(dd.bottom <= 390, 'the layers menu ends on the screen');
+    await page.$eval('.dropdown', (d) => { d.scrollTop = d.scrollHeight; });
+    assert.equal(await page.isVisible('.dropdown button:has-text("Steepness")'), true, 'and scrolls to its last layer');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('on a phone, Inspect takes the bottom slot from the map layer card and the news log', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

@@ -228,6 +228,7 @@ export class UI {
   // ---- mode switches ----------------------------------------------------------
 
   enterTitle(): void {
+    this.root.dataset.mode = 'title';
     this.closeModal();
     this.closeDropdown();
     for (const id of ['#topbar', '#toolbox', '#editorPanel', '#minimapCard', '#ticker', '#log', '#inspect', '#guide', '#goal']) $(this.root, id).hidden = true;
@@ -331,6 +332,7 @@ export class UI {
   }
 
   enterEditor(): void {
+    this.root.dataset.mode = 'editor';
     this.showChrome();
     $(this.root, '#ticker').hidden = true;
     $(this.root, '#log').hidden = true;
@@ -344,6 +346,7 @@ export class UI {
   }
 
   enterCity(): void {
+    this.root.dataset.mode = 'city';
     this.lastMessage = null;
     this.showChrome();
     $(this.root, '#editorPanel').hidden = true;
@@ -715,7 +718,7 @@ export class UI {
     const slider = (id: string, label: string, min: number, max: number, step: number, val: number) => `
       <label class="field"><span>${label} <span class="num" id="${id}Val">${val}</span></span>
       <input type="range" id="${id}" min="${min}" max="${max}" step="${step}" value="${val}"></label>`;
-    p.classList.toggle('collapsed', window.innerWidth <= 820);
+    p.classList.toggle('collapsed', this.compact());
     p.innerHTML = `
       <h2 id="edHead" style="cursor:pointer">Generate land</h2>
       <div class="field"><span>Landscape</span>
@@ -736,7 +739,7 @@ export class UI {
       </div>
       <p class="note">Sliders regenerate the whole map. Sculpt afterwards with the brushes; Undo steps back through both.</p>`;
     $(p, '#edHead').onclick = () => {
-      if (window.innerWidth <= 820) p.classList.toggle('collapsed');
+      if (this.compact()) p.classList.toggle('collapsed');
     };
     const regen = (params: Record<string, unknown>) => {
       window.clearTimeout(this.regenTimer);
@@ -869,6 +872,7 @@ export class UI {
     const w = d.offsetWidth;
     d.style.left = `${Math.max(8, Math.min(window.innerWidth - w - 8, r.right - w))}px`;
     d.style.top = `${r.bottom + 6}px`;
+    d.style.maxHeight = `${Math.max(120, window.innerHeight - r.bottom - 14)}px`;
     btn.setAttribute('aria-expanded', 'true');
     this.dropdownEl = d;
     this.dropdownBtn = btn;
@@ -966,7 +970,7 @@ export class UI {
       add('contour', on ? 'Hide the steepness' : 'Show the steepness', () => this.setOverlay(on ? 'none' : 'slope'));
     }
     // A phone has no room for Redo in the top bar, and no keyboard for Ctrl+Shift+Z.
-    if (this.game.mode === 'city' && this.narrow() && this.game.canRedo()) add('redo', 'Redo', () => this.game.redo());
+    if (this.game.mode === 'city' && this.compact() && this.game.canRedo()) add('redo', 'Redo', () => this.game.redo());
     const drive = this.game.drive;
     if (this.game.mode === 'city' && drive.status() === 'signin') {
       add('cloud', 'Sign in to Google Drive', () => this.connectDrive());
@@ -1129,6 +1133,11 @@ export class UI {
     return window.innerWidth <= 820;
   }
 
+  /** A phone either way up: narrow, or short (held sideways), where the checklist and editor panel fold away. */
+  private compact(): boolean {
+    return this.narrow() || window.innerHeight <= 500;
+  }
+
   // ---- starter checklist ------------------------------------------------------------
 
   private updateGuide(force: boolean): void {
@@ -1172,7 +1181,7 @@ export class UI {
     box.hidden = false;
     const done = items.filter(([ok]) => ok).length;
     // On a phone the list would cover a third of the map: it is one line, 'Next: …', until tapped open.
-    const small = this.narrow();
+    const small = this.compact();
     const folded = small && !this.guideOpen;
     const next = items.find(([ok]) => !ok)!;
     const html = folded
@@ -1190,7 +1199,7 @@ export class UI {
     // Redrawn only when something changed, so a tap isn't lost to a redraw.
     if (box.dataset.html === html) return;
     box.dataset.html = html;
-    box.style.cssText = `position:absolute;right:10px;top:calc(var(--top) + 74px);width:260px;padding:${folded ? '0' : '12px 14px'};z-index:12`;
+    box.style.cssText = `position:absolute;right:calc(var(--right) + 10px);top:calc(var(--top) + 74px);width:260px;padding:${folded ? '0' : '12px 14px'};z-index:12`;
     box.innerHTML = html;
     const toggle = box.querySelector<HTMLElement>('.guide-next, button.guide-head');
     if (toggle) toggle.onclick = () => {
@@ -1275,15 +1284,16 @@ export class UI {
   }
 
   /**
-   * Keep the toast off the checklist and the goal card: on a phone it goes under whichever is up (it is already under
-   * the stats), and in a wider window one that would run into the card moves left of it, between it and the tools.
+   * Keep the toast off the checklist, the goal card and the editor's panel: on a phone it goes under whichever is up (it
+   * is already under the stats), and in a wider window one that would run into the card moves left of it, between it and
+   * the tools.
    */
   private placeToast(t: HTMLElement): void {
     t.style.top = '';
     t.style.left = '';
     t.style.maxWidth = '';
     if ($(this.root, '#topbar').hidden) return;
-    const cards = ['#guide', '#goal'].map((id) => $(this.root, id)).filter((c) => !c.hidden).map((c) => c.getBoundingClientRect());
+    const cards = ['#guide', '#goal', '#editorPanel'].map((id) => $(this.root, id)).filter((c) => !c.hidden).map((c) => c.getBoundingClientRect());
     if (!cards.length) return;
     if (this.narrow()) {
       t.style.top = `${Math.round(Math.max(...cards.map((c) => c.bottom)) + 8)}px`;
@@ -1556,7 +1566,7 @@ export class UI {
     const box = $(this.root, '#goal');
     if (this.game.mode !== 'city') return;
     box.hidden = false;
-    box.style.cssText = 'position:absolute;right:10px;top:calc(var(--top) + 74px);width:270px;padding:11px 13px;z-index:12;display:flex;flex-direction:column;gap:6px';
+    box.style.cssText = 'position:absolute;right:calc(var(--right) + 10px);top:calc(var(--top) + 74px);width:270px;padding:11px 13px;z-index:12;display:flex;flex-direction:column;gap:6px';
     const left = Math.max(0, monthsLeft);
     const time = done === 'won' ? 'Won' : done === 'lost' ? 'Time ran out' : `${Math.floor(left / 12)}y ${left % 12}m left`;
     const col = done === 'lost' ? 'var(--critical)' : st.met ? 'var(--good)' : 'var(--caution)';

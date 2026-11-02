@@ -52,6 +52,9 @@
   --mono: 'Overpass Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   --top: env(safe-area-inset-top, 0px);
   --bottom: env(safe-area-inset-bottom, 0px);
+  /* A phone on its side has its notch at one end: the panels keep clear of it. */
+  --left: env(safe-area-inset-left, 0px);
+  --right: env(safe-area-inset-right, 0px);
 }
 
 * { box-sizing: border-box; }
@@ -93,8 +96,8 @@ noscript { display: block; padding: 32px 16px; text-align: center; font-size: 16
 #topbar {
   position: absolute;
   top: calc(var(--top) + 10px);
-  left: 10px;
-  right: 10px;
+  left: calc(var(--left) + 10px);
+  right: calc(var(--right) + 10px);
   display: flex;
   align-items: stretch;
   gap: 8px;
@@ -240,7 +243,7 @@ button.sign:hover { background: var(--sign-hi); box-shadow: inset 0 0 0 2px var(
 /* ---- toolbox ------------------------------------------------------------- */
 #toolbox {
   position: absolute;
-  left: 10px;
+  left: calc(var(--left) + 10px);
   top: calc(var(--top) + 74px);
   bottom: calc(var(--bottom) + 64px);
   width: 104px;
@@ -327,7 +330,7 @@ input[type="range"] { width: 100%; accent-color: var(--sign-hi); margin: 0; }
 /* ---- minimap ------------------------------------------------------------- */
 #minimapCard {
   position: absolute;
-  right: 10px;
+  right: calc(var(--right) + 10px);
   bottom: calc(var(--bottom) + 10px);
   width: 230px;
   padding: 8px;
@@ -353,8 +356,8 @@ input[type="range"] { width: 100%; accent-color: var(--sign-hi); margin: 0; }
 /* ---- ticker -------------------------------------------------------------- */
 #ticker {
   position: absolute;
-  left: 124px;
-  right: 252px;
+  left: calc(var(--left) + 124px);
+  right: calc(var(--right) + 252px);
   bottom: calc(var(--bottom) + 10px);
   min-height: 44px;
   padding: 6px 8px 6px 12px;
@@ -388,7 +391,7 @@ input[type="range"] { width: 100%; accent-color: var(--sign-hi); margin: 0; }
 /* --ticker-h is the ticker's height as drawn (it grows to two lines), set by the page; the cards above it follow. */
 #log {
   position: absolute;
-  left: 124px;
+  left: calc(var(--left) + 124px);
   bottom: calc(var(--bottom) + 18px + var(--ticker-h, 44px));
   width: min(520px, calc(100vw - 150px));
   max-height: 46vh;
@@ -414,7 +417,7 @@ input[type="range"] { width: 100%; accent-color: var(--sign-hi); margin: 0; }
 /* Above the ticker, whose Go there and News buttons sit at this end; a tall card scrolls rather than reach the top bar. */
 #inspect {
   position: absolute;
-  right: 252px;
+  right: calc(var(--right) + 252px);
   bottom: calc(var(--bottom) + 20px + var(--ticker-h, 44px));
   width: 250px;
   max-height: calc(100% - var(--top) - var(--bottom) - 94px - var(--ticker-h, 44px));
@@ -434,7 +437,7 @@ input[type="range"] { width: 100%; accent-color: var(--sign-hi); margin: 0; }
 /* ---- editor panel -------------------------------------------------------- */
 #editorPanel {
   position: absolute;
-  right: 10px;
+  right: calc(var(--right) + 10px);
   top: calc(var(--top) + 74px);
   width: 250px;
   max-height: calc(100% - var(--top) - var(--bottom) - 330px);
@@ -715,6 +718,7 @@ kbd { font: 600 11.5px var(--mono); padding: 1px 6px; border: 1px solid var(--li
   position: absolute;
   z-index: 45;
   min-width: 220px;
+  overflow-y: auto; /* on a short screen it scrolls rather than run off the bottom (the page sets its height) */
   padding: 6px;
   display: flex;
   flex-direction: column;
@@ -790,7 +794,7 @@ kbd { font: 600 11.5px var(--mono); padding: 1px 6px; border: 1px solid var(--li
   z-index: 70;
   display: grid;
   align-items: center;
-  padding: calc(var(--top) + 24px) 24px calc(var(--bottom) + 24px);
+  padding: calc(var(--top) + 24px) calc(var(--right) + 24px) calc(var(--bottom) + 24px) calc(var(--left) + 24px);
   background: linear-gradient(90deg, rgba(8, 12, 10, 0.86) 0%, rgba(8, 12, 10, 0.62) 42%, rgba(8, 12, 10, 0.05) 75%);
   overflow-y: auto;
 }
@@ -860,6 +864,39 @@ footer.jd-foot { display: block; margin: 0; padding: 4px 0 0; border: 0; font-si
   #guide, #goal { top: calc(var(--top) + 130px) !important; }
   #inspect { max-height: calc(100% - var(--top) - var(--bottom) - 150px - var(--ticker-h, 44px)); }
   #toast, #pausedPill { top: calc(var(--top) + 140px); }
+}
+
+/* ---- a phone on its side, or any short window: one row of top bar, everything else along the edges ---- */
+@media (max-height: 500px) and (min-width: 821px) {
+  #topbar { top: calc(var(--top) + 8px); gap: 6px; flex-wrap: nowrap; }
+  .sign { padding: 4px 10px 3px; flex: 0 1 auto; }
+  .sign b { font-size: 14.5px; }
+  .stat-strip { order: 0; flex: 0 1 auto; justify-content: flex-start; padding: 0 2px; }
+  .stat { padding: 3px 7px; }
+  .stat .label { font-size: 9px; }
+  .stat .value { font-size: 12.5px; }
+  .stat .delta { font-size: 10px; }
+  .rci { padding: 3px 7px; grid-template-columns: repeat(3, 9px); column-gap: 4px; }
+  .rci .bar { height: 30px; }
+  .speed { padding: 3px 2px; gap: 0; }
+  .speed button { width: 29px; height: 32px; }
+  .speed svg { width: 16px; height: 16px; }
+  .menu { padding: 3px; flex: 0 0 auto; }
+  .menu button { padding: 0 6px; height: 32px; }
+  .menu-sep, .menu .hide-sm { display: none; } /* as on a phone: Redo moves to the menu, and the sign opens the report */
+  #toolbox { top: calc(var(--top) + 66px); bottom: calc(var(--bottom) + 8px); }
+  #guide, #goal { top: calc(var(--top) + 66px) !important; max-height: calc(100% - var(--top) - var(--bottom) - 68px); overflow-y: auto; }
+  #toast, #pausedPill { top: calc(var(--top) + 66px); }
+  #ticker { bottom: calc(var(--bottom) + 8px); right: calc(var(--right) + 222px); }
+  #minimapCard { bottom: calc(var(--bottom) + 8px); width: 200px; padding: 6px; gap: 5px; }
+  #minimap { height: 96px; }
+  #log { bottom: calc(var(--bottom) + 16px + var(--ticker-h, 44px)); max-height: calc(100% - var(--top) - 76px - var(--ticker-h, 44px)); }
+  #inspect { right: calc(var(--right) + 222px); bottom: calc(var(--bottom) + 16px + var(--ticker-h, 44px)); max-height: calc(100% - var(--top) - var(--bottom) - 76px - var(--ticker-h, 44px)); }
+  /* The editor's panel takes the right side, full height; the map layer card, when it shows, sits beside it. */
+  #editorPanel { top: calc(var(--top) + 66px); max-height: calc(100% - var(--top) - var(--bottom) - 68px); }
+  #editorPanel.collapsed { max-height: 46px; overflow: hidden; }
+  [data-mode="editor"] #minimapCard:not(.show) { display: none; }
+  [data-mode="editor"] #minimapCard.show { right: calc(var(--right) + 270px); }
 }
 
 /* ---- phones and small windows ------------------------------------------- */
