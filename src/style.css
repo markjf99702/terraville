@@ -535,6 +535,11 @@ input[type="range"] { width: 100%; accent-color: var(--sign-hi); margin: 0; touc
 /* Folded on a phone, the heading is a button the height of a finger, and nothing else of the panel shows. */
 #editorPanel .ed-head { display: flex; align-items: center; justify-content: space-between; width: calc(100% + 28px); min-height: 44px; margin: -12px -14px; padding: 0 14px; border: none; background: none; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; text-align: left; }
 #editorPanel.collapsed > :not(h2) { display: none; }
+/* In a wide window the map layer card sits under the panel, and with a layer on its legend makes it taller: the panel
+   ends above it then. */
+@media (min-width: 821px) and (min-height: 500.02px) {
+  [data-mode="editor"]:has(#minimapCard.show) #editorPanel { max-height: calc(100% - var(--top) - var(--bottom) - 364px); }
+}
 /* The land readout under the sliders: a line for each figure. */
 #edLand > span { display: block; }
 #edLand .num { color: var(--text); font-weight: 700; }

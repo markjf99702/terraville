@@ -1434,6 +1434,9 @@ try {
       await page.selectOption('#overlaySel', 'elevation');
       assert.equal(await page.evaluate(() => window.__terraville.renderer.overlay), 'elevation');
       assert.deepEqual(await legend(page), BANDS);
+      // Its legend makes the layer card taller, and the panel above it ends clear of it.
+      const clear = await page.evaluate(() => document.querySelector('#minimapCard').getBoundingClientRect().top - document.querySelector('#editorPanel').getBoundingClientRect().bottom);
+      assert.ok(clear >= 0, `the panel runs ${-clear}px under the layer card`);
       await page.waitForTimeout(150);
       // The canvas keeps its colours premultiplied by their opacity, so each may be a step off.
       const near = (a, b, what) => assert.ok(a && a.every((v, k) => Math.abs(v - b[k]) <= 2), `${what}: ${a} for ${b}`);
