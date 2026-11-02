@@ -1,7 +1,7 @@
 // Game controller: modes, the tool state machine, money, undo, the clock.
 import { Audio } from './audio';
 import {
-  BUILDINGS, CITY_CLASSES, CITY_TOOLS, DIFFICULTIES, Difficulty, EDITOR_TOOLS, GRADE_COST, Kind, MAP_SIZES, POWER, SEP, ToolDef,
+  BUILDINGS, CITY_CLASSES, CITY_TOOLS, DIFFICULTIES, Difficulty, EDITOR_TOOLS, GRADE_COST, Kind, LANDMARK_LIMITS, MAP_SIZES, POWER, SEP, ToolDef,
   Upgrade, article, buildingName, cityClass, isZone, nextUpgrade,
 } from './defs';
 import { lessMotion } from './motion';
@@ -1207,6 +1207,7 @@ export class Game {
     }
     const city = this.world.city;
     if (!this.affordable(plan)) return this.notEnough(plan.cost);
+    const opens = this.opening(t.building as Kind | undefined);
     const spot = this.footprint(t, plan);
     if (this.world.inBounds(tx, ty)) spot.add(ty * this.world.w + tx);
     this.pushUndo();
@@ -1229,8 +1230,27 @@ export class Game {
     this.sealUndo();
     if (this.sim) this.sim.powerDirty = true;
     this.minimap.markDirty();
-    this.audio.play(t.id === 'bulldoze' ? 'bulldoze' : t.kind === 'zone' ? 'zone' : 'build');
+    if (opens && this.sim) {
+      const [x, y] = plan.tiles[0];
+      const size = BUILDINGS[t.building!].size;
+      this.sim.say('opened', opens, 'good', { x: x + Math.floor(size / 2), y: y + Math.floor(size / 2) }, 0);
+      this.ui.toast(opens);
+    }
+    this.audio.play(opens ? 'fanfare' : t.id === 'bulldoze' ? 'bulldoze' : t.kind === 'zone' ? 'zone' : 'build');
     this.ui.onFunds();
+  }
+
+  /**
+   * What the city's first stadium, airport or seaport opening means, before it is built: the limit on growth it lifts,
+   * and whether that limit was holding the city back. Undefined for anything else, or a second of a kind.
+   */
+  private opening(k: Kind | undefined): string | undefined {
+    const lifts = { stadium: ['res', 'Housing', 'residents'], airport: ['com', 'Commerce', 'jobs'], seaport: ['ind', 'Industry', 'jobs'] } as const;
+    if (this.mode !== 'city' || !this.sim || !k || !(k in lifts)) return undefined;
+    for (const b of this.world.buildings.values()) if (b.kind === k) return undefined;
+    const [zone, who, unit] = lifts[k as keyof typeof lifts];
+    const limit = `${LANDMARK_LIMITS[zone].toLocaleString('en-US')} ${unit}`;
+    return `The ${BUILDINGS[k].name.toLowerCase()} is open. ${this.sim.capped[zone] ? `${who} can grow past ${limit}.` : `${who} won't stall at ${limit}.`}`;
   }
 
   /**

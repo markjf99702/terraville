@@ -1842,6 +1842,30 @@ await test('a challenge opens with its goal in the news and its real monthly bal
   assert.equal(successLine(aftershock, end, end), 'Aftershock is a success in 1997.');
 }));
 
+await test("the city's first seaport, airport or stadium is news, with the limit it lifts and a fanfare; a second is not", () => seeded(5, () => {
+  const w = flat(40, 30);
+  for (let y = 0; y < 30; y++) for (let x = 0; x < 3; x++) { w.water[y * w.w + x] = 1; w.height[y * w.w + x] = -4; }
+  const g = headless(w);
+  w.city.funds = 100000;
+  const played: string[] = [];
+  g.audio = { play: (s: string) => played.push(s), unlock: () => {} };
+  const good = () => g.sim.messages.filter((m: any) => m.kind === 'good').map((m: any) => [m.text, m.x, m.y]);
+  drag(g, 'seaport', 4, 4);
+  assert.equal(w.buildingAt(4, 4)?.kind, 'seaport');
+  const text = "The seaport is open. Industry won't stall at 4,000 jobs.";
+  assert.deepEqual(good(), [[text, 5, 5]]);
+  assert.equal(g.toasts.at(-1), text);
+  assert.deepEqual(played, ['fanfare']);
+  drag(g, 'seaport', 4, 14);
+  assert.equal(w.buildingAt(4, 14)?.kind, 'seaport');
+  assert.equal(good().length, 1, 'a second seaport is no news');
+  assert.deepEqual(played, ['fanfare', 'build']);
+  // Where the limit was holding the city back, it says growth can go on.
+  g.sim.capped.res = true;
+  drag(g, 'stadium', 20, 10);
+  assert.equal(good().at(-1)[0], 'The stadium is open. Housing can grow past 18,000 residents.');
+}));
+
 await test("a challenge's result goes in the news: a win says when, and a loss names the first goal not met", () => seeded(4, () => {
   const g = headless(flat(40, 30));
   g.startScenario('boomtown');
