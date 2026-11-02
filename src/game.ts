@@ -444,7 +444,9 @@ export class Game {
     this.applySettings();
     this.setTool('query');
     this.ui.enterCity();
-    this.sim!.say('welcome', `Welcome to ${w.city.name}. Build a power plant, zone residential, commercial and industrial land, and connect it all with roads and power lines.`, 'good', undefined, 0);
+    // One line: the checklist (or, once someone has done it, the guide) has the steps.
+    const steps = this.ui.checklistShown() ? 'The checklist has the first steps.' : 'The strategy guide in the menu has the first steps.';
+    this.sim!.say('welcome', `Welcome to ${w.city.name}. ${steps}`, 'good', undefined, 0);
     this.renderer.cam.zoom = Math.max(this.renderer.cam.zoom, 14);
     this.renderer.clampCamera();
     this.audio.play('fanfare');

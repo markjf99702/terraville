@@ -358,8 +358,9 @@ input[type="range"] { width: 100%; accent-color: var(--sign-hi); margin: 0; }
   align-items: center;
   gap: 10px;
 }
-#ticker .msg { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; }
-#ticker .msg-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#ticker .msg { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; cursor: pointer; }
+/* Up to two lines, and the ticker grows to fit; a tap on the text opens the news log, where every line is whole. */
+#ticker .msg-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; line-height: 1.35; overflow-wrap: anywhere; }
 #ticker .when { font: 11px var(--mono); color: var(--faint); white-space: nowrap; }
 .kind-dot { width: 10px; height: 10px; flex: none; border-radius: 50%; background: var(--muted); }
 .kind-good .kind-dot { background: var(--good); }
@@ -380,10 +381,11 @@ input[type="range"] { width: 100%; accent-color: var(--sign-hi); margin: 0; }
 #ticker.flash { animation: flash 0.9s ease-out; }
 @keyframes flash { 0% { box-shadow: 0 0 0 2px var(--critical), var(--shadow); } 100% { box-shadow: var(--shadow); } }
 
+/* --ticker-h is the ticker's height as drawn (it grows to two lines), set by the page; the cards above it follow. */
 #log {
   position: absolute;
   left: 124px;
-  bottom: calc(var(--bottom) + 62px);
+  bottom: calc(var(--bottom) + 18px + var(--ticker-h, 44px));
   width: min(520px, calc(100vw - 150px));
   max-height: 46vh;
   overflow-y: auto;
@@ -851,20 +853,22 @@ footer.jd-foot { display: block; margin: 0; padding: 4px 0 0; border: 0; font-si
   .toolgroup + .toolgroup { padding-top: 0; border-top: none; padding-left: 6px; border-left: 1px solid var(--line); }
   .tool { width: 50px; height: 50px; flex: none; }
   .brushbox { flex-direction: row; min-width: 220px; padding-top: 0; border-top: none; padding-left: 6px; border-left: 1px solid var(--line); }
-  #ticker { left: 8px; right: 8px; bottom: calc(var(--bottom) + 80px); min-height: 38px; }
+  #ticker { left: 8px; right: 8px; bottom: calc(var(--bottom) + 80px); min-height: 38px; padding: 5px 6px 5px 10px; gap: 8px; }
+  #ticker .msg { gap: 8px; }
+  #ticker .msg-text { font-size: 13px; }
   #ticker .when { display: none; }
   #driveBtn { display: none; }
   #topbar [data-act="menu"].attn { position: relative; }
   #topbar [data-act="menu"].attn::after { content: ''; position: absolute; top: 5px; right: 4px; width: 7px; height: 7px; border-radius: 50%; background: var(--caution); }
   #pausedPill { display: none; }
   #minimapCard { display: none; }
-  #minimapCard.show { display: flex; right: 8px; bottom: calc(var(--bottom) + 128px); width: 180px; }
+  #minimapCard.show { display: flex; right: 8px; bottom: calc(var(--bottom) + 90px + var(--ticker-h, 38px)); width: 180px; }
   #minimapCard.show #minimap { height: 120px; }
-  #inspect { right: 8px; left: 8px; width: auto; bottom: calc(var(--bottom) + 128px); }
+  #inspect { right: 8px; left: 8px; width: auto; bottom: calc(var(--bottom) + 90px + var(--ticker-h, 38px)); }
   .inspecting #minimapCard.show { display: none; } /* the Inspect card has the slot while it is open */
   #editorPanel { right: 8px; left: 8px; top: auto; bottom: calc(var(--bottom) + 80px); width: auto; max-height: 38vh; }
   #editorPanel.collapsed { max-height: 46px; overflow: hidden; }
-  #log { left: 8px; bottom: calc(var(--bottom) + 124px); width: calc(100vw - 16px); }
+  #log { left: 8px; bottom: calc(var(--bottom) + 86px + var(--ticker-h, 38px)); width: calc(100vw - 16px); }
   .cols, .chartgrid { grid-template-columns: 1fr; }
   .guide { grid-template-columns: 1fr; }
   .guide-body { border-left: none; }

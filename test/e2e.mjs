@@ -569,6 +569,27 @@ try {
     await ctx.close();
   });
 
+  await test('the news ticker shows two lines of a long message, and a tap on it opens the whole of it in the log', async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await found(page);
+    assert.match(await page.textContent('#ticker .msg-text'), /^Welcome to \S+\. The checklist has the first steps\.$/);
+    await page.evaluate(() => window.__terraville.sim.say('brownout', 'Brownouts: one of your 3 separate power grids needs 1,240 MW but its plants make 480 MW. Join it to a grid with power to spare, or build a plant on it.', 'warn', { x: 40, y: 40 }, 0));
+    const box = (s) => page.evaluate((s) => { const r = document.querySelector(s).getBoundingClientRect(); return { top: r.top, bottom: r.bottom }; }, s);
+    const lines = await page.evaluate(() => {
+      const t = document.querySelector('#ticker .msg-text');
+      return Math.round(t.getBoundingClientRect().height / parseFloat(getComputedStyle(t).lineHeight));
+    });
+    assert.equal(lines, 2, 'the message takes two lines');
+    assert.ok((await box('#ticker')).bottom <= (await box('#toolbox')).top, 'the taller ticker stays clear of the tools');
+    await page.tap('#ticker .msg-text');
+    assert.equal(await page.isHidden('#log'), false, 'a tap on the text opens the log');
+    assert.match(await page.textContent('#log .row .msg-text'), /or build a plant on it\.$/);
+    assert.ok((await box('#log')).bottom <= (await box('#ticker')).top, 'the log sits above the taller ticker');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('on a phone, Inspect takes the bottom slot from the map layer card and the news log', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

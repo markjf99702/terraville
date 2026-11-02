@@ -152,6 +152,13 @@ export class UI {
       this.filesRefresh?.();
       if (game.mode === 'title') this.renderTitleDrive();
     });
+    // The cards above the ticker sit on its height, which grows when a message takes two lines.
+    if (typeof ResizeObserver !== 'undefined') {
+      const ticker = $(root, '#ticker');
+      new ResizeObserver(() => {
+        if (ticker.offsetHeight) root.style.setProperty('--ticker-h', `${ticker.offsetHeight}px`);
+      }).observe(ticker);
+    }
     $(root, '#pausedPill').onclick = () => {
       this.game.togglePause();
       this.game.audio.play('click');
@@ -928,15 +935,19 @@ export class UI {
       <button id="tkLog" aria-expanded="${!$(this.root, '#log').hidden}">${ICONS.log.replace('<svg', '<svg style="width:16px;height:16px;vertical-align:-3px;margin-right:4px"')}News</button>`;
     const go = t.querySelector<HTMLElement>('#tkGo');
     if (go && m) go.onclick = () => this.jumpTo(m.x!, m.y!);
-    $(t, '#tkLog').onclick = () => {
-      const log = $(this.root, '#log');
-      log.hidden = !log.hidden;
-      if (!log.hidden) {
-        this.renderLog();
-        if (this.narrow()) this.hideInspect();
-      }
-      this.renderTicker();
-    };
+    $(t, '#tkLog').onclick = () => this.toggleLog();
+    // Two lines may not hold a message: a tap on it opens the log, where it is whole.
+    $(t, '.msg').onclick = () => this.toggleLog();
+  }
+
+  private toggleLog(): void {
+    const log = $(this.root, '#log');
+    log.hidden = !log.hidden;
+    if (!log.hidden) {
+      this.renderLog();
+      if (this.narrow()) this.hideInspect();
+    }
+    this.renderTicker();
   }
 
   private renderLog(): void {
@@ -1012,6 +1023,11 @@ export class UI {
     $(this.root, '#inspect').hidden = true;
     this.root.classList.remove('inspecting');
     this.inspectAt = null;
+  }
+
+  /** Whether the starter checklist is on screen. */
+  checklistShown(): boolean {
+    return !$(this.root, '#guide').hidden;
   }
 
   /** A phone-sized window, where the panels stack in one column (the style sheet's breakpoint). */
