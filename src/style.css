@@ -451,7 +451,9 @@ input[type="range"] { width: 100%; accent-color: var(--sign-hi); margin: 0; touc
 #inspect dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; font-size: 13px; }
 #inspect dt { color: var(--muted); }
 #inspect dd { margin: 0; text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
-#inspect dd.text { font-family: var(--font); text-align: left; }
+#inspect dd.text { font-family: var(--font); }
+#inspect dd.long { grid-column: 1 / -1; text-align: left; margin: -2px 0 3px; line-height: 1.35; }
+#inspect .does { margin: -2px 0 10px; font-size: 13px; line-height: 1.4; }
 #inspect .why { margin-top: 8px; line-height: 1.4; }
 #inspect .close { position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; }
 /* The small close buttons on the cards answer a finger 40 px across. */

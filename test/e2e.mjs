@@ -2348,7 +2348,21 @@ try {
       g.ui.inspect(at[0] + 1, at[1] + 1);
       return at;
     });
-    assert.match(await page.textContent('#inspect dl'), /DoesPrevents and fights fires within about 18 tiles/);
+    assert.equal(await page.textContent('#inspect .does'), 'Prevents and fights fires within about 18 tiles.');
+    // A phrase runs under its label, the card's width, on one line; a figure stays in the right-hand column, in mono.
+    const layout = await page.evaluate(() => {
+      const dl = document.querySelector('#inspect dl').getBoundingClientRect();
+      const dd = (k) => [...document.querySelectorAll('#inspect dt')].find((t) => t.textContent === k).nextElementSibling;
+      const [power, height] = [dd('Power'), dd('Elevation')];
+      const p = power.getBoundingClientRect();
+      return {
+        power: power.textContent, left: p.left - dl.left, lines: Math.round(p.height / parseFloat(getComputedStyle(power).lineHeight)),
+        fonts: [getComputedStyle(power).fontFamily, getComputedStyle(height).fontFamily],
+      };
+    });
+    assert.equal(layout.power, 'None: no plant connected');
+    assert.ok(layout.left < 1 && layout.lines === 1, `from the card's left edge, on one line: ${JSON.stringify(layout)}`);
+    assert.ok(!/Mono/.test(layout.fonts[0]) && /Mono/.test(layout.fonts[1]), layout.fonts.join(' / '));
     await page.click('#inLayer');
     assert.equal(await page.evaluate(() => window.__terraville.renderer.overlay), 'fire');
     assert.equal(await page.locator('#inLayer').count(), 0, 'no button for the layer already up');

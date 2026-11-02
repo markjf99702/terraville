@@ -32,7 +32,14 @@ export const LANDMARK_NEEDS = {
   seaport: `Needed before industry passes ${limit('ind')} jobs. Must touch water.`,
 };
 
-/** What each building that isn't a zone does, as the guide's table and the Inspect card say it. */
+/** What a landmark does once it is built, as its Inspect card says it. */
+export const LANDMARK_LETS = {
+  stadium: `Lets housing grow past ${limit('res')} residents`,
+  airport: `Lets commerce grow past ${limit('com')} jobs`,
+  seaport: `Lets industry grow past ${limit('ind')} jobs`,
+};
+
+/** What each building that isn't a zone does, as the guide's table and the Inspect card say it (see LANDMARK_LETS). */
 export const DOES: Record<Exclude<Kind, 'res' | 'com' | 'ind'>, string> = {
   police: 'Cuts crime within about 18 tiles',
   fire: 'Prevents and fights fires within about 18 tiles',

@@ -459,7 +459,12 @@ await test('Inspect says how far a lot can grow where it stands, and why it is o
   assert.equal(spot({ level: 5, demand: -0.8 }).Outlook, 'Shrinking: low demand');
   assert.equal(spot({ level: 5, trip: false }).Outlook, 'Steady: no commute');
   assert.equal(spot({ level: 0, powered: false }).Outlook, 'Not growing: no power');
-  assert.equal(spot({ level: 7, lv: 100 }).Outlook, 'Shrinking: land value too low');
+  const over = spot({ level: 7, lv: 100 });
+  assert.equal(over.Outlook, 'Shrinking: land value too low');
+  // Denser than its land allows: the row says what the land allows, not that the lot can 'grow' to less.
+  assert.equal(over['Can grow to'], undefined);
+  assert.match(over['Land value allows']!, /^Density [0-6]$/);
+  assert.match(over.note!, /^Density [0-6] is the most this land value allows\. Keeping density 7 \([a-z ]+\) needs \$[\d,]+\/acre here\.$/);
   // Industry has no land value threshold.
   assert.equal(Object.fromEntries(sim.describe(works.x, works.y).rows)['Can grow to'], 'Density 4');
 });
@@ -672,9 +677,13 @@ await test('Inspect says what a service does, and what land value a landmark add
   const port = w.place('seaport', 24, 1);
   const sim = new Sim(w);
   const row = (b: { x: number; y: number }, k: string) => sim.describe(b.x, b.y).rows.find((r) => r[0] === k)?.[1];
-  assert.equal(row(police, 'Does'), 'Cuts crime within about 18 tiles');
-  assert.equal(row(coal, 'Does'), 'Powers the zones its grid reaches, and pollutes heavily');
-  assert.equal(row(big, 'Does'), 'Needed before housing passes 18,000 residents');
+  const does = (b: { x: number; y: number }) => sim.describe(b.x, b.y).does;
+  assert.equal(does(police), 'Cuts crime within about 18 tiles');
+  assert.equal(does(coal), 'Powers the zones its grid reaches, and pollutes heavily');
+  // A built landmark does what the toolbox says it is needed for.
+  assert.equal(does(big), 'Lets housing grow past 18,000 residents');
+  assert.equal(does(port), 'Lets industry grow past 4,000 jobs');
+  assert.equal(row(w.place('nuclear', 36, 1), 'Output'), '2,000 MW');
   assert.equal(row(police, 'Land value it adds'), undefined);
   assert.equal(row(big, 'Land value it adds'), 'None until it is upgraded');
   w.setLevel(big, 3);
@@ -683,7 +692,7 @@ await test('Inspect says what a service does, and what land value a landmark add
   assert.equal(row(port, 'Land value it adds'), 'None until it is upgraded', 'each kind counts on its own');
   assert.equal(sim.landmarkValue(), 2 * UPGRADE_LV, 'the same sum the city adds');
   const zone = w.place('res', 30, 10);
-  assert.equal(row(zone, 'Does'), undefined, 'a zone says what it holds instead');
+  assert.equal(does(zone), undefined, 'a zone says what it holds instead');
 });
 
 await test('past its limit, industry stops growing until a seaport opens', () => {

@@ -2,7 +2,7 @@
 // Zones are re-evaluated a quarter at a time each week, and the expensive
 // map passes (traffic, pollution, crime, land value) run at month end.
 import {
-  BUILDINGS, DIFFICULTIES, DISASTER_POP, DOES, Kind, LANDMARK_LIMITS, NET_UPKEEP, POWER, RAIL, ROAD, UPGRADE_LV, ZONE_LV_GATE,
+  BUILDINGS, DIFFICULTIES, DISASTER_POP, DOES, Kind, LANDMARK_LETS, LANDMARK_LIMITS, NET_UPKEEP, POWER, RAIL, ROAD, UPGRADE_LV, ZONE_LV_GATE,
   ZONE_POP, buildingName, cityClass, CITY_CLASSES, dateLabel, isZone, num, toIndex, upkeepOf,
 } from './defs';
 import { MinHeap } from './heap';
@@ -1238,12 +1238,13 @@ export class Sim {
     push(h.expense, spending(b));
   }
 
-  /** Human-readable description of a tile for the inspect tool. */
-  describe(x: number, y: number): { title: string; rows: [string, string][]; note?: string } {
+  /** Human-readable description of a tile for the inspect tool: what a building is for, figures, and a note. */
+  describe(x: number, y: number): { title: string; does?: string; rows: [string, string][]; note?: string } {
     const world = this.world;
     const i = y * world.w + x;
     const rows: [string, string][] = [];
     let title = 'Open land';
+    let does: string | undefined;
     let note: string | undefined;
     // A zone's land value, pollution and crime are read at its centre, where its growth reads them.
     let at = i;
@@ -1261,12 +1262,15 @@ export class Sim {
         else if (!b.trip) rows.push(['Problem', this.noCommute(b)]);
         const g = this.growth(b);
         const top = ZONE_LV_GATE[k].length - 1;
-        rows.push(['Can grow to', `Density ${Math.min(top, g.maxLevel)}`]);
+        const allows = Math.min(top, g.maxLevel);
+        // A lot already denser than its land value allows can't grow to less than it is.
+        rows.push([b.level > allows ? 'Land value allows' : 'Can grow to', `Density ${allows}`]);
         rows.push(['Outlook', this.outlook(b, g)]);
         if (g.maxLevel < top) note = this.densityNote(b, g.maxLevel);
         at = (b.y + 1) * world.w + b.x + 1;
       }
-      if (!isZone(b.kind)) rows.push(['Does', DOES[b.kind as keyof typeof DOES]]);
+      // A landmark that stands already does what the toolbox says it is needed for.
+      if (!isZone(b.kind)) does = LANDMARK_LETS[b.kind as keyof typeof LANDMARK_LETS] ?? DOES[b.kind as keyof typeof DOES];
       if (def.capacity) rows.push(['Output', `${num(def.capacity)} MW`]);
       const grid = this.gridAt(b.y * world.w + b.x);
       rows.push(['Power',
@@ -1313,7 +1317,7 @@ export class Sim {
       rows.push(['Pollution', level5(world.pollution[at])]);
       rows.push(['Crime', level5(world.crime[at])]);
     }
-    return { title, rows, note };
+    return { title, does, rows, note };
   }
 
   /** Where a zone's lot is headed, from the same reckoning growZone makes, and the main reason when it isn't growing. */
@@ -1339,8 +1343,10 @@ export class Sim {
     const k = b.kind as 'res' | 'com' | 'ind';
     const ci = (b.y + 1) * world.w + b.x + 1;
     const bonus = k === 'res' ? (world.serviceCov[ci] / 255) * 30 : 0;
-    const need = Math.max(0, Math.ceil(ZONE_LV_GATE[k][max + 1] - bonus)) * 40;
-    return `Density ${max} is the most this land value allows. Density ${max + 1} (${zoneTitle(k, max + 1).toLowerCase()}) needs $${num(need)}/acre here.`;
+    // A lot denser than its land allows needs land value to keep what it is; any other, to reach the next density.
+    const want = Math.max(b.level, max + 1);
+    const need = Math.max(0, Math.ceil(ZONE_LV_GATE[k][want] - bonus)) * 40;
+    return `Density ${max} is the most this land value allows. ${b.level > max ? `Keeping density ${want}` : `Density ${want}`} (${zoneTitle(k, want).toLowerCase()}) needs $${num(need)}/acre here.`;
   }
 
   dateLabel(): string {

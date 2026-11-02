@@ -68,6 +68,9 @@ const WORRY_LAYERS: Record<string, Overlay | 'budget'> = {
   crime: 'crime', pollution: 'pollution', housing: 'landValue', traffic: 'traffic', power: 'power', fire: 'fire', taxes: 'budget',
 };
 
+/** An Inspect card's value that is only a figure: 360, 5 of 8, $2,480/acre, 1,132 of 2,100 MW, 8 m. */
+const FIGURE = /^[−+-]?\$?\d[\d,.]*(\s?(%|MW|m|\/acre|\/mo|of [\d,]+))*$/;
+
 /** How the map works by touch, in Settings. */
 const TOUCH_HELP = `<h3 class="touch-h">Touch</h3>
   <dl class="kv touch-help">
@@ -1389,9 +1392,10 @@ export class UI {
         : BUILDINGS[b.kind].capacity ? 'power' : undefined;
     const showLayer = layer && this.game.renderer.overlay !== layer
       ? `<button class="btn small" id="inLayer" style="margin-top:10px">${layer === 'power' ? 'Show the power grid' : 'Show its reach'}</button>` : '';
-    // Sentences read as text; figures stay in the card's mono.
-    const prose = new Set(['Does', 'Land value it adds']);
-    card.innerHTML = `<button class="iconbtn close" aria-label="Close">${ICONS.close}</button><h3 id="inspectTitle">${esc(d.title)}</h3><dl>${d.rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd${prose.has(k) ? ' class="text"' : ''}>${esc(v)}</dd>`).join('')}</dl>${showLayer}${d.note ? `<p class="note why">${esc(d.note)}</p>` : ''}${up ? `
+    // Figures stay in the card's mono, lined up on the right. Words are set as text, and a phrase longer than the
+    // column holds runs under its label, the card's whole width, rather than wrapping into a ragged stack.
+    const value = (v: string) => (FIGURE.test(v) ? '' : v.length > 18 ? ' class="text long"' : ' class="text"');
+    card.innerHTML = `<button class="iconbtn close" aria-label="Close">${ICONS.close}</button><h3 id="inspectTitle">${esc(d.title)}</h3>${d.does ? `<p class="does">${esc(d.does)}.</p>` : ''}<dl>${d.rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd${value(v)}>${esc(v)}</dd>`).join('')}</dl>${showLayer}${d.note ? `<p class="note why">${esc(d.note)}</p>` : ''}${up ? `
       <div class="upgrade"><p class="note">Upgrade to ${article(up.name)} <b>${esc(up.name.toLowerCase())}</b>: land value rises by <span class="num">${money(UPGRADE_LV * 40)}</span>/acre across the whole city, and upkeep by <span class="num">${money(up.upkeep)}</span>/mo.</p>
       <button class="btn small primary" id="inUpgrade">Upgrade for ${money(up.cost)}</button></div>` : burning ? `
       <div class="upgrade"><p class="note">It can be upgraded once the fire is out.</p></div>` : outdone ? `
