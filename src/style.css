@@ -475,6 +475,9 @@ input[type="range"] { width: 100%; accent-color: var(--sign-hi); margin: 0; touc
 #inspect .close::after, #guide .close::after, #goal .goal-close::after { content: ''; position: absolute; inset: -7px; }
 #inspect .upgrade { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
 #inspect .upgrade .btn { align-self: flex-start; }
+/* On a touch screen, Bulldoze under what the card says; on a phone, where the card is the screen's width, in its title
+   row by the close button, so the card is no taller. */
+#inspect .clear { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
 
 /* ---- editor panel -------------------------------------------------------- */
 #editorPanel {
@@ -1097,6 +1100,10 @@ footer.jd-foot { display: block; margin: 0; padding: 4px 0 0; border: 0; font-si
   #minimapCard.show.mm-phone { width: 220px; } /* the layer's name keeps its room beside the overview map's button */
   #minimapCard .mm-row .iconbtn { display: none; } /* fingers pinch to zoom; the layer's name gets the room */
   #inspect { right: calc(var(--right) + 8px); left: calc(var(--left) + 8px); width: auto; bottom: calc(var(--bottom) + 90px + var(--ticker-h, 38px)); max-height: none; overflow-y: visible; }
+  #inspect.can-clear h3 { padding-right: 168px; min-height: 28px; }
+  #inspect .clear { position: absolute; top: 7px; right: 42px; margin: 0; padding: 0; border: none; }
+  #inspect .clear .btn { height: 30px; position: relative; }
+  #inspect .clear .btn::after { content: ''; position: absolute; inset: -6px -2px; }
   .inspecting #minimapCard.show { display: none; } /* the Inspect card has the slot while it is open */
   #editorPanel { right: calc(var(--right) + 8px); left: calc(var(--left) + 8px); top: auto; bottom: calc(var(--bottom) + 80px); width: auto; max-height: 38vh; }
   #log { left: calc(var(--left) + 8px); bottom: calc(var(--bottom) + 86px + var(--ticker-h, 38px)); width: calc(100vw - 16px - var(--left) - var(--right)); }

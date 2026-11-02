@@ -1,6 +1,6 @@
 // Everything in the DOM: top bar, toolbox, panels, dialogs, title screen.
 import {
-  BUILDINGS, DIFFICULTIES, DISASTER_POP, Difficulty, Kind, MAP_SIZES, SEP, ToolDef, UPGRADE_LV, article, cityClass, dateLabel,
+  BUILDINGS, BULLDOZE_COST, DIFFICULTIES, DISASTER_POP, Difficulty, Kind, MAP_SIZES, SEP, ToolDef, UPGRADE_LV, article, cityClass, dateLabel,
   MONTHS, isZone, nextUpgrade, num,
 } from '../defs';
 import { DISASTER_NAMES, DisasterKind } from '../disasters';
@@ -1395,6 +1395,11 @@ export class UI {
     const up = burning ? undefined : offer;
     // A second stadium, say, can't add anything: only the most upgraded one of each kind counts.
     const outdone = b && !offer && nextUpgrade(b) && this.game.mode === 'city';
+    // A touch screen has no right-click: what the card describes can be cleared from here, as right-click clears it.
+    const clear = touchScreen() ? this.game.clearPlan(x, y) : null;
+    const clearCost = b ? BULLDOZE_COST * b.size * b.size : BULLDOZE_COST;
+    const bulldoze = clear && (clear.count || clear.reason === 'On fire')
+      ? `<div class="clear"><button class="btn small" id="inBulldoze">Bulldoze for ${money(clearCost)}</button></div>` : '';
     // A station's reach, or a plant's grid, is a layer away.
     const layer: Overlay | undefined = !b ? undefined
       : b.kind === 'police' ? 'police' : b.kind === 'fire' ? 'fire' : b.kind === 'school' || b.kind === 'hospital' ? 'service'
@@ -1408,7 +1413,7 @@ export class UI {
       <div class="upgrade"><p class="note">Upgrade to ${article(up.name)} <b>${esc(up.name.toLowerCase())}</b>: land value rises by <span class="num">${money(UPGRADE_LV * 40)}</span>/acre across the whole city, and upkeep by <span class="num">${money(up.upkeep)}</span>/mo.</p>
       <button class="btn small primary" id="inUpgrade">Upgrade for ${money(up.cost)}</button></div>` : burning ? `
       <div class="upgrade"><p class="note">It can be upgraded once the fire is out.</p></div>` : outdone ? `
-      <div class="upgrade"><p class="note">Only the city's most upgraded ${esc(BUILDINGS[b.kind].name.toLowerCase())} raises land value, so this one has no upgrade.</p></div>` : ''}`;
+      <div class="upgrade"><p class="note">Only the city's most upgraded ${esc(BUILDINGS[b.kind].name.toLowerCase())} raises land value, so this one has no upgrade.</p></div>` : ''}${bulldoze}`;
     $(card, '.close').onclick = () => this.hideInspect();
     const lb = card.querySelector<HTMLButtonElement>('#inLayer');
     if (lb && layer) {
@@ -1431,6 +1436,25 @@ export class UI {
         }
         if (!this.game.upgrade(b)) return;
         this.inspect(x, y, true);
+      };
+    }
+    const db = card.querySelector<HTMLButtonElement>('#inBulldoze');
+    card.classList.toggle('can-clear', !!db);
+    if (db) {
+      db.onclick = () => {
+        // Something may have changed there since the card was drawn: show it as it is now instead.
+        const now = this.game.clearPlan(x, y);
+        if (!now || (!now.count && now.reason !== 'On fire')) return this.inspect(x, y, true);
+        // A burning building is refused, in the bulldozer's words, and the card stays.
+        if (!now.count) return this.game.bulldozeTile(x, y);
+        // The second tap clears it, as the Upgrade button's second tap pays.
+        if (!db.dataset.sure) {
+          db.dataset.sure = '1';
+          db.textContent = `${again()} to bulldoze`;
+          return;
+        }
+        this.hideInspect();
+        this.game.bulldozeTile(x, y);
       };
     }
     card.hidden = false;

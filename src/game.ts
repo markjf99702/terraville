@@ -968,6 +968,21 @@ export class Game {
     this.pointerMove(fx, fy, sx, sy);
   }
 
+  /** What the bulldozer would clear on tile (x, y), as right-click would, for the Inspect card's Bulldoze button. */
+  clearPlan(x: number, y: number): Plan | null {
+    return this.mode === 'city' && this.world.inBounds(x, y) ? planBulldoze(this.world, [[x, y]]) : null;
+  }
+
+  /**
+   * The Inspect card's Bulldoze, on a touch screen: right-click's quick bulldoze of tile (x, y), its tip over the tile,
+   * and no outline left behind where no pointer hovers.
+   */
+  bulldozeTile(x: number, y: number): void {
+    const s = this.renderer.tileToScreen(x + 0.5, y + 0.5);
+    this.quickBulldoze(x + 0.5, y + 0.5, s.x, s.y);
+    this.renderer.hover = null;
+  }
+
   /**
    * What was just built: the tip says so for a moment, and the spot it covers shows no preview (which would only say
    * the spot is taken) until the pointer leaves it. `until` is a performance.now() time.

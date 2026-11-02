@@ -2795,6 +2795,84 @@ try {
     await ctx.close();
   });
 
+  await test('on a phone the Inspect card bulldozes what it shows with a second tap, as right-click does; a laptop has right-click', async () => {
+    for (const opts of [PHONE, DESK]) {
+      const ctx = await profile(opts);
+      const { page, problems } = await open(ctx);
+      await found(page);
+      const spot = await page.evaluate(() => {
+        const g = window.__terraville;
+        const w = g.world;
+        const cx = Math.floor(w.w / 2);
+        const cy = Math.floor(w.h / 2);
+        for (let y = cy - 8; y < cy + 8; y++) for (let x = cx - 8; x < cx + 8; x++) {
+          const i = y * w.w + x;
+          if (w.occ[i]) w.remove(w.occ[i]);
+          w.water[i] = 0; w.height[i] = 6; w.trees[i] = 0; w.net[i] = 0; w.rubble[i] = 0;
+        }
+        w.dirtyAll(true);
+        const home = w.place('res', cx - 4, cy - 1);
+        w.setLevel(home, 3);
+        const burning = w.place('ind', cx + 2, cy - 1);
+        w.setLevel(burning, 2);
+        for (let y = cy - 1; y < cy + 2; y++) for (let x = cx + 2; x < cx + 5; x++) w.fire[y * w.w + x] = 10;
+        g.setSpeed(0);
+        g.setTool('query');
+        g.renderer.cam.zoom = 20;
+        g.renderer.centerOn(cx, cy);
+        return { cx, cy };
+      });
+      const state = () => page.evaluate(() => {
+        const g = window.__terraville;
+        const card = document.querySelector('#inspect');
+        const tip = document.querySelector('#cursorTip');
+        const toast = document.querySelector('#toast');
+        return {
+          funds: g.world.city.funds,
+          homes: [...g.world.buildings.values()].filter((b) => b.kind === 'res').length,
+          card: card.hidden ? '' : card.querySelector('#inBulldoze')?.textContent ?? 'no button',
+          tip: tip.hidden ? '' : tip.textContent,
+          toast: toast.classList.contains('hide') ? '' : toast.textContent,
+          dust: g.renderer.vehicles.dust.length,
+        };
+      });
+      const tapTile = async (x, y) => {
+        const p = await page.evaluate(([x, y]) => window.__terraville.renderer.tileToScreen(x + 0.5, y + 0.5), [x, y]);
+        if (opts === PHONE) await page.touchscreen.tap(p.x, p.y);
+        else await page.mouse.click(p.x, p.y);
+        await page.waitForTimeout(250);
+      };
+      await tapTile(spot.cx - 3, spot.cy);
+      const start = await state();
+      if (opts === DESK) {
+        assert.equal(start.card, 'no button', 'a laptop has right-click, and no Bulldoze button');
+        await ctx.close();
+        continue;
+      }
+      assert.equal(start.card, 'Bulldoze for $9');
+      await page.tap('#inBulldoze');
+      let s = await state();
+      assert.deepEqual([s.card, s.homes, s.funds], ['Tap again to bulldoze', 1, start.funds], 'the first tap asks again and spends nothing');
+      await page.tap('#inBulldoze');
+      s = await state();
+      assert.deepEqual([s.card, s.homes, s.funds, s.tip], ['', 0, start.funds - 9, 'Cleared 1 · $9'], 'the second tap clears it and closes the card');
+      assert.ok(s.dust > 0, 'with dust');
+      // It is undone like any action, money and all.
+      await page.evaluate(() => window.__terraville.undo());
+      s = await state();
+      assert.deepEqual([s.homes, s.funds], [1, start.funds], 'undo puts it back');
+      // A burning factory is refused, in the bulldozer's words, and the card stays.
+      await tapTile(spot.cx + 3, spot.cy);
+      assert.equal((await state()).card, 'Bulldoze for $9');
+      await page.tap('#inBulldoze');
+      s = await state();
+      assert.equal(s.toast, 'That is on fire. Bulldoze a gap around it to stop it spreading.');
+      assert.equal(s.card, 'Bulldoze for $9', 'the card stays');
+      assert.deepEqual(problems, []);
+      await ctx.close();
+    }
+  });
+
   await test('Inspect marks the lot it describes, whatever the pointer does next, and on a phone brings it out from under the card', async () => {
     // Where the lot is now on screen, and whether the outline is painted 1 px outside its top edge.
     const look = (page) => page.evaluate(() => {
