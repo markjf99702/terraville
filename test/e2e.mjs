@@ -2075,6 +2075,42 @@ try {
     await ctx.close();
   });
 
+  await test('a small phone on its side gets the short layout too: the goal card in the right-hand column, room for the map, and every title choice in sight', async () => {
+    // An iPhone 12 mini held sideways is 812 px wide, under the 821 px where the short layout used to start, so it got
+    // the upright layout: three rows of top bar, the goal card across the screen over the news, and no map between them.
+    const ctx = await profile({ viewport: { width: 812, height: 375 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+    const { page, problems } = await open(ctx);
+    const cdp = await ctx.newCDPSession(page);
+    await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets: { left: 44, right: 44, top: 0, bottom: 21 } });
+    await page.evaluate(() => window.__terraville.startScenario('gridlock'));
+    await page.click('.modal footer .btn.primary');
+    const box = (s) => page.evaluate((s) => { const r = document.querySelector(s).getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom }; }, s);
+    const [bar, goal, tools, ticker, menu] = await Promise.all(['#topbar', '#goal', '#toolbox', '#ticker', '#topbar .menu'].map(box));
+    assert.ok(bar.left >= 44 && menu.right <= 812 - 44, 'the top bar keeps clear of the notch at either end');
+    assert.ok(bar.bottom - bar.top < 70, 'the top bar is one row');
+    assert.ok(goal.left > 812 / 2 && goal.right <= 812 - 44 && goal.top >= bar.bottom, 'the goal card sits in the right-hand column, under the top bar');
+    // Between the tools and the goal card, from the top bar down to the news, the map shows.
+    const free = { left: tools.right, right: goal.left, top: bar.bottom, bottom: ticker.top };
+    assert.ok(free.right - free.left > 200 && free.bottom - free.top >= 375 / 3, `at least a third of the screen's height is map (${free.bottom - free.top} px)`);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+
+    // An iPhone SE held sideways, 667 by 375, with a city saved: all six choices on the title screen show at once.
+    const se = await profile({ viewport: { width: 667, height: 375 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+    const { page: t, problems: inT } = await open(se);
+    await found(t);
+    await t.reload();
+    await titleUp(t);
+    const choices = await t.evaluate(() => [...document.querySelectorAll('.title-actions .btn')].map((b) => {
+      const r = b.getBoundingClientRect();
+      return { text: b.querySelector('span').textContent, inSight: r.top >= 0 && r.bottom <= innerHeight && r.right <= innerWidth };
+    }));
+    assert.equal(choices.length, 6, 'Continue is offered');
+    assert.deepEqual(choices.filter((c) => !c.inSight).map((c) => c.text), [], 'every choice is in sight without scrolling');
+    assert.deepEqual(inT, []);
+    await se.close();
+  });
+
   await test('Inspect on a station shows its reach on the map, and closing the card puts the layer back', async () => {
     const ctx = await profile(DESK);
     const { page, problems } = await open(ctx);

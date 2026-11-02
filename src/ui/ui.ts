@@ -817,8 +817,8 @@ export class UI {
     tip.innerHTML = `<b>${esc(t.name)}${t.key && !touch ? ` <kbd>${t.key.toUpperCase()}</kbd>` : ''}</b>${cost}${zoneTip}${keys}`;
     tip.hidden = false;
     const r = b.getBoundingClientRect();
-    const narrow = window.innerWidth <= 820;
-    if (narrow) {
+    // On a phone the tools run along the bottom: the tip goes above them.
+    if (this.narrow()) {
       tip.style.left = `${Math.max(8, Math.min(window.innerWidth - 268, r.left))}px`;
       tip.style.top = `${r.top - tip.offsetHeight - 8}px`;
     } else {
@@ -1154,7 +1154,7 @@ export class UI {
       d.appendChild(b);
     };
     // A phone's editor hides the map layer card, which is where the steepness layer is picked.
-    if (this.game.mode === 'editor' && this.narrow()) {
+    if (this.game.mode === 'editor' && this.compact()) {
       const on = this.game.renderer.overlay === 'slope';
       add('contour', on ? 'Hide the steepness' : 'Show the steepness', () => this.setOverlay(on ? 'none' : 'slope'));
     }
@@ -1336,19 +1336,20 @@ export class UI {
   }
 
   /**
-   * In a short phone-shaped window (a laptop window at 200% zoom is 640x400), the card would grow up over the folded
-   * checklist or the goal and the top bar: there it stops below them and scrolls.
+   * In a short window (a phone on its side, or a laptop window at 200% zoom, 640x400), the card would grow up over the
+   * checklist or the goal and the top bar: there it stops below those it shares columns with, and scrolls.
    */
   private fitInspect(): void {
     const card = $(this.root, '#inspect');
     card.style.maxHeight = card.style.overflowY = '';
-    if (card.hidden || !this.narrow() || window.innerHeight > 560) return;
+    if (card.hidden || !(this.short() || (this.narrow() && window.innerHeight <= 560))) return;
+    const r = card.getBoundingClientRect();
     let top = $(this.root, '#topbar').getBoundingClientRect().bottom;
     for (const id of ['#guide', '#goal']) {
-      const c = $(this.root, id);
-      if (!c.hidden) top = Math.max(top, c.getBoundingClientRect().bottom);
+      const c = $(this.root, id).getBoundingClientRect();
+      if (c.width && c.left < r.right && r.left < c.right) top = Math.max(top, c.bottom);
     }
-    card.style.maxHeight = `${Math.max(80, card.getBoundingClientRect().bottom - top - 8)}px`;
+    card.style.maxHeight = `${Math.max(80, r.bottom - top - 8)}px`;
     card.style.overflowY = 'auto';
   }
 
@@ -1372,9 +1373,17 @@ export class UI {
     return !$(this.root, '#guide').hidden;
   }
 
-  /** A phone-sized window, where the panels stack in one column (the style sheet's breakpoint). */
-  private narrow(): boolean {
-    return window.innerWidth <= 820;
+  /**
+   * A phone-sized window, where the panels stack in one column (the style sheet's breakpoint): up to 820 px wide,
+   * unless it is short and on its side, as a phone held sideways is, which gets the short layout with one row of top bar.
+   */
+  narrow(): boolean {
+    return window.innerWidth <= 820 && !this.short();
+  }
+
+  /** A short window on its side (the style sheet's short layout): a phone held sideways, or a laptop at 200% zoom. */
+  private short(): boolean {
+    return window.innerHeight <= 500 && window.innerWidth > window.innerHeight;
   }
 
   /** A phone either way up: narrow, or short (held sideways), where the checklist and editor panel fold away. */

@@ -92,8 +92,8 @@ const HANDOVER_WAIT = 2000; // ms
 const CITY_BRUSH = 4;
 
 /** The terrain editor's opening toast. On a phone the brushes are along the bottom, and a touch screen has no wheel. */
-const EDITOR_HINT = () =>
-  `Drag to move the map, ${matchMedia('(hover: none) and (pointer: coarse)').matches ? 'pinch' : 'scroll or pinch'} to zoom. Pick a brush ${window.innerWidth <= 820 ? 'below' : 'on the left'} to shape the land.`;
+const EDITOR_HINT = (narrow: boolean) =>
+  `Drag to move the map, ${matchMedia('(hover: none) and (pointer: coarse)').matches ? 'pinch' : 'scroll or pinch'} to zoom. Pick a brush ${narrow ? 'below' : 'on the left'} to shape the land.`;
 
 function fmtMoney(n: number): string {
   return '$' + Math.round(n).toLocaleString();
@@ -383,7 +383,7 @@ export class Game {
     this.ui.enterEditor();
     // The whole map, in the room the editor's panels leave.
     this.fitMap();
-    this.ui.toast(EDITOR_HINT());
+    this.ui.toast(EDITOR_HINT(this.ui.narrow()));
   }
 
   /** Continue editing the land already on screen (from the title or a quick start). */
@@ -401,7 +401,7 @@ export class Game {
     this.minimap.markDirty();
     this.ui.enterEditor();
     this.fitMap();
-    this.ui.toast(EDITOR_HINT());
+    this.ui.toast(EDITOR_HINT(this.ui.narrow()));
   }
 
   /** New land from the settings changed. Regenerations with the same `group` in a row are one undo step. */
