@@ -767,14 +767,15 @@ try {
       const g = window.__terraville;
       const w = g.world;
       for (let y = 10; y < w.h - 10; y++) for (let x = 10; x < w.w - 20; x++) {
-        // The lots are centred on the drag, so they start a tile up and to the left of it: check that row and
-        // column too, or water or a steep tile there blocks a lot that should go down.
+        // The lots are centred on the drag, so they start a tile up and to the left of it. The first two must go
+        // down as they stand (levelling would add to the tip), and nothing but the station may block the other two.
         let ok = true;
-        for (let dx = -1; dx < 12 && ok; dx++) for (let dy = -1; dy < 3 && ok; dy++) {
+        for (let dx = -1; dx < 11 && ok; dx++) for (let dy = -1; dy < 2 && ok; dy++) {
           const i = (y + dy) * w.w + x + dx;
-          if (w.water[i] || w.occ[i] || w.net[i] || w.slope(x + dx, y + dy) > 1.5) ok = false;
+          if (w.water[i] || w.occ[i] || w.net[i]) ok = false;
         }
-        if (!ok) continue;
+        const flat = (lx) => { const r = w.canPlace('res', lx, y - 1, true); return r.ok && r.grade === 0; };
+        if (!ok || !flat(x - 1) || !flat(x + 2)) continue;
         w.place('police', x + 6, y);
         g.setTool('res');
         g.pointerDown(x + 0.5, y + 0.5, 100, 100);
@@ -801,12 +802,15 @@ try {
       r.cam.zoom = 20;
       w.city.funds = 50000;
       for (let y = 12; y < w.h - 12; y++) for (let x = 12; x < w.w - 24; x++) {
+        // Every tile the three lots (centred on the drag, so from a tile up and left of it) and the station (placed by
+        // its corner, then rebuilt by a click on its middle) cover: dry, empty and level enough to build on as it is.
         let ok = true;
-        for (let dx = 0; dx < 12 && ok; dx++) for (let dy = 0; dy < 4 && ok; dy++) {
+        for (let dx = -1; dx < 11 && ok; dx++) for (let dy = -1; dy < 6 && ok; dy++) {
           const i = (y + dy) * w.w + x + dx;
-          if (w.water[i] || w.occ[i] || w.net[i] || w.slope(x + dx, y + dy) > 3) ok = false;
+          if (w.water[i] || w.occ[i] || w.net[i]) ok = false;
         }
-        if (!ok) continue;
+        const flat = (k, lx, ly) => { const r = w.canPlace(k, lx, ly, true); return r.ok && r.grade === 0; };
+        if (!ok || ![x - 1, x + 2, x + 5].every((lx) => flat('res', lx, y - 1)) || !flat('police', x + 7, y + 2)) continue;
         w.place('police', x + 8, y + 3);
         r.centerOn(x + 6, y + 2);
         const at = (tx, ty) => { const s = r.tileToScreen(tx + 0.5, ty + 0.5); return [s.x, s.y]; };
