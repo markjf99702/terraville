@@ -18,7 +18,7 @@ export const LANDMARK_LIMITS = { res: 18000, com: 5000, ind: 4000 };
 
 /**
  * A whole number as the game writes it, 33,608, whatever language the browser is set to: the words are English, and
- * the figures written into them (55,000, 18,000) have commas.
+ * the figures written into them (45,000, 18,000) have commas.
  */
 export function num(n: number): string {
   return Math.round(n).toLocaleString('en-US');

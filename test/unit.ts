@@ -1599,7 +1599,7 @@ await test('each challenge lists its conditions as rows, ticked when met, withou
   assert.deepEqual(rows('boomtown'), [['Residents 17,544 / 12,000', true]]);
   assert.deepEqual(rows('gridlock'), [['Traffic index 25 · under 28', true], ['Residents 17,544 / 20,000', false], ['Jobs 14,960 / 10,000', true]]);
   assert.deepEqual(rows('smog'), [['Pollution index 13 · under 12', false], ['Residents 17,544 / 20,000', false], ['Jobs 14,960 / 9,000', true]]);
-  assert.deepEqual(rows('aftershock'), [['Residents 17,544 / 55,000', false]]);
+  assert.deepEqual(rows('aftershock'), [['Residents 17,544 / 45,000', false]]);
   assert.deepEqual(rows('monster'), [['Approval 58% · over 60%', false], ['Residents 17,544 / 18,000', false]]);
   // The goal is met when every row is, and the bar and the one-line status are as they were.
   assert.deepEqual([goal('gridlock').met, goal('gridlock').progress], [false, 0.5]);
@@ -1696,7 +1696,7 @@ await test("the advisor names a challenge's own problem every six months while i
   assert.deepEqual(play('smog', 14, 10), ['Pollution index 13 where people live: the goal is under 12.', 'One year left: the goal must hold from now to the end.']);
   stats.residents = 9000;
   assert.deepEqual(play('boomtown', 13, 2), ['One year left. Not met yet: Residents 9,000 / 12,000.', 'Three months left. Not met yet: Residents 9,000 / 12,000.']);
-  assert.deepEqual(play('aftershock', 13, 11), ['One year left. Not met yet: Residents 9,000 / 55,000.']);
+  assert.deepEqual(play('aftershock', 13, 11), ['One year left. Not met yet: Residents 9,000 / 45,000.']);
   // Monster Bay's advice comes with the monster (here between its visits every two years, set loose by hand).
   const rampage = play('monster', 30, 20, (sim, left) => {
     if (left === 26) sim.disasters.roamers.push({ kind: 'monster', x: 5, y: 5, px: 5, py: 5, vx: 0, vy: 0, weeks: 30, heading: 0 });
@@ -3088,7 +3088,7 @@ await test('figures read with commas whatever language the browser speaks, and n
   assert.equal(num(700), '700');
   // An old save says the day it was made the same way for everyone.
   assert.match(ago(Date.UTC(2025, 2, 14, 12)), /^on 1[345] Mar 2025$/);
-  // toLocaleString() with no argument writes 33.608 in a German browser, beside the copy's 55,000.
+  // toLocaleString() with no argument writes 33.608 in a German browser, beside the copy's 45,000.
   const bare: string[] = [];
   const walk = (dir: string) => {
     for (const f of readdirSync(dir, { withFileTypes: true })) {

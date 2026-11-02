@@ -197,7 +197,7 @@ export const SCENARIOS: Scenario[] = [
     years: 8,
     funds: 20000,
     blurb: 'A major earthquake has just struck. Fires are spreading and roads are broken. The city needs a steady hand.',
-    goal: 'Rebuild and grow to 55,000 residents within 8 years.',
+    goal: 'Rebuild and grow to 45,000 residents within 8 years.',
     win: 'The city is back on its feet.',
     lose: 'The city came through the quake, but the rebuilding fell short.',
     kind: 'reach',
@@ -225,7 +225,7 @@ export const SCENARIOS: Scenario[] = [
     },
     check: (sim) => {
       const r = sim.stats.residents;
-      return { progress: Math.min(1, r / 55000), status: `${num(r)} of 55,000 residents`, met: r >= 55000, rows: [atLeast('Residents', r, 55000)] };
+      return { progress: Math.min(1, r / 45000), status: `${num(r)} of 45,000 residents`, met: r >= 45000, rows: [atLeast('Residents', r, 45000)] };
     },
   },
   {
