@@ -765,6 +765,33 @@ try {
     await ctx.close();
   });
 
+  await test('Go there glides to the spot in about half a second, or jumps there with less motion asked for', async () => {
+    for (const motion of ['no-preference', 'reduce']) {
+      const ctx = await profile({ ...DESK, reducedMotion: motion });
+      const { page, problems } = await open(ctx);
+      await page.evaluate(() => { window.__terraville.startScenario('gridlock'); window.__terraville.ui.closeModal(); });
+      const from = await page.evaluate(() => {
+        const g = window.__terraville;
+        g.sim.say('test', 'Something at the far side of the map.', 'alert', { x: 89, y: 69 }, 0);
+        return { ...g.renderer.cam };
+      });
+      await page.click('#tkGo');
+      const t0 = Date.now();
+      const soon = await page.evaluate(() => ({ ...window.__terraville.renderer.cam }));
+      await page.waitForFunction(() => !window.__terraville.renderer.flying, null, { timeout: 2000 });
+      const took = Date.now() - t0;
+      const cam = await page.evaluate(() => ({ ...window.__terraville.renderer.cam }));
+      assert.deepEqual([Math.round(cam.x * 100) / 100, Math.round(cam.y * 100) / 100, cam.zoom], [89.5, 69.5, 22], `${motion}: on the spot, close up`);
+      if (motion === 'reduce') assert.deepEqual(soon, cam, 'at once');
+      else {
+        assert.ok(Math.hypot(soon.x - from.x, soon.y - from.y) < Math.hypot(cam.x - from.x, cam.y - from.y) / 2, `on its way, not there at once: ${JSON.stringify({ from, soon, cam })}`);
+        assert.ok(took < 700, `there in ${took} ms`);
+      }
+      assert.deepEqual(problems, []);
+      await ctx.close();
+    }
+  });
+
   await test('the news ticker shows two lines of a long message, and a tap on it opens the whole of it in the log', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

@@ -1364,10 +1364,10 @@ export class UI {
     }
   }
 
+  /** Go there: the camera glides to the spot, close enough to see it, so where it is stays clear (at once with less motion). */
   jumpTo(x: number, y: number): void {
     const r = this.game.renderer;
-    r.cam.zoom = Math.max(r.cam.zoom, 22);
-    r.centerOn(x + 0.5, y + 0.5);
+    r.flyTo(x + 0.5, y + 0.5, Math.max(r.cam.zoom, 22));
   }
 
   // ---- inspect -----------------------------------------------------------------------

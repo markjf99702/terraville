@@ -133,7 +133,7 @@ export class Renderer {
 
   private glow: HTMLCanvasElement;
   /** A camera move in progress (see flyTo): where it set out from and where it is going, in tiles and log zoom. */
-  private flight: { x0: number; y0: number; z0: number; x1: number; y1: number; z1: number; t: number; ms: number } | null = null;
+  private flight: { x0: number; y0: number; z0: number; x1: number; y1: number; z1: number; zoom: number; start: number; ms: number } | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -325,7 +325,7 @@ export class Renderer {
     this.cam.x = from.x;
     this.cam.y = from.y;
     this.cam.zoom = from.zoom;
-    this.flight = { x0: from.x, y0: from.y, z0: Math.log(from.zoom), x1: to.x, y1: to.y, z1: Math.log(to.zoom), t: 0, ms };
+    this.flight = { x0: from.x, y0: from.y, z0: Math.log(from.zoom), x1: to.x, y1: to.y, z1: Math.log(to.zoom), zoom: to.zoom, start: performance.now(), ms };
   }
 
   /** Call off a camera move in progress, leaving the camera where it has got to. */
@@ -338,15 +338,19 @@ export class Renderer {
     return this.flight !== null;
   }
 
-  private stepFlight(dt: number): void {
+  /** Move the camera along its flight, by the clock rather than by frames, so a slow device lands on time too. */
+  private stepFlight(): void {
     const f = this.flight;
     if (!f) return;
-    f.t = Math.min(1, f.t + (dt * 1000) / f.ms);
-    const e = f.t < 0.5 ? 4 * f.t * f.t * f.t : 1 - Math.pow(-2 * f.t + 2, 3) / 2;
+    const t = Math.min(1, (performance.now() - f.start) / f.ms);
+    const e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
     this.cam.x = f.x0 + (f.x1 - f.x0) * e;
     this.cam.y = f.y0 + (f.y1 - f.y0) * e;
     this.cam.zoom = Math.exp(f.z0 + (f.z1 - f.z0) * e);
-    if (f.t >= 1) this.flight = null;
+    if (t < 1) return;
+    // It lands exactly where it was sent.
+    this.cam.zoom = f.zoom;
+    this.flight = null;
   }
 
   // ---- chunks ---------------------------------------------------------------
@@ -459,7 +463,7 @@ export class Renderer {
 
   frame(dt: number): void {
     this.time += dt;
-    this.stepFlight(dt);
+    this.stepFlight();
     if (this.running) this.simTime += dt;
     if (this.waterDirty) {
       this.field.updateWater();
