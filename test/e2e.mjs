@@ -1,5 +1,5 @@
 // Plays the built game (index.html) in Chromium:  node test/e2e.mjs  (needs Playwright; npm test runs it after the
-// unit checks). Rebuild with npm run build first if you changed src/.
+// unit checks). It first builds src/ in memory and stops if index.html differs, so a page older than src/ never passes.
 import { createRequire } from 'node:module';
 import { execSync } from 'node:child_process';
 import { createServer } from 'node:http';
@@ -8,11 +8,18 @@ import { join, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { fakeGoogle } from './fake-google.mjs';
+import { buildPage } from '../build.mjs';
 
 const require = createRequire(import.meta.url);
 let pw;
 try { pw = require('playwright'); } catch { pw = require(join(execSync('npm root -g').toString().trim(), 'playwright')); }
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+
+// These tests play the committed index.html, so they would test an old page if src/ changed without a rebuild.
+if ((await buildPage()).index !== await readFile(join(root, 'index.html'), 'utf8')) {
+  console.log('FAIL index.html is older than src/: run npm run build');
+  process.exit(1);
+}
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2', '.webmanifest': 'application/manifest+json', '.json': 'application/json' };
 const server = createServer(async (req, res) => {
   const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
