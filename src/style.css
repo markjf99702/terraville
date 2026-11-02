@@ -199,6 +199,10 @@ button.sign:hover { background: var(--sign-hi); box-shadow: inset 0 0 0 2px var(
 .rci .fill.c { background: var(--com); }
 .rci .fill.i { background: var(--ind); }
 .rci .lab { font-size: 9.5px; font-weight: 800; text-align: center; color: var(--muted); margin-top: 1px; }
+/* It is a button: tapped, it says what the bars mean. */
+button.rci { background: transparent; border: none; border-right: 1px solid var(--line); border-radius: 0; color: inherit; font: inherit; cursor: pointer; }
+button.rci:hover, button.rci[aria-expanded="true"] { background: var(--panel-3); }
+button.rci:hover .lab, button.rci[aria-expanded="true"] .lab { color: var(--text); }
 
 .speed { display: flex; align-items: center; gap: 2px; padding: 4px; }
 .speed button, .iconbtn {
@@ -829,6 +833,13 @@ kbd { font: 600 11.5px var(--mono); padding: 1px 6px; border: 1px solid var(--li
 .dropdown hr { border: none; border-top: 1px solid var(--line); margin: 4px 2px; }
 .dropdown [role="group"] { display: flex; flex-direction: column; gap: 2px; }
 .dropdown .menu-caption { padding: 4px 10px; font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); }
+/* The RCI meter's card: a line for each bar, then what taxes do to them. */
+.dropdown.demand-card { width: 300px; max-width: calc(100vw - 16px); padding: 8px 6px 10px; gap: 6px; }
+.demand-card ul { list-style: none; margin: 0; padding: 0 10px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; line-height: 1.35; }
+.demand-card li { display: flex; gap: 9px; align-items: baseline; }
+.demand-card .swatch { position: relative; top: 1px; width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.demand-card .demand-tax { margin: 2px 10px 0; padding-top: 8px; border-top: 1px solid var(--line); font-size: 12.5px; line-height: 1.4; color: var(--muted); }
+.dropdown.demand-card .linkbtn { align-self: flex-start; margin: 0 10px; padding: 4px 0; font-size: 13px; }
 
 /* ---- toast --------------------------------------------------------------- */
 #toast {

@@ -12,7 +12,7 @@ import { SCENARIOS, buildScenario, goalRowText, goalState, openScenario, scenari
 import { Game, priceIncludes } from '../src/game';
 import { chartAxis, spreadLabels, tickLabel } from '../src/ui/charts';
 import { cutOff } from '../src/render/renderer';
-import { ago, worryWord } from '../src/ui/ui';
+import { ago, demandWords, worryWord } from '../src/ui/ui';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -3391,6 +3391,19 @@ await test('line-end labels that would run below the chart are pushed up, not pi
   // Apart already: left alone, in the order given.
   assert.deepEqual(spreadLabels([60, 10, 35], 0, 100, 13), [60, 10, 35]);
   assert.deepEqual(spreadLabels([50, 52], 0, 100, 13), [50, 63]);
+});
+
+await test("the RCI meter's card puts each bar in words, says when a landmark holds one, and what taxes do to all three", () => {
+  const none = { res: false, com: false, ind: false };
+  const w = demandWords({ r: 0.6, c: 0.1, i: -0.1 }, 7, none);
+  assert.deepEqual(w.lines.map((l) => `${l.label}: ${l.text}`), ['Homes: strong demand, zone more residential', 'Shops: some demand', 'Factories: too many']);
+  assert.equal(demandWords({ r: 0.09, c: -0.09, i: 0.45 }, 7, none).lines.map((l) => l.text).join(' / '), 'about enough / about enough / strong demand, zone more industrial');
+  assert.equal(w.tax, 'Taxes at 7% leave all three as they are. Each point above 7% pulls them down.');
+  assert.equal(demandWords({ r: 0, c: 0, i: 0 }, 11, none).tax, 'Taxes at 11% pull all three down: each point above 7% does.');
+  assert.equal(demandWords({ r: 0, c: 0, i: 0 }, 5, none).tax, 'Taxes at 5% push all three up: each point below 7% does.');
+  // A landmark limit holds the bar down whatever demand would be: the card says what lifts it.
+  const held = demandWords({ r: 0.6, c: 0.6, i: 0.6 }, 7, { res: true, com: false, ind: true }).lines.map((l) => l.text);
+  assert.deepEqual(held, ['held at 18,000 residents until the city builds a stadium', 'strong demand, zone more commercial', 'held at 4,000 jobs until the city builds a seaport']);
 });
 
 await test('figures read with commas whatever language the browser speaks, and nothing in src/ asks the browser for its own', () => {

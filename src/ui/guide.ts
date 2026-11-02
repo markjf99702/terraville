@@ -74,7 +74,7 @@ function sections(): Section[] {
       id: 'demand',
       title: 'The RCI meter',
       html: `
-        <p>The three bars at the top show demand for residential, commercial and industrial space. Bars above the line mean people want more of that zone. Bars below mean there is too much.</p>
+        <p>The three bars at the top show demand for residential, commercial and industrial space. Bars above the line mean people want more of that zone. Bars below mean there is too much. Tap or click the meter to have each bar put in words.</p>
         <p>Demand follows simple ratios:</p>
         <ul>
           <li><b>Residents follow jobs.</b> Each job supports about two residents.</li>

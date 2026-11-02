@@ -1057,6 +1057,44 @@ try {
     await ctx.close();
   });
 
+  await test('on a phone a tap on the RCI meter says what each bar means, what taxes do, and opens the guide at the meter', async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await found(page);
+    await page.evaluate(() => {
+      const g = window.__terraville;
+      g.world.city.tax = 9;
+      g.world.city.demand = { r: 0.6, c: 0.2, i: -0.3 };
+      g.ui.onFunds();
+    });
+    await page.tap('#rci');
+    const card = page.getByRole('dialog', { name: 'Demand' });
+    await card.waitFor();
+    assert.equal(await page.getAttribute('#rci', 'aria-expanded'), 'true');
+    assert.deepEqual(await card.locator('li').allTextContents(), ['Homes: strong demand, zone more residential', 'Shops: some demand', 'Factories: too many']);
+    assert.equal(await card.locator('.demand-tax').textContent(), 'Taxes at 9% pull all three down: each point above 7% does.');
+    // It follows the bars while it is open.
+    await page.evaluate(() => {
+      const g = window.__terraville;
+      g.world.city.tax = 7;
+      g.world.city.demand = { r: 0.05, c: -0.5, i: 0.2 };
+      g.ui.onFunds();
+    });
+    assert.deepEqual(await card.locator('li').allTextContents(), ['Homes: about enough', 'Shops: too many', 'Factories: some demand']);
+    assert.match(await card.locator('.demand-tax').textContent(), /^Taxes at 7% leave all three as they are/);
+    const box = await card.boundingBox();
+    assert.ok(box.x >= 0 && box.x + box.width <= 390, 'on the screen');
+    await card.getByRole('button', { name: 'How demand works' }).tap();
+    await page.waitForSelector('.modal .guide');
+    await page.waitForTimeout(300);
+    const heading = await page.locator('#guide-demand h3').boundingBox();
+    const scroller = await page.locator('.guide-scroll').boundingBox();
+    assert.ok(heading.y >= scroller.y && heading.y < scroller.y + 120, 'the guide opens at the RCI meter');
+    assert.equal(await page.locator('.dropdown').count(), 0, 'the card has closed');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('past its right and bottom edges the map shows the dark margin, on every map size', async () => {
     const ctx = await profile(DESK);
     const { page, problems } = await open(ctx);
@@ -2216,7 +2254,7 @@ try {
     assert.equal(await page.getAttribute('#ticker', 'aria-live'), null, 'the ticker is not read as well');
     assert.equal(await page.getAttribute('#citySign', 'aria-label'), `${name}, 0 residents, village. City report`);
     assert.match(await page.getAttribute('#rci', 'aria-label'), /^Demand: homes (high|moderate|low|negative), shops (high|moderate|low|negative), industry (high|moderate|low|negative)$/);
-    assert.equal(await page.getAttribute('#rci', 'role'), 'img');
+    assert.equal(await page.$eval('#rci', (b) => b.tagName), 'BUTTON', 'and it opens what the bars mean');
     await page.evaluate(() => window.__terraville.sim.say('test', 'An earthquake shakes the city.', 'alert'));
     await page.waitForFunction(() => document.querySelector('#announceAlert').textContent === 'An earthquake shakes the city.');
     // The Inspect card is a region named by its heading.

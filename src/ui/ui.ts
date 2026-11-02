@@ -1,7 +1,7 @@
 // Everything in the DOM: top bar, toolbox, panels, dialogs, title screen.
 import {
-  BUILDINGS, BULLDOZE_COST, DIFFICULTIES, DISASTER_POP, Difficulty, Kind, MAP_SIZES, SEP, ToolDef, UPGRADE_LV, article, cityClass, dateLabel,
-  MONTHS, isZone, nextUpgrade, num,
+  BUILDINGS, BULLDOZE_COST, DIFFICULTIES, DISASTER_POP, Difficulty, Kind, LANDMARK_LIMITS, MAP_SIZES, SEP, ToolDef, UPGRADE_LV, article,
+  cityClass, dateLabel, MONTHS, isZone, nextUpgrade, num,
 } from '../defs';
 import { DISASTER_NAMES, DisasterKind } from '../disasters';
 import { Game, SPEED_NAMES, randomCityName } from '../game';
@@ -153,6 +153,29 @@ export function ago(t: number): string {
 /** How the city report words a worry of 0 to 100. */
 export function worryWord(v: number): 'Severe' | 'Serious' | 'Minor' | 'Fine' {
   return v > 60 ? 'Severe' : v > 35 ? 'Serious' : v > 15 ? 'Minor' : 'Fine';
+}
+
+/** What the RCI meter's bars say, in words, as its card puts them: one line for each bar, and the taxes' pull on all three. */
+export function demandWords(
+  d: { r: number; c: number; i: number },
+  tax: number,
+  capped: { res: boolean; com: boolean; ind: boolean },
+): { lines: { k: 'res' | 'com' | 'ind'; label: string; text: string }[]; tax: string } {
+  const say = (k: 'res' | 'com' | 'ind', label: string, zone: string, v: number, held: string): { k: 'res' | 'com' | 'ind'; label: string; text: string } => ({
+    k,
+    label,
+    text: capped[k] ? held : v >= 0.45 ? `strong demand, zone more ${zone}` : v >= 0.1 ? 'some demand' : v > -0.1 ? 'about enough' : 'too many',
+  });
+  return {
+    lines: [
+      say('res', 'Homes', 'residential', d.r, `held at ${num(LANDMARK_LIMITS.res)} residents until the city builds a stadium`),
+      say('com', 'Shops', 'commercial', d.c, `held at ${num(LANDMARK_LIMITS.com)} jobs until the city builds an airport`),
+      say('ind', 'Factories', 'industrial', d.i, `held at ${num(LANDMARK_LIMITS.ind)} jobs until the city builds a seaport`),
+    ],
+    tax: tax > 7 ? `Taxes at ${tax}% pull all three down: each point above 7% does.`
+      : tax < 7 ? `Taxes at ${tax}% push all three up: each point below 7% does.`
+        : 'Taxes at 7% leave all three as they are. Each point above 7% pulls them down.',
+  };
 }
 
 export function money(n: number): string {
@@ -604,12 +627,12 @@ export class UI {
       <div class="panel stat-strip">
         <div class="stat" id="stDateBox"><span class="label" id="stDateLabel">Date</span><span class="value" id="stDate"></span></div>
         <div class="stat" id="stFundsBox"><span class="label">Funds</span><span class="value" id="stFunds"></span><span class="delta" id="stDelta"></span></div>
-        <div class="rci" id="rci" role="img" title="Demand for residential, commercial and industrial land">
-          <div class="bar"><div class="fill r" id="rciR"></div></div>
-          <div class="bar"><div class="fill c" id="rciC"></div></div>
-          <div class="bar"><div class="fill i" id="rciI"></div></div>
-          <div class="lab">R</div><div class="lab">C</div><div class="lab">I</div>
-        </div>
+        <button class="rci" id="rci" data-act="demand" aria-haspopup="dialog" aria-expanded="false" title="Demand for residential, commercial and industrial land: what the bars mean">
+          <span class="bar"><span class="fill r" id="rciR"></span></span>
+          <span class="bar"><span class="fill c" id="rciC"></span></span>
+          <span class="bar"><span class="fill i" id="rciI"></span></span>
+          <span class="lab">R</span><span class="lab">C</span><span class="lab">I</span>
+        </button>
         <div class="speed" role="group" aria-label="Speed">
           <button class="paused" data-speed="0" aria-label="Pause" title="Pause (Space)">${ICONS.pause}</button>
           <button data-speed="1" aria-label="Slow" title="Slow">${ICONS.play1}</button>
@@ -654,6 +677,7 @@ export class UI {
         case 'budget': return this.openBudget();
         case 'charts': return this.openCharts();
         case 'report': return this.openReport();
+        case 'demand': return this.toggleDropdown(b, () => this.demandMenu());
         case 'layers': return this.toggleDropdown(b, () => this.layersMenu());
         case 'disasters': return this.toggleDropdown(b, () => this.disasterMenu());
         case 'menu': return this.toggleDropdown(b, () => this.mainMenu());
@@ -796,6 +820,8 @@ export class UI {
     const rci = this.root.querySelector('#rci');
     const said = `Demand: homes ${word(city.demand.r)}, shops ${word(city.demand.c)}, industry ${word(city.demand.i)}`;
     if (rci && rci.getAttribute('aria-label') !== said) rci.setAttribute('aria-label', said);
+    // Its card, while open, follows the bars.
+    if (this.dropdownEl?.classList.contains('demand-card')) this.fillDemand(this.dropdownEl);
     // The sign opens the report, and says what it shows.
     const sign = this.root.querySelector('#citySign');
     const name = `${city.name}, ${num(s.residents)} residents, ${cityClass(s.residents).toLowerCase()}. City report`;
@@ -1305,6 +1331,30 @@ export class UI {
       d.appendChild(b);
     }
     return d;
+  }
+
+  /** The RCI meter's card: what each bar says in words, what taxes do to all three, and where the guide says more. */
+  private demandMenu(): HTMLElement {
+    const d = el('<div class="demand-card" role="dialog" aria-label="Demand"><div class="menu-caption">Demand</div><ul></ul><p class="demand-tax"></p></div>');
+    const more = el<HTMLButtonElement>('<button class="linkbtn">How demand works</button>');
+    more.onclick = () => {
+      this.closeDropdown();
+      this.openGuide('demand');
+    };
+    d.appendChild(more);
+    this.fillDemand(d);
+    return d;
+  }
+
+  private fillDemand(card: HTMLElement): void {
+    const sim = this.game.sim;
+    if (!sim) return;
+    const w = demandWords(this.game.world.city.demand, this.game.world.city.tax, sim.capped);
+    const html = w.lines.map((l) => `<li><span class="swatch" style="background:${`var(--${l.k})`}"></span><span><b>${l.label}:</b> ${esc(l.text)}</span></li>`).join('');
+    const ul = $(card, 'ul');
+    if (ul.innerHTML !== html) ul.innerHTML = html;
+    const tax = $(card, '.demand-tax');
+    if (tax.textContent !== w.tax) tax.textContent = w.tax;
   }
 
   private disasterMenu(): HTMLElement {
