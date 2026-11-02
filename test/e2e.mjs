@@ -898,6 +898,55 @@ try {
     await ctx.close();
   });
 
+  await test('on a phone the cost tip sits above the finger and fits the screen, and a held brush shows its ring and running cost', async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await found(page);
+    await page.click('#guide .close');
+    const cdp = await ctx.newCDPSession(page);
+    const touch = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map(([x, y], id) => ({ x, y, id })) });
+    const at = await page.evaluate(() => {
+      const g = window.__terraville;
+      const w = g.world;
+      const r = g.renderer;
+      w.city.funds = 50000;
+      r.cam.zoom = 16;
+      let best = null;
+      for (let y = 8; y < w.h - 8; y++) for (let x = 8; x < w.w - 8; x++) {
+        const i = y * w.w + x;
+        if (w.water[i] || w.occ[i]) continue;
+        const s = w.slope(x, y);
+        if (s > 2 && s < 12 && (!best || s > best[2])) best = [x, y, s];
+      }
+      r.centerOn(best[0] + 0.5, best[1] + 0.5);
+      const p = r.tileToScreen(best[0] + 0.5, best[1] + 0.5);
+      g.setTool('level');
+      return [Math.round(p.x), Math.round(p.y)];
+    });
+    const tip = () => page.evaluate(() => {
+      const t = document.querySelector('#cursorTip');
+      const r = t.getBoundingClientRect();
+      return { text: t.hidden ? null : t.textContent, left: r.left, right: r.right, bottom: r.bottom, ring: !!window.__terraville.renderer.preview?.brush };
+    });
+    await touch('touchStart', [at]);
+    await page.waitForTimeout(500);
+    const held = await tip();
+    await touch('touchEnd', []);
+    assert.match(held.text ?? '', /^Levelling \$\d+ · /, 'a finger held still shows what the levelling costs so far');
+    assert.equal(held.ring, true, 'and the brush ring');
+    assert.ok(held.bottom < at[1] - 30, 'above the finger');
+    // A zone drag across rough ground makes a long tip.
+    await page.evaluate(() => { window.__terraville.renderer.cam.zoom = 10; window.__terraville.setTool('res'); });
+    await touch('touchStart', [[40, 500]]);
+    for (let k = 1; k <= 8; k++) await touch('touchMove', [[40 + k * 40, 500]]);
+    const drag = await tip();
+    await touch('touchEnd', []);
+    assert.ok(drag.text && drag.left >= 0 && drag.right <= 390, `the tip fits the screen: ${drag.text}`);
+    assert.ok(drag.bottom < 500, 'above the finger');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('on a phone, Inspect takes the bottom slot from the map layer card and the news log', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

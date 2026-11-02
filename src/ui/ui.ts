@@ -1148,6 +1148,9 @@ export class UI {
 
   // ---- small feedback ------------------------------------------------------------
 
+  /** The last pointer on the map was a finger (or a pen): the cost tip goes above it, where the hand doesn't cover it. */
+  touchTips = false;
+
   cursorTip(sx: number, sy: number, html: string | null, bad = false): void {
     const tip = $(this.root, '#cursorTip');
     if (!html) {
@@ -1159,10 +1162,20 @@ export class UI {
     tip.hidden = false;
     const w = tip.offsetWidth;
     const h = tip.offsetHeight;
-    const x = Math.min(window.innerWidth - w - 8, sx + 18);
-    const y = Math.min(window.innerHeight - h - 8, sy + 20);
-    tip.style.left = `${Math.max(8, x)}px`;
-    tip.style.top = `${Math.max(8, y)}px`;
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    let x: number;
+    let y: number;
+    if (this.touchTips) {
+      x = sx - w / 2;
+      y = sy - h - 48;
+      if (y < 8) y = sy + 48; // too near the top: under the finger, well clear of it
+    } else {
+      x = sx + 18;
+      y = sy + 20;
+    }
+    tip.style.left = `${Math.round(Math.max(8, Math.min(W - w - 8, x)))}px`;
+    tip.style.top = `${Math.round(Math.max(8, Math.min(H - h - 8, y)))}px`;
   }
 
   /** A lasting notice for an unexpected error, with the message to report. */

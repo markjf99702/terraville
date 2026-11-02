@@ -113,6 +113,8 @@ export class Game {
   private anchor: { x: number; y: number } | null = null;
   private brushOn = false;
   private brushAt = { x: 0, y: 0 };
+  /** Where the brush is on the screen, for its tip. */
+  private brushScreen = { x: 0, y: 0 };
   private brushTarget: number | undefined;
   private brushSpent = 0;
   private autoTimer = 0;
@@ -935,6 +937,7 @@ export class Game {
     const t = this.tool();
     if (t.kind === 'brush') {
       this.brushAt = { x: fx, y: fy };
+      this.brushScreen = { x: sx, y: sy };
       r.preview = { tiles: [], bad: [], rects: [], brush: { x: fx, y: fy, r: this.brush.radius } };
       if (this.mode === 'editor' && inside) {
         this.ui.cursorTip(sx, sy, `<span class="num">${Math.round(this.world.height[ty * this.world.w + tx])} m</span>`);
@@ -1064,6 +1067,9 @@ export class Game {
         this.brushSpent = 0;
         this.brushTarget = this.world.height[ty * this.world.w + tx];
         if (t.id === 'level' && this.world.water[ty * this.world.w + tx]) this.brushTarget = Math.max(0.5, this.brushTarget);
+        // The ring and the tip show from the start, also for a finger held still, which sends no moves.
+        this.brushScreen = { x: sx, y: sy };
+        this.pointerMove(fx, fy, sx, sy);
         return;
       default:
         if (!inside) return;
@@ -1307,6 +1313,8 @@ export class Game {
       this.audio.play('terrain');
       this.minimap.markDirty();
     }
+    // The running cost (or the height) while the brush is held, moving or not.
+    if (this.brushOn) this.pointerMove(this.brushAt.x, this.brushAt.y, this.brushScreen.x, this.brushScreen.y);
   }
 
   // ---- undo ---------------------------------------------------------------------

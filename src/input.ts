@@ -85,6 +85,7 @@ export class Input {
     this.canvas.setPointerCapture(e.pointerId);
     const p = this.local(e);
     this.pointers.set(e.pointerId, { ...p, type: e.pointerType });
+    g.ui.touchTips = e.pointerType !== 'mouse';
     if (this.pointers.size === 2) {
       // Second finger: abandon any tool drag and start pinching. A brush that had not started yet does nothing, and
       // one that started a moment ago is taken back, ground, money and all.
@@ -183,7 +184,8 @@ export class Input {
     }
     if (g.mode === 'title') return;
     // Hovering (mouse) or dragging a tool.
-    if (e.pointerType !== 'mouse' && this.mode !== 'tool') return;
+    if (e.pointerType === 'mouse') g.ui.touchTips = false;
+    else if (this.mode !== 'tool') return;
     const t = g.renderer.screenToTile(p.x, p.y);
     g.pointerMove(t.x, t.y, p.x, p.y);
   }
