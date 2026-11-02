@@ -3,7 +3,7 @@
 // map passes (traffic, pollution, crime, land value) run at month end.
 import {
   BUILDINGS, DIFFICULTIES, DISASTER_POP, DOES, Kind, LANDMARK_LIMITS, NET_UPKEEP, POWER, RAIL, ROAD, UPGRADE_LV, ZONE_LV_GATE,
-  ZONE_POP, buildingName, cityClass, CITY_CLASSES, dateLabel, isZone, upkeepOf,
+  ZONE_POP, buildingName, cityClass, CITY_CLASSES, dateLabel, isZone, toIndex, upkeepOf,
 } from './defs';
 import { MinHeap } from './heap';
 import { clamp } from './rng';
@@ -1170,13 +1170,17 @@ export class Sim {
       arr.push(Math.round(v));
       if (arr.length > 1200) arr.shift();
     };
-    push(h.pop, s.residents);
     push(h.res, s.residents);
     push(h.com, s.comJobs);
     push(h.ind, s.indJobs);
     push(h.funds, this.world.city.funds);
-    push(h.crime, s.avgCrime);
-    push(h.pollution, s.avgPollution);
+    push(h.crime, toIndex(s.avgCrime));
+    push(h.pollution, toIndex(s.avgPollution));
+    push(h.traffic, toIndex(s.avgTraffic));
+    push(h.approval, s.approval);
+    push(h.score, s.score);
+    push(h.powerUsed, s.powerDemand);
+    push(h.powerMade, s.powerSupply);
     push(h.income, b.taxIncome);
     push(h.expense, spending(b));
   }

@@ -2101,13 +2101,15 @@ export class UI {
         <div class="chart" id="ch1"><h4>Residents and jobs</h4><div class="legendrow"><span><i style="background:${ZONE_COLORS.res}"></i>Residents</span><span><i style="background:${ZONE_COLORS.com}"></i>Commercial jobs</span><span><i style="background:${ZONE_COLORS.ind}"></i>Industrial jobs</span></div><canvas></canvas><div class="charttip" hidden></div></div>
         <div class="chart" id="ch2"><h4>City funds</h4><div class="legendrow"><span>End of each month</span></div><canvas></canvas><div class="charttip" hidden></div></div>
         <div class="chart" id="ch3"><h4>Monthly income and spending</h4><div class="legendrow"><span><i style="background:#3987e5"></i>Tax income</span><span><i style="background:#d95926"></i>Spending</span></div><canvas></canvas><div class="charttip" hidden></div></div>
-        <div class="chart" id="ch4"><h4>Crime and pollution</h4><div class="legendrow"><span><i style="background:#d55181"></i>Crime</span><span><i style="background:#c98500"></i>Pollution</span><span>index, 0 to 100</span></div><canvas></canvas><div class="charttip" hidden></div></div>
+        <div class="chart" id="ch4"><h4>Crime, pollution and traffic</h4><div class="legendrow"><span><i style="background:#d55181"></i>Crime</span><span><i style="background:#c98500"></i>Pollution</span><span><i style="background:#9085e9"></i>Traffic</span><span>index, 0 to 100, as the challenges use</span></div><canvas></canvas><div class="charttip" hidden></div></div>
+        <div class="chart" id="ch5"><h4>Mayor's approval</h4><div class="legendrow"><span>Percent; the faint line is 60%</span></div><canvas></canvas><div class="charttip" hidden></div></div>
+        <div class="chart" id="ch6"><h4>Power used and made</h4><div class="legendrow"><span><i style="background:#199e70"></i>Made</span><span><i style="background:#d95926"></i>Used</span><span>MW</span></div><canvas></canvas><div class="charttip" hidden></div></div>
       </div>
     </div>`);
     const draw = () => {
       const n = this.chartRange;
       const cut = <T,>(a: T[]) => a.slice(-n);
-      const total = h.pop.length;
+      const total = h.res.length;
       const start = g.world.city.month - Math.min(n, total);
       const people = (v: number) => Math.round(v).toLocaleString();
       // The names at the line ends are the legend's.
@@ -2122,9 +2124,16 @@ export class UI {
         { name: 'Spending', color: '#d95926', values: cut(h.expense) },
       ], { startMonth: start, format: money, zero: true, money: true, whole: true });
       lineChart($(body, '#ch4'), [
-        { name: 'Crime', color: '#d55181', values: cut(h.crime).map((v) => Math.round((v / 255) * 100)) },
-        { name: 'Pollution', color: '#c98500', values: cut(h.pollution).map((v) => Math.round((v / 255) * 100)) },
+        { name: 'Crime', color: '#d55181', values: cut(h.crime) },
+        { name: 'Pollution', color: '#c98500', values: cut(h.pollution) },
+        { name: 'Traffic', color: '#9085e9', values: cut(h.traffic) },
       ], { startMonth: start, format: (v) => String(Math.round(v)), zero: true, whole: true });
+      lineChart($(body, '#ch5'), [{ name: 'Approval', color: '#3987e5', values: cut(h.approval) }],
+        { startMonth: start, format: (v) => `${Math.round(v)}%`, zero: true, whole: true, line: 60 });
+      lineChart($(body, '#ch6'), [
+        { name: 'Made', color: '#199e70', values: cut(h.powerMade) },
+        { name: 'Used', color: '#d95926', values: cut(h.powerUsed) },
+      ], { startMonth: start, format: (v) => `${Math.round(v).toLocaleString()} MW`, zero: true, whole: true });
     };
     $(body, '#cRange').onclick = (e) => {
       const b = (e.target as HTMLElement).closest<HTMLElement>('[data-n]');
@@ -2133,7 +2142,7 @@ export class UI {
       for (const x of body.querySelectorAll('[data-n]')) x.setAttribute('aria-pressed', String(x === b));
       draw();
     };
-    this.openModal({ title: 'History', sub: `${esc(g.world.city.name)} since ${dateLabel(Math.max(0, g.world.city.month - h.pop.length))}`, body, wide: true });
+    this.openModal({ title: 'History', sub: `${esc(g.world.city.name)} since ${dateLabel(Math.max(0, g.world.city.month - h.res.length))}`, body, wide: true });
     requestAnimationFrame(draw);
   }
 
@@ -2149,6 +2158,9 @@ export class UI {
     const approval = Math.round(s.approval);
     // Nobody to approve or worry yet: say so rather than show 50% of no one and an empty list.
     const empty = s.residents === 0;
+    // The score at the month end a year before the last one, once there is a year of history.
+    const scores = g.world.city.history.score;
+    const yearAgo = scores.length > 12 ? scores[scores.length - 13] : undefined;
     // A finished challenge keeps its result here, after its tracker is closed.
     const sc = g.world.city.scenario;
     const chal = sc?.done ? SCENARIOS.find((x) => x.id === sc.id) : undefined;
@@ -2173,7 +2185,7 @@ export class UI {
             <dt>Residents</dt><dd>${s.residents.toLocaleString()}</dd>
             <dt>Class</dt><dd>${cityClass(s.residents)}</dd>
             <dt>Last month</dt><dd>${s.migration >= 0 ? '+' : ''}${s.migration.toLocaleString()}</dd>
-            <dt>Score</dt><dd>${s.score} / 1000</dd>
+            <dt>Score</dt><dd>${s.score} / 1000${yearAgo === undefined ? '' : `<span class="kv-words">, ${yearAgo === s.score ? 'the same as' : `${s.score > yearAgo ? '+' : '−'}${Math.abs(s.score - yearAgo)} on`} a year ago</span>`}</dd>
           </dl>
         </div>
       </div>

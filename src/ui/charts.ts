@@ -20,6 +20,8 @@ export interface ChartOpts {
   money?: boolean;
   /** Whole numbers (people, jobs, dollars, an index): no axis step under 1. */
   whole?: boolean;
+  /** A value to mark with a faint dashed line across the chart, such as 60% approval. */
+  line?: number;
 }
 
 export interface Axis {
@@ -107,7 +109,12 @@ export function spreadLabels(ys: number[], top: number, bottom: number, gap: num
   return out;
 }
 
-export function lineChart(wrap: HTMLElement, series: Series[], o: ChartOpts): void {
+/**
+ * Draw `series` in `wrap`'s canvas. A series shorter than the longest began later (one a city's history gained after
+ * it was founded), so it ends at the right with the others; one with no values yet is left out.
+ */
+export function lineChart(wrap: HTMLElement, all: Series[], o: ChartOpts): void {
+  const series = all.filter((s) => s.values.length);
   const canvas = wrap.querySelector('canvas')!;
   const tip = wrap.querySelector<HTMLElement>('.charttip')!;
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -142,10 +149,13 @@ export function lineChart(wrap: HTMLElement, series: Series[], o: ChartOpts): vo
   let min = Infinity;
   let max = -Infinity;
   for (const s of series) for (const v of s.values) { min = Math.min(min, v); max = Math.max(max, v); }
+  if (o.line !== undefined) { min = Math.min(min, o.line); max = Math.max(max, o.line); }
   const axis = chartAxis(min, max, o);
   const { lo, hi } = axis;
   const X = (i: number) => padL + (i / (n - 1)) * pw;
   const Y = (v: number) => padT + ph - ((v - lo) / (hi - lo)) * ph;
+  /** Where a series' first value sits along the months. */
+  const off = (s: Series) => n - s.values.length;
 
   // Grid and y labels.
   ctx.strokeStyle = GRID;
@@ -174,18 +184,31 @@ export function lineChart(wrap: HTMLElement, series: Series[], o: ChartOpts): vo
     ctx.fillText(String(yr), X(i), padT + ph + 5);
   }
 
+  if (o.line !== undefined) {
+    const y = Math.round(Y(o.line)) + 0.5;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(234,240,234,0.32)';
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(padL, y);
+    ctx.lineTo(padL + pw, y);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   // Lines.
   for (const s of series) {
+    const k = off(s);
     ctx.strokeStyle = s.color;
     ctx.lineWidth = 2;
     ctx.lineJoin = 'round';
     ctx.beginPath();
-    s.values.forEach((v, i) => (i ? ctx.lineTo(X(i), Y(v)) : ctx.moveTo(X(i), Y(v))));
+    s.values.forEach((v, i) => (i ? ctx.lineTo(X(i + k), Y(v)) : ctx.moveTo(X(i + k), Y(v))));
     ctx.stroke();
     const last = s.values[s.values.length - 1];
     ctx.fillStyle = s.color;
     ctx.beginPath();
-    ctx.arc(X(s.values.length - 1), Y(last), 3.5, 0, Math.PI * 2);
+    ctx.arc(X(n - 1), Y(last), 3.5, 0, Math.PI * 2);
     ctx.fill();
   }
   // End labels, nudged apart so they do not collide.
@@ -208,6 +231,7 @@ export function lineChart(wrap: HTMLElement, series: Series[], o: ChartOpts): vo
     }
     // Redraw with a crosshair.
     lineChart(wrap, series, o);
+    const at = (s: Series) => s.values[i - off(s)];
     const c2 = canvas.getContext('2d')!;
     c2.setTransform(dpr, 0, 0, dpr, 0, 0);
     c2.strokeStyle = 'rgba(234,240,234,0.35)';
@@ -217,19 +241,19 @@ export function lineChart(wrap: HTMLElement, series: Series[], o: ChartOpts): vo
     c2.lineTo(Math.round(X(i)) + 0.5, padT + ph);
     c2.stroke();
     for (const s of series) {
-      if (i >= s.values.length) continue;
+      if (at(s) === undefined) continue;
       c2.fillStyle = '#151e1b';
       c2.beginPath();
-      c2.arc(X(i), Y(s.values[i]), 5, 0, Math.PI * 2);
+      c2.arc(X(i), Y(at(s)), 5, 0, Math.PI * 2);
       c2.fill();
       c2.fillStyle = s.color;
       c2.beginPath();
-      c2.arc(X(i), Y(s.values[i]), 3.5, 0, Math.PI * 2);
+      c2.arc(X(i), Y(at(s)), 3.5, 0, Math.PI * 2);
       c2.fill();
     }
     const m = o.startMonth + i;
     tip.innerHTML = `<b>${MONTHS[m % 12]} ${START_YEAR + Math.floor(m / 12)}</b>` +
-      series.map((s) => `<span class="num"><i style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;background:${s.color}"></i>${s.name}: ${o.format(s.values[i] ?? 0)}</span>`).join('');
+      series.filter((s) => at(s) !== undefined).map((s) => `<span class="num"><i style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;background:${s.color}"></i>${s.name}: ${o.format(at(s))}</span>`).join('');
     tip.hidden = false;
     const tx = X(i) + 12;
     tip.style.left = `${Math.min(tx, W - tip.offsetWidth - 4)}px`;

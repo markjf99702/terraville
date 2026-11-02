@@ -62,7 +62,7 @@ function sections(): Section[] {
           <li><b>A commute.</b> Homes need to reach a shop or factory, and shops and factories need to reach homes, within about 80 road tiles.</li>
         </ul>
         <p>Then <b>demand</b> and local conditions decide how fast it grows. With the matching bar on the RCI meter above the line, lots in decent spots fill in. Below the line, lots in the best spots still grow, only more slowly, and poor ones start to empty out.</p>
-        <p>Growth is gradual. Each month a qualifying lot has a small chance to go up one density level, and a better score raises that chance. Pick <b>Inspect</b> (<kbd>Q</kbd>) and click a lot to see its density, residents or jobs, any problem such as “No road access” or “Commute too long”, how dense it can grow where it stands, and its outlook.</p>
+        <p>Growth is gradual. Each month a qualifying lot has a small chance to go up one density level, and the better its spot, the higher that chance. Pick <b>Inspect</b> (<kbd>Q</kbd>) and click a lot to see its density, residents or jobs, any problem such as “No road access” or “Commute too long”, how dense it can grow where it stands, and its outlook.</p>
         <p>What counts as a good spot differs by zone:</p>
         <ul>
           <li><b>Homes</b> want high land value, clean air, low crime, and schools or hospitals nearby.</li>
@@ -217,8 +217,9 @@ function sections(): Section[] {
     },
     {
       id: 'classes',
-      title: 'City sizes',
-      html: `${table(['Class', 'Residents'], CITY_CLASSES.map((c) => [c.name, c.min ? `${c.min.toLocaleString()}+` : 'under 2,000']), [1])}`,
+      title: 'City sizes and score',
+      html: `${table(['Class', 'Residents'], CITY_CLASSES.map((c) => [c.name, c.min ? `${c.min.toLocaleString()}+` : 'under 2,000']), [1])}
+        <p>The city report scores the city out of 1,000. The mayor’s approval weighs most, 7 points for each percent, up to 700. Each size class past ${CITY_CLASSES[0].name} adds 50, up to ${(CITY_CLASSES.length - 1) * 50} for a ${CITY_CLASSES[CITY_CLASSES.length - 1].name.toLowerCase()}, and land value adds up to 50. The History charts show the approval behind it.</p>`,
     },
   ];
 }

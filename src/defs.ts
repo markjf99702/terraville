@@ -258,6 +258,11 @@ export function cityClass(pop: number): string {
  * A middle dot between two pieces of text, for HTML: drawn by the style sheet (see .sep there), because Overpass's
  * own dot has no width and sits against the next word.
  */
+/** A map average kept 0 to 255 (traffic, pollution, crime) as the 0 to 100 index the challenge goals and the charts use. */
+export function toIndex(v: number): number {
+  return Math.round((v / 255) * 100);
+}
+
 export const SEP = ' <span class="sep" aria-hidden="true">·</span> ';
 
 export const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];

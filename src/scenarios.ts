@@ -1,6 +1,6 @@
 // Challenges: a ready-made city in trouble, a goal, and a deadline.
 // A nod to the original's scenarios, with procedurally built cities.
-import { BUILDINGS, Kind, POWER, RAIL, ROAD, isZone } from './defs';
+import { BUILDINGS, Kind, POWER, RAIL, ROAD, isZone, toIndex as idx } from './defs';
 import { Rng, makeRng, hashString } from './rng';
 import { Sim } from './sim';
 import { DEFAULT_TERRAIN, TerrainParams, generateTerrain } from './terrain';
@@ -82,7 +82,6 @@ interface CityPlan {
   superblocks?: boolean;
 }
 
-const idx = (v: number) => Math.round((v / 255) * 100);
 
 export const SCENARIOS: Scenario[] = [
   {

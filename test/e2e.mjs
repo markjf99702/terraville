@@ -1681,6 +1681,51 @@ try {
     await ctx.close();
   });
 
+  await test('History charts traffic beside crime and pollution, approval and power, and the report gives the score a year on', async () => {
+    for (const opts of [PHONE, DESK]) {
+      const ctx = await profile(opts);
+      const { page, problems } = await open(ctx);
+      await page.click('[data-act="challenges"]');
+      await page.click('.slot:has-text("Gridlock") .btn.primary');
+      await page.click('.modal footer .btn.primary');
+      await page.waitForFunction(() => window.__terraville.mode === 'city');
+      await page.evaluate(() => {
+        const g = window.__terraville;
+        g.setSpeed(0);
+        g.world.city.disasters = false;
+        for (let k = 0; k < 4 * 14; k++) g.sim.step();
+      });
+      await page.click('#topbar [data-act="charts"]');
+      await page.waitForFunction(() => document.querySelector('#ch6 canvas').getAttribute('aria-label')?.includes('latest'));
+      assert.deepEqual(await page.$$eval('.chart h4', (hs) => hs.map((h) => h.textContent)),
+        ['Residents and jobs', 'City funds', 'Monthly income and spending', 'Crime, pollution and traffic', "Mayor's approval", 'Power used and made']);
+      const { traffic, approval } = await page.evaluate(() => {
+        const h = window.__terraville.world.city.history;
+        return { traffic: h.traffic.at(-1), approval: h.approval.at(-1) };
+      });
+      // The traffic index the chart ends on is the one the goal tracker shows.
+      assert.match(await page.textContent('#goal .goal-row'), new RegExp(`^Traffic index ${traffic} · under 28`));
+      assert.match(await page.getAttribute('#ch4 canvas', 'aria-label'), new RegExp(`^Crime, pollution and traffic, latest: Crime \\d+, Pollution \\d+, Traffic ${traffic}$`));
+      assert.equal(await page.getAttribute('#ch5 canvas', 'aria-label'), `Mayor's approval, latest: Approval ${approval}%`);
+      assert.match(await page.getAttribute('#ch6 canvas', 'aria-label'), /^Power used and made, latest: Made 2,100 MW, Used [\d,]+ MW$/);
+      // Every chart fits the dialog, three rows of two in a wide window and one column on a phone.
+      const widths = await page.$$eval('.chart canvas', (cs) => cs.map((c) => [Math.round(c.getBoundingClientRect().left), Math.round(c.getBoundingClientRect().right)]));
+      const dialog = await page.$eval('.modal', (m) => Math.round(m.getBoundingClientRect().right));
+      assert.ok(widths.every(([, r]) => r <= dialog), 'a chart runs off the dialog');
+      assert.equal(new Set(widths.map(([l]) => l)).size, opts === PHONE ? 1 : 2);
+      await page.keyboard.press('Escape');
+      await page.click('#citySign');
+      const score = await page.evaluate(() => {
+        const h = window.__terraville.world.city.history.score;
+        return { now: window.__terraville.sim.stats.score, then: h.at(-13) };
+      });
+      const change = score.now === score.then ? 'the same as' : `${score.now > score.then ? '+' : '−'}${Math.abs(score.now - score.then)} on`;
+      assert.equal(await page.textContent('.modal .kv dt:has-text("Score") + dd'), `${score.now} / 1000, ${change} a year ago`);
+      assert.deepEqual(problems, []);
+      await ctx.close();
+    }
+  });
+
   await test('Settings lists the keys of the place it is opened in, from the toolbox, with redo', async () => {
     const ctx = await profile(DESK);
     const { page, problems } = await open(ctx);

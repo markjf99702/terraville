@@ -21,14 +21,23 @@ export interface Building {
   trip: boolean;
 }
 
+/** The city month by month, a value at each month end, for the History charts and the report. */
 export interface History {
-  pop: number[];
+  /** Residents, and the jobs in shops and in industry. */
   res: number[];
   com: number[];
   ind: number[];
   funds: number[];
+  /** Crime, pollution and traffic, on the 0 to 100 index the challenge goals use. */
   crime: number[];
   pollution: number[];
+  traffic: number[];
+  /** The mayor's approval in percent, and the report's score out of 1,000. */
+  approval: number[];
+  score: number[];
+  /** Power wanted by the city and made by its plants, in MW. */
+  powerUsed: number[];
+  powerMade: number[];
   income: number[];
   expense: number[];
 }
@@ -60,7 +69,10 @@ export interface CityState {
 }
 
 export function emptyHistory(): History {
-  return { pop: [], res: [], com: [], ind: [], funds: [], crime: [], pollution: [], income: [], expense: [] };
+  return {
+    res: [], com: [], ind: [], funds: [], crime: [], pollution: [], traffic: [], approval: [], score: [], powerUsed: [], powerMade: [],
+    income: [], expense: [],
+  };
 }
 
 export function newCityState(): CityState {

@@ -1747,7 +1747,7 @@ await test('a city code is read field by field, so what someone typed into it st
   const s = flat().serialize();
   const tag = '"><img src=x onerror="alert(1)">';
   const city = { ...s.city, name: `Harbour ${tag}`, tax: tag, disasters: tag, funds: tag, month: '18', loan: -5, id: "x' or name contains 'a",
-    funding: { police: tag, fire: 0.5, transport: 2 }, history: { ...s.city.history, pop: [tag, 5, null] }, scenario: { id: 'monster', end: tag, done: tag } };
+    funding: { police: tag, fire: 0.5, transport: 2 }, history: { ...s.city.history, res: [tag, 5, null] }, scenario: { id: 'monster', end: tag, done: tag } };
   const c = World.deserialize({ ...s, city: city as never }).city;
   assert.equal(c.name, `Harbour ${tag}`); // a name can be any text; the dialogs escape it
   assert.equal(c.tax, 7);
@@ -1757,7 +1757,7 @@ await test('a city code is read field by field, so what someone typed into it st
   assert.equal(c.loan, 0);
   assert.equal(c.id, undefined); // not an id Terraville makes, so it never reaches a Drive query
   assert.deepEqual(c.funding, { police: 1, fire: 0.5, transport: 1 });
-  assert.deepEqual(c.history.pop, [0, 5, 0]);
+  assert.deepEqual(c.history.res, [0, 5, 0]);
   assert.deepEqual(c.scenario, { id: 'monster', end: 0, done: '' });
   assert.equal(World.deserialize({ ...s, city: { ...s.city, name: 12345 } as never }).city.name, 'New City');
 
@@ -1765,11 +1765,44 @@ await test('a city code is read field by field, so what someone typed into it st
   const w = flat();
   Object.assign(w.city, { id: 'k3j2h1abc9', name: 'Riverton', tax: 9, funds: -1250, month: 655, loan: 20000, classReached: 3, seed: 'river-oak-3', disasters: true });
   w.city.funding.fire = 0.55;
-  w.city.history.pop.push(10, 20, 35);
+  w.city.history.res.push(10, 20, 35);
   w.city.scenario = { id: 'monster', end: 840, done: 'won', decided: 838, closed: true };
   (w.city as unknown as Record<string, unknown>).later = { kept: true };
   assert.deepEqual(World.deserialize(JSON.parse(JSON.stringify(w.serialize()))).city, w.city);
 });
+
+await test('history keeps traffic, approval, score and power each month, on the scales the goals and report use', () => seeded(7, () => {
+  const w = flat();
+  w.place('coal', 2, 2);
+  for (let x = 0; x < 40; x++) w.setNet(ROAD, x, 8);
+  for (let x = 6; x < 30; x++) w.setNet(POWER, x, 6);
+  for (let x = 6; x < 30; x += 3) w.place(x < 15 ? 'res' : x < 24 ? 'com' : 'ind', x, 9);
+  const sim = new Sim(w);
+  const goal = (id: string) => SCENARIOS.find((x) => x.id === id)!.check(sim);
+  const h = w.city.history;
+  for (let m = 0; m < 14; m++) {
+    for (let k = 0; k < 4; k++) sim.step();
+    const s = sim.stats;
+    assert.deepEqual(
+      [h.res.at(-1), h.traffic.at(-1), h.pollution.at(-1), h.crime.at(-1), h.approval.at(-1), h.score.at(-1), h.powerUsed.at(-1), h.powerMade.at(-1)],
+      // Traffic and pollution as Gridlock and Smog Valley read them for their goals.
+      [s.residents, Number(goal('gridlock').rows[0].value), Number(goal('smog').rows[0].value), Math.round((s.avgCrime / 255) * 100), Math.round(s.approval), s.score, s.powerDemand, s.powerSupply],
+    );
+  }
+  // Every series gets a value each month, and the residents are kept once.
+  assert.deepEqual(Object.keys(h).sort(), ['approval', 'com', 'crime', 'expense', 'funds', 'income', 'ind', 'pollution', 'powerMade', 'powerUsed', 'res', 'score', 'traffic']);
+  for (const [k, v] of Object.entries(h)) assert.equal(v.length, 14, k);
+  assert.equal(h.powerMade.at(-1), 700);
+  // A city saved before these were kept opens with them empty, and they start from its next month end.
+  const old = JSON.parse(JSON.stringify(w.serialize()));
+  for (const k of ['traffic', 'approval', 'score', 'powerUsed', 'powerMade']) delete old.city.history[k];
+  const back = World.deserialize(old);
+  assert.deepEqual([back.city.history.traffic, back.city.history.approval, back.city.history.score], [[], [], []]);
+  assert.equal(back.city.history.res.length, 14);
+  const again = new Sim(back);
+  for (let k = 0; k < 4; k++) again.step();
+  assert.deepEqual([back.city.history.res.length, back.city.history.traffic.length, back.city.history.powerMade.length], [15, 1, 1]);
+}));
 
 await test("the mayor's approval is saved with the city, and older saves open at 50%", () => {
   const w = flat();

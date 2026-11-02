@@ -21,7 +21,7 @@ Play it at [terraville.junkdrawer.works](https://terraville.junkdrawer.works/), 
 - Pollution, crime, land value, traffic, density and service coverage maps, viewable as overlays.
 - Monthly budget with tax rate, funding sliders for police, fire and roads (underfunded roads crumble), and loans.
 - Fires that spread, floods on low shores, tornadoes, earthquakes, a monster drawn to pollution, and nuclear meltdowns. Toggle random disasters or set one off yourself.
-- History charts, a city report with approval and residents' top worries, and a news ticker that can jump to the scene.
+- History charts (residents and jobs, funds, income and spending, crime, pollution and traffic, approval, power), a city report with approval, a score out of 1,000 and residents' top worries, and a news ticker that can jump to the scene.
 - Terraforming in the city: level hillsides for a price.
 - Undo and redo for the last 25 actions, even while the clock runs. Undo puts back only the area an action touched, so the rest of the city keeps growing. The cost is refunded if you undo within three game months.
 
