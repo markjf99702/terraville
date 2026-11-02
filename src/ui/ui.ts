@@ -514,6 +514,8 @@ export class UI {
     for (const b of this.root.querySelectorAll<HTMLElement>('[data-speed]')) {
       b.setAttribute('aria-pressed', String(Number(b.dataset.speed) === this.game.speed));
     }
+    // Until a new city first runs, Normal is marked as the button to start it (the single arrow is Slow).
+    this.root.querySelector('[data-speed="2"]')?.classList.toggle('start-here', this.game.neverRun && this.game.speed === 0);
     // A lit pause button reads as "playing" to anyone used to media players,
     // so say it in words where the date is.
     const paused = this.game.speed === 0;

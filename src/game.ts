@@ -450,6 +450,7 @@ export class Game {
     // A new city waits for the player: nothing costs upkeep or happens until they press play (Space resumes Normal).
     this.speed = 0;
     this.lastSpeed = 2;
+    this.neverRun = true;
     this.clearUndo();
     this.slotId = null;
     this.world.city.id = newCityId();
@@ -525,6 +526,7 @@ export class Game {
     this.world.city.classReached = CITY_CLASSES.reduce((acc, c, i) => (sim.stats.residents >= c.min ? i : acc), 0);
     this.mode = 'city';
     this.speed = 2;
+    this.neverRun = false;
     this.clearUndo();
     this.slotId = null;
     this.world.city.id = newCityId();
@@ -593,6 +595,7 @@ export class Game {
       // saved: moving it toward the mood here would let each reload nudge it.
       this.sim!.evaluate(false);
       this.speed = 2;
+      this.neverRun = false;
       this.setTool('query');
       this.applySettings();
       this.ui.enterCity();
@@ -746,8 +749,12 @@ export class Game {
 
   setSpeed(s: number): void {
     this.speed = Math.max(0, Math.min(SPEEDS.length - 1, s));
+    if (this.speed > 0) this.neverRun = false;
     this.ui.syncSpeed();
   }
+
+  /** A city founded here whose clock hasn't run yet: the Normal button is marked as the way to start it. */
+  neverRun = false;
 
   togglePause(): void {
     if (this.speed === 0) this.setSpeed(this.lastSpeed || 2);

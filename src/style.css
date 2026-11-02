@@ -211,6 +211,7 @@ button.sign:hover { background: var(--sign-hi); box-shadow: inset 0 0 0 2px var(
 .speed button:hover, .iconbtn:hover { background: var(--panel-3); color: var(--text); }
 .speed button[aria-pressed="true"] { background: var(--panel-3); color: var(--text); border-color: var(--line-2); }
 .speed button.paused[aria-pressed="true"] { background: rgba(242, 193, 78, 0.16); color: var(--caution); border-color: rgba(242, 193, 78, 0.5); }
+.speed button.start-here { border-color: var(--caution); color: var(--text); }
 
 .menu { display: flex; align-items: center; gap: 2px; padding: 4px; margin-left: auto; }
 .menu button {

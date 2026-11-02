@@ -917,8 +917,14 @@ try {
     const month = await page.evaluate(() => window.__terraville.world.city.month);
     await page.waitForTimeout(3000);
     assert.equal(await page.evaluate(() => window.__terraville.world.city.month), month, 'no month passes until play');
+    // Normal, not the single arrow (Slow), is marked as the way to start it, until the clock first runs.
+    assert.deepEqual(await page.$$eval('.speed .start-here', (b) => b.map((x) => x.dataset.speed)), ['2']);
     await page.keyboard.press('Space');
     assert.equal(await page.evaluate(() => window.__terraville.speed), 2, 'Space starts it at Normal');
+    assert.equal(await page.locator('.speed .start-here').count(), 0);
+    await page.keyboard.press('Space');
+    assert.equal(await page.evaluate(() => window.__terraville.speed), 0);
+    assert.equal(await page.locator('.speed .start-here').count(), 0, 'once it has run, a pause is only a pause');
     assert.deepEqual(problems, []);
     await ctx.close();
     const tablet = await profile({ viewport: { width: 1024, height: 768 }, isMobile: true, hasTouch: true });
