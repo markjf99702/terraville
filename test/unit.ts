@@ -8,7 +8,7 @@ import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST, UPGRADE_LV, Kind, BUILDINGS, 
 import { DAMAGED_CODE, challengeWins, citySlot, encode, encodeNow, decode, listSlots, pushSaved, readCode, recordWin, saveCode, SlotMeta } from '../src/save';
 import { Drive, GisOAuth2 } from '../src/drive';
 import { makeRng } from '../src/rng';
-import { SCENARIOS, buildScenario, goalRowText, goalState, openScenario, scenarioMonth, scenarioNews, successLine } from '../src/scenarios';
+import { SCENARIOS, buildScenario, goalRowText, goalState, openScenario, scenarioMonth, scenarioNews, successLine, tideLine } from '../src/scenarios';
 import { Game, priceIncludes } from '../src/game';
 import { chartAxis, spreadLabels, tickLabel } from '../src/ui/charts';
 import { cutOff } from '../src/render/renderer';
@@ -1472,6 +1472,41 @@ await test("Smog Valley's four coal plants stand among its homes, so their smoke
   assert.ok(withCoal - index() >= 2, `the coal plants make ${(withCoal - index()).toFixed(1)} of the pollution index`);
 }));
 
+await test("High Water's tides come each April and October, a quarter of a metre higher each time, and the news says three months ahead how high and what is in the way", () => seeded(5, () => {
+  const s = SCENARIOS.find((x) => x.id === 'tide')!;
+  const w = buildScenario(s, 120, 100);
+  const sim = new Sim(w);
+  openScenario(sim);
+  // The seafront is low and the plants are high: the first tide reaches nothing built, the last a good part of the city.
+  const reach = (n: number) => sim.disasters.inReach(sim.disasters.tideReach(tideLine(n)).tiles);
+  assert.equal(reach(0).length, 0);
+  assert.ok(reach(19).filter((b) => b.kind === 'res').length >= 10, `the last tide reaches ${reach(19).length} buildings`);
+  assert.ok(!reach(19).some((b) => BUILDINGS[b.kind].capacity), 'a power plant stands in the last tide’s way');
+  const said: { text: string; x?: number }[] = [];
+  sim.on((e) => {
+    if (e.type === 'message') said.push(e.message);
+  });
+  const tides: [number, number][] = [];
+  sim.disasters.tide = (level: number) => void tides.push([w.city.month % 12, level]);
+  s.start!(sim);
+  assert.deepEqual(said.map((m) => m.text), ['High tide in three months, up to 2 m. Nothing built is in its way.']);
+  const start = w.city.scenario!.end - 10 * 12;
+  for (let since = 1; since <= 10 * 12; since++) {
+    w.city.month = start + since;
+    if (since === 108) {
+      said.length = 0;
+      scenarioMonth(s, sim);
+      // The tide of October 2056, 6.5 m: as many buildings as it would reach now, and Go there at the first of them.
+      const lost = reach(18);
+      assert.equal(said[0].text, `High tide in three months, up to 6.5 m. It would reach ${lost.length} buildings.`);
+      assert.equal(said[0].x, lost[0].x + 1);
+    } else scenarioMonth(s, sim);
+  }
+  // April is month 3 of a year, October month 9.
+  assert.deepEqual(tides, new Array(20).fill(0).map((_, n) => [n % 2 ? 9 : 3, 2 + n * 0.25]));
+  assert.equal(tides.at(-1)![1], 6.75);
+}));
+
 await test("Aftershock's opening quakes strike under zones, and neither they nor its fires touch the power plants", () => {
   const random = Math.random;
   const aftershock = SCENARIOS.find((x) => x.id === 'aftershock')!;
@@ -1615,16 +1650,17 @@ await test('each challenge lists its conditions as rows, ticked when met, withou
   const sim = new Sim(flat());
   const goal = (id: string) => SCENARIOS.find((s) => s.id === id)!.check(sim);
   const rows = (id: string) => goal(id).rows.map((r) => [goalRowText(r), r.met]);
-  Object.assign(sim.stats, { avgTraffic: 25 * 2.55, avgPollution: 13 * 2.55, residents: 17544, comJobs: 9000, indJobs: 5960, approval: 58 });
+  Object.assign(sim.stats, { avgTraffic: 25 * 2.55, avgPollution: 13 * 2.55, residents: 17544, comJobs: 9000, indJobs: 5960, approval: 58, score: 512 });
   assert.deepEqual(rows('boomtown'), [['Residents 17,544 / 12,000', true]]);
   assert.deepEqual(rows('gridlock'), [['Traffic index 25 · under 28', true], ['Residents 17,544 / 20,000', false], ['Jobs 14,960 / 10,000', true]]);
   assert.deepEqual(rows('smog'), [['Pollution index 13 · under 12', false], ['Residents 17,544 / 20,000', false], ['Jobs 14,960 / 9,000', true]]);
   assert.deepEqual(rows('aftershock'), [['Residents 17,544 / 45,000', false]]);
   assert.deepEqual(rows('monster'), [['Approval 58% · over 60%', false], ['Residents 17,544 / 18,000', false]]);
+  assert.deepEqual(rows('tide'), [['Residents 17,544 / 20,000', false], ['City score 512 · over 500', true]]);
   // The goal is met when every row is, and the bar and the one-line status are as they were.
   assert.deepEqual([goal('gridlock').met, goal('gridlock').progress], [false, 0.5]);
   assert.equal(goal('gridlock').status, 'Traffic 25 (goal under 28) · 17,544 of 20,000 residents · 14,960 of 10,000 jobs');
-  for (const stats of [{ residents: 60000, approval: 70, avgPollution: 5 }, { residents: 21000, approval: 61, avgTraffic: 70 }, { residents: 30000, comJobs: 0, indJobs: 0 }]) {
+  for (const stats of [{ residents: 60000, approval: 70, avgPollution: 5 }, { residents: 21000, approval: 61, avgTraffic: 70, score: 480 }, { residents: 30000, comJobs: 0, indJobs: 0 }]) {
     Object.assign(sim.stats, stats);
     for (const s of SCENARIOS) assert.equal(s.check(sim).met, s.check(sim).rows.every((r) => r.met), `${s.name}: met and its rows disagree`);
   }
@@ -1641,6 +1677,7 @@ await test('a goal judged at the deadline says when; Smog Valley counts only the
   assert.equal(judged('gridlock'), 'Judged at the end of 1960');
   assert.equal(judged('monster'), 'Judged at the end of 1966');
   assert.equal(judged('smog'), 'Judged at the end of 1975');
+  assert.equal(judged('tide'), 'Judged at the end of 2056');
   assert.equal(judged('boomtown'), undefined, 'Boomtown is won the month it gets there');
   assert.equal(judged('aftershock'), undefined);
   const end = (1968 - 1900 + 8) * 12;
@@ -1955,6 +1992,78 @@ await test('a flood says when its waters have gone down, and what they washed aw
   assert.equal(down.length, 1);
   assert.match(down[0].text, /^The flood waters have gone down\. They washed away (a building|\d+ buildings)\.$/);
   assert.equal(down[0].kind, 'info');
+}));
+
+/**
+ * A coast for the high tide: the sea along the west edge, a low plain at 1.5 m out to x = 19 with three houses on it,
+ * high ground at 6 m beyond, and in the high ground a lake with a low shore of its own and a house on it.
+ */
+function tideCoast(): World {
+  const w = flat(40, 30);
+  for (let i = 0; i < w.n; i++) {
+    const x = i % w.w, y = (i / w.w) | 0;
+    w.height[i] = x < 4 ? -4 : x < 20 ? 1.5 : 6;
+    if (x < 4) w.water[i] = 1;
+    if (x >= 28 && x < 36 && y >= 10 && y < 18) w.height[i] = 1.5;
+    if (x >= 30 && x < 34 && y >= 12 && y < 16) { w.water[i] = 1; w.height[i] = -2; }
+  }
+  for (const x of [5, 10, 15]) w.setLevel(w.place('res', x, 4), 2);
+  w.setLevel(w.place('res', 29, 10), 2);
+  return w;
+}
+const houses = (w: World) => [...w.buildings.values()].filter((b) => b.kind === 'res').map((b) => b.x).sort((a, b) => a - b);
+const tideNews = (sim: Sim) => sim.messages.map((m) => m.text).filter((t) => /tide/.test(t));
+
+await test('a high tide covers the land below its line that the sea reaches, and a bank above the line keeps it out', () => seeded(2, () => {
+  const w = tideCoast();
+  const sim = new Sim(w);
+  // As far as five weeks take it: the whole plain, but neither the high ground nor the lake's own low shore.
+  const reach = sim.disasters.tideReach(3);
+  const plain = new Set<number>();
+  for (let i = 0; i < w.n; i++) if (!w.water[i] && w.height[i] < 3 && i % w.w < 20) plain.add(i);
+  assert.deepEqual(new Set(reach.tiles), plain);
+  assert.deepEqual(sim.disasters.inReach(reach.tiles).map((b) => b.x), [5, 10, 15], 'nearest the sea first');
+  sim.disasters.tide(3);
+  assert.deepEqual(sim.messages.map((m) => [m.text, m.kind, m.x, m.y]), [['High tide: the sea is coming in over the land below 3 m.', 'alert', 6, 5]], 'Go there goes to the first house in its way');
+  for (let k = 0; k < 12; k++) sim.step();
+  assert.equal(w.flood.filter((f) => f > 0).length, 0, 'the tide has gone out');
+  assert.deepEqual(houses(w), [29], 'only the house by the lake is left');
+  assert.deepEqual(tideNews(sim), ['High tide: the sea is coming in over the land below 3 m.', 'The tide has gone out. It washed away 3 buildings.']);
+
+  // A bank of land at 4 m along the shore, two tiles wide: the same tide covers only the beach in front of it, and the
+  // house that stands half on the beach.
+  const banked = tideCoast();
+  for (let y = 0; y < 30; y++) for (const x of [6, 7]) banked.height[y * banked.w + x] = 4;
+  const sim2 = new Sim(banked);
+  assert.deepEqual(sim2.disasters.tideReach(3).tiles.map((i) => i % banked.w).sort(), [...new Array(30).fill(4), ...new Array(30).fill(5)]);
+  sim2.disasters.tide(3);
+  for (let k = 0; k < 12; k++) sim2.step();
+  assert.deepEqual(houses(banked), [10, 15, 29]);
+  assert.equal(tideNews(sim2).at(-1), 'The tide has gone out. It washed away a building.');
+  // A bank right at the water's edge keeps all of it out, and the news says so.
+  for (let y = 0; y < 30; y++) banked.height[y * banked.w + 4] = banked.height[y * banked.w + 5] = 4;
+  const sim3 = new Sim(banked);
+  sim3.disasters.tide(3);
+  for (let k = 0; k < 12; k++) sim3.step();
+  assert.deepEqual(tideNews(sim3), ['The high tide came up to 3 m, and the shore kept it out.']);
+  assert.deepEqual(houses(banked), [10, 15, 29]);
+}));
+
+await test('a high tide under way keeps coming in after a reload, and ends as a tide', () => seeded(4, () => {
+  const w = tideCoast();
+  let sim = new Sim(w);
+  sim.disasters.tide(3);
+  sim.step();
+  const run = sim.saveRun();
+  assert.equal(run.floodTide, true);
+  const back = World.deserialize(JSON.parse(JSON.stringify(w.serialize(run)))).run!;
+  assert.deepEqual([back.floodTide, back.floodLevel, back.floodAge, back.floodWrecked], [true, 3, run.floodAge, run.floodWrecked]);
+  sim = new Sim(World.deserialize(JSON.parse(JSON.stringify(w.serialize(run)))));
+  for (let k = 0; k < 12; k++) sim.step();
+  // Four tiles a week from the shore at x = 4: a week in, it is still coming, and reaches the house at x = 15.
+  assert.deepEqual(houses(sim.world), [29]);
+  assert.equal(tideNews(sim).at(-1), 'The tide has gone out. It washed away 3 buildings.');
+  assert.equal(sim.saveRun().floodTide, false);
 }));
 
 await test('undo refunds only within three months of the action, however often it was undone and redone since', () => seeded(42, () => {

@@ -593,9 +593,25 @@ export class Game {
       cy += b.y + b.size / 2;
       n++;
     }
+    if (n) {
+      cx /= n;
+      cy /= n;
+    }
+    if (n && s.city?.shore) {
+      // A city on the sea front opens looking toward the water, where its trouble comes from.
+      let sea = -1, best = Infinity;
+      for (let i = 0; i < this.world.n; i++) {
+        const d = this.world.water[i] ? Math.hypot((i % this.world.w) - cx, ((i / this.world.w) | 0) - cy) : Infinity;
+        if (d < best) { best = d; sea = i; }
+      }
+      if (sea >= 0) {
+        cx = (cx + (sea % this.world.w)) / 2;
+        cy = (cy + ((sea / this.world.w) | 0)) / 2;
+      }
+    }
     this.renderer.resize();
     this.renderer.cam.zoom = n ? 13 : Math.max(this.renderer.minZoom(), 9);
-    this.renderer.centerOn(n ? cx / n : this.world.w / 2, n ? cy / n : this.world.h / 2);
+    this.renderer.centerOn(n ? cx : this.world.w / 2, n ? cy : this.world.h / 2);
     // The goal opens the news, ahead of whatever the challenge sets off.
     sim.say('goal', `${s.goal} You have until ${s.year + s.years}.`, 'info', undefined, 0);
     s.start?.(sim);

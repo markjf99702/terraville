@@ -859,6 +859,8 @@ export interface SavedRun {
   floodAge: number;
   /** Buildings the flood under way has washed away. */
   floodWrecked?: number;
+  /** Whether the flood under way is a high tide, coming in from the whole shore. */
+  floodTide?: boolean;
   /** The city's figures as the last month closed, which the sign, the Report and the goal tracker show until the next. */
   readouts?: SavedReadouts;
 }
@@ -930,6 +932,7 @@ function cleanRun(raw: unknown, w: number, h: number): SavedRun | null {
     floodAge: Math.floor(num(s.floodAge, 0, 0, 1e6)),
   };
   if (s.floodWrecked !== undefined) run.floodWrecked = Math.floor(num(s.floodWrecked, 0, 0, 1e5));
+  if (s.floodTide !== undefined) run.floodTide = s.floodTide === true;
   const readouts = cleanReadouts(s.readouts);
   if (readouts) run.readouts = readouts;
   if (s.lastPop !== undefined) run.lastPop = Math.floor(num(s.lastPop, 0, 0));

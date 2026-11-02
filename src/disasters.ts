@@ -44,6 +44,15 @@ interface Blaze {
   many?: boolean;
 }
 
+/** How far inland a high tide gets from the shore where it comes in, in tiles: four a week for five weeks. */
+export const TIDE_REACH = 20;
+
+/** A tile's four neighbours on a map `w` wide and `h` high, -1 where it is the edge. */
+function neighbours(i: number, w: number, h: number): number[] {
+  const x = i % w, y = (i / w) | 0;
+  return [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, y > 0 ? i - w : -1, y < h - 1 ? i + w : -1];
+}
+
 /** How near a new fire must be to one already burning to be part of it, in tiles. */
 const BLAZE_REACH = 6;
 
@@ -70,6 +79,8 @@ export class Disasters {
   lastQuake: { x: number; y: number } | null = null;
   private floodLevel = 0;
   private floodAge = 0;
+  /** A high tide under way comes in from the whole shore, and further: see tide(). */
+  private floodTide = false;
   /** Buildings the flood under way has washed away, for the line it ends with. */
   private floodWrecked = 0;
   /** While set, a disaster set off says nothing: a challenge's opening says it all in one line. */
@@ -93,20 +104,22 @@ export class Disasters {
   }
 
   /** A tornado or monster under way and a flood still rising, for a save. */
-  saveRun(): Pick<SavedRun, 'roamers' | 'floodLevel' | 'floodAge' | 'floodWrecked'> {
+  saveRun(): Pick<SavedRun, 'roamers' | 'floodLevel' | 'floodAge' | 'floodWrecked' | 'floodTide'> {
     return {
       roamers: this.roamers.map(({ kind, x, y, vx, vy, weeks, heading, wrecked }) => ({ kind, x, y, vx, vy, weeks, heading, wrecked: wrecked ?? 0 })),
       floodLevel: this.floodLevel,
       floodAge: this.floodAge,
       floodWrecked: this.floodWrecked,
+      floodTide: this.floodTide,
     };
   }
 
-  resume(run: Pick<SavedRun, 'roamers' | 'floodLevel' | 'floodAge' | 'floodWrecked'>): void {
+  resume(run: Pick<SavedRun, 'roamers' | 'floodLevel' | 'floodAge' | 'floodWrecked' | 'floodTide'>): void {
     this.roamers = run.roamers.map((r) => ({ ...r, px: r.x, py: r.y }));
     this.floodLevel = run.floodLevel;
     this.floodAge = run.floodAge;
     this.floodWrecked = run.floodWrecked ?? 0;
+    this.floodTide = !!run.floodTide;
   }
 
   week(): void {
@@ -501,12 +514,116 @@ export class Disasters {
     this.floodLevel = world.height[pickI] + 2.5 + Math.random() * 2.5;
     this.floodAge = 0;
     this.floodWrecked = 0;
+    this.floodTide = false;
     world.flood[pickI] = 16;
     this.floodTile(pickI);
     const x = pickI % w;
     const y = (pickI / w) | 0;
     this.say('flood', 'Flooding along the shore!', 'alert', { x, y }, 0);
     this.sim.emit({ type: 'disaster', kind: 'flood', x, y });
+  }
+
+  /**
+   * The land a high tide up to `level` metres would cover, as tide() floods it: every tile below the line that the sea
+   * reaches over land below the line, within TIDE_REACH tiles of the shore where it comes in. The sea is the water
+   * that reaches the edge of the map, so a lake or a river on its own floods nothing, and a bank of land above the line
+   * keeps it out of whatever lies behind. The first tiles, those beside the sea, come first in the list.
+   */
+  tideReach(level: number): { tiles: number[]; first: number } {
+    const world = this.world;
+    const { w, h, n } = world;
+    const sea = new Uint8Array(n);
+    const q: number[] = [];
+    for (let i = 0; i < n; i++) {
+      const x = i % w, y = (i / w) | 0;
+      if (world.water[i] && (x === 0 || y === 0 || x === w - 1 || y === h - 1)) {
+        sea[i] = 1;
+        q.push(i);
+      }
+    }
+    while (q.length) {
+      const i = q.pop()!;
+      for (const j of neighbours(i, w, h)) {
+        if (j >= 0 && !sea[j] && world.water[j]) {
+          sea[j] = 1;
+          q.push(j);
+        }
+      }
+    }
+    const depth = new Int16Array(n).fill(-1);
+    const tiles: number[] = [];
+    for (let i = 0; i < n; i++) {
+      if (world.water[i] || world.height[i] >= level) continue;
+      if (neighbours(i, w, h).some((j) => j >= 0 && sea[j])) {
+        depth[i] = 0;
+        tiles.push(i);
+      }
+    }
+    const first = tiles.length;
+    for (let k = 0; k < tiles.length; k++) {
+      const i = tiles[k];
+      if (depth[i] >= TIDE_REACH) continue;
+      for (const j of neighbours(i, w, h)) {
+        if (j < 0 || depth[j] >= 0 || world.water[j] || world.height[j] >= level) continue;
+        depth[j] = depth[i] + 1;
+        tiles.push(j);
+      }
+    }
+    return { tiles, first };
+  }
+
+  /** The buildings standing in a tide's way, as the news counts them: no empty lots or parks. */
+  inReach(tiles: number[]): Building[] {
+    const world = this.world;
+    const seen = new Set<Building>();
+    for (const i of tiles) {
+      const b = world.occ[i] ? world.buildings.get(world.occ[i]) : undefined;
+      if (b && b.kind !== 'park' && !(isZone(b.kind) && b.level === 0)) seen.add(b);
+    }
+    return [...seen];
+  }
+
+  /**
+   * A high tide, as High Water has them: the sea comes in over the land below `level` metres from every stretch of
+   * shore it washes at once, and keeps coming for five weeks, four tiles a week, as far as tideReach() says.
+   */
+  tide(level: number): void {
+    const world = this.world;
+    const { w } = world;
+    const { tiles, first } = this.tideReach(level);
+    if (!first) {
+      this.say('flood', `The high tide came up to ${level} m, and the shore kept it out.`, 'good', undefined, 0);
+      return;
+    }
+    const lost = this.inReach(tiles);
+    this.floodLevel = level;
+    this.floodAge = 0;
+    this.floodWrecked = 0;
+    this.floodTide = true;
+    for (let k = 0; k < first; k++) {
+      const i = tiles[k];
+      world.flood[i] = 7 + Math.floor(Math.random() * 3);
+      this.floodTile(i);
+    }
+    // For Go there: the first building in its way, or else where it comes ashore nearest the middle of the city.
+    let spot = lost[0] ? (lost[0].y + 1) * w + lost[0].x + 1 : -1;
+    if (spot < 0) {
+      let cx = 0, cy = 0, c = 0;
+      for (const b of world.buildings.values()) {
+        cx += b.x;
+        cy += b.y;
+        c++;
+      }
+      [cx, cy] = c ? [cx / c, cy / c] : [w / 2, world.h / 2];
+      let best = Infinity;
+      for (let k = 0; k < first; k++) {
+        const d = Math.hypot((tiles[k] % w) - cx, ((tiles[k] / w) | 0) - cy);
+        if (d < best) { best = d; spot = tiles[k]; }
+      }
+    }
+    const at = { x: spot % w, y: (spot / w) | 0 };
+    this.say('flood', `High tide: the sea is coming in over the land below ${level} m.`, 'alert', at, 0);
+    this.sim.emit({ type: 'disaster', kind: 'flood', ...at });
   }
 
   private floodTile(i: number): void {
@@ -526,32 +643,22 @@ export class Disasters {
 
   private spreadFlood(): void {
     const world = this.world;
-    const { w, h, n } = world;
+    const { w, n } = world;
     const flood = world.flood;
     let any = false;
     const grow: number[] = [];
     this.floodAge++;
-    for (let i = 0; i < n; i++) {
-      if (!flood[i]) continue;
-      any = true;
-      if (this.floodAge < 6) {
-        const x = i % w;
-        const y = (i / w) | 0;
-        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-          const nx = x + dx;
-          const ny = y + dy;
-          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-          const j = ny * w + nx;
-          if (flood[j] || world.water[j] || world.height[j] > this.floodLevel) continue;
-          if (Math.random() < 0.6) grow.push(j);
-        }
+    // A tide spreads four tiles a week; an ordinary flood one, here and there.
+    for (let pass = 0; pass < (this.floodTide ? 4 : 1); pass++) {
+      grow.length = 0;
+      this.floodReach(grow);
+      for (const j of grow) {
+        if (flood[j]) continue;
+        flood[j] = this.floodTide ? 7 + Math.floor(Math.random() * 3) - this.floodAge : 10 + Math.floor(Math.random() * 6);
+        this.floodTile(j);
       }
     }
-    for (const j of grow) {
-      if (flood[j]) continue;
-      flood[j] = 10 + Math.floor(Math.random() * 6);
-      this.floodTile(j);
-    }
+    for (let i = 0; i < n; i++) if (flood[i]) any = true;
     if (!any) return;
     let left = 0;
     for (let i = 0; i < n; i++) {
@@ -565,8 +672,31 @@ export class Disasters {
     }
     if (!left) {
       const lost = this.floodWrecked;
-      this.say('flooddown', `The flood waters have gone down.${lost ? ` They washed away ${buildings(lost)}.` : ''}`, 'info', undefined, 0);
+      const [out, they] = this.floodTide ? ['The tide has gone out.', 'It'] : ['The flood waters have gone down.', 'They'];
+      this.say('flooddown', `${out}${lost ? ` ${they} washed away ${buildings(lost)}.` : ''}`, 'info', undefined, 0);
       this.floodWrecked = 0;
+      this.floodTide = false;
+    }
+  }
+
+  /** The land next to the flood that it reaches this pass: a tide all the land below its line, a flood most of it. */
+  private floodReach(grow: number[]): void {
+    const world = this.world;
+    const { w, h, n } = world;
+    const flood = world.flood;
+    if (this.floodAge >= 6) return;
+    for (let i = 0; i < n; i++) {
+      if (!flood[i]) continue;
+      const x = i % w;
+      const y = (i / w) | 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const j = ny * w + nx;
+        if (flood[j] || world.water[j]) continue;
+        if (this.floodTide ? world.height[j] < this.floodLevel : world.height[j] <= this.floodLevel && Math.random() < 0.6) grow.push(j);
+      }
     }
   }
 

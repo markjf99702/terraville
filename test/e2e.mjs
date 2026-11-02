@@ -575,7 +575,7 @@ try {
     await titleUp(page);
     await page.click('[data-act="challenges"]');
     const won = await page.$$eval('.modal .slot', (rows) => rows.map((r) => [r.querySelector('b').textContent, r.querySelector('.won')?.textContent ?? '']));
-    assert.deepEqual(won, [['Boomtown', 'Won in 1900'], ['Gridlock', ''], ['Smog Valley', ''], ['Aftershock', ''], ['Monster Bay', '']]);
+    assert.deepEqual(won, [['Boomtown', 'Won in 1900'], ['Gridlock', ''], ['Smog Valley', ''], ['Aftershock', ''], ['Monster Bay', ''], ['High Water', '']]);
     assert.deepEqual(problems, []);
     await ctx.close();
   });

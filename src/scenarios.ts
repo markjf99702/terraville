@@ -3,8 +3,8 @@
 import { BUILDINGS, Kind, LANDMARK_NEEDS, POWER, RAIL, ROAD, isZone, num, toIndex as idx } from './defs';
 import { Rng, makeRng, hashString } from './rng';
 import { Sim } from './sim';
-import { DEFAULT_TERRAIN, TerrainParams, generateTerrain } from './terrain';
-import { World, newCityState } from './world';
+import { DEFAULT_TERRAIN, TerrainParams, generateTerrain, shoreDistance } from './terrain';
+import { Building, World, newCityState } from './world';
 
 /** One condition of a goal, as the tracker lists it: 'Traffic index 25 · under 28', 'Residents 17,544 / 20,000'. */
 export interface GoalRow {
@@ -82,6 +82,11 @@ interface CityPlan {
   extras?: Kind[];
   /** Roads around 2x2 groups of lots instead of every lot: fewer, busier streets. */
   superblocks?: boolean;
+  /**
+   * The city stands on the sea front: its land rises this many metres a tile from a metre and a half above the sea at
+   * the shore, and the plants and big buildings go on the landward side, out of the water's way.
+   */
+  shore?: number;
 }
 
 
@@ -91,6 +96,28 @@ interface CityPlan {
  * coal won 20, and growing with the coal kept won 9.
  */
 export const MONSTER_LINE = 9;
+
+/**
+ * How high High Water's tides come, the `n`th (from 0): two a year, in April and October, from 2 m above the sea and a
+ * quarter of a metre higher each time, after the original's Rio de Janeiro scenario, which floods every six months.
+ */
+export function tideLine(n: number): number {
+  return 2 + n * 0.25;
+}
+
+/** The buildings High Water's `n`th tide would reach, as the city stands. */
+function tideAhead(sim: Sim, n: number): Building[] {
+  return sim.disasters.inReach(sim.disasters.tideReach(tideLine(n)).tiles);
+}
+
+/** High Water's word three months before its `n`th tide: how high it comes, and what stands in its way. */
+function tideForecast(sim: Sim, n: number): void {
+  const line = tideLine(n);
+  const lost = tideAhead(sim, n);
+  const what = lost.length === 1 ? 'one building' : `${num(lost.length)} buildings`;
+  const b = lost[0];
+  sim.say('tide-soon', `High tide in three months, up to ${line} m. ${lost.length ? `It would reach ${what}.` : 'Nothing built is in its way.'}`, lost.length ? 'warn' : 'info', b && { x: b.x + 1, y: b.y + 1 }, 0);
+}
 
 export const SCENARIOS: Scenario[] = [
   {
@@ -279,6 +306,55 @@ export const SCENARIOS: Scenario[] = [
     // Said as it comes ashore (it stays about 30 weeks, so within the last month), once a visit.
     advise: (sim) => (sim.disasters.roamers.some((r) => r.kind === 'monster' && r.weeks >= 26) ? 'The monster heads for the smokiest spot in town.' : null),
   },
+  {
+    id: 'tide',
+    name: 'High Water',
+    year: 2047,
+    years: 10,
+    funds: 20000,
+    blurb: 'The sea is rising. Twice a year the high tide comes in over the low seafront, a little higher each time. Build up the shore, and keep the city growing behind it.',
+    goal: 'After 10 years, have at least 20,000 residents and a city score over 500.',
+    win: 'The sea is still rising, but the city keeps its feet dry.',
+    lose: 'The tide took more than the city could build back.',
+    kind: 'hold',
+    terrain: { seed: 'high-water-4', style: 'coast', hills: 20, water: 40, rivers: 0, lakes: 0, forest: 30 },
+    city: {
+      radius: 6,
+      mix: (d, rng) => (d < 1.4 ? 'com' : d > 5 && rng() < 0.3 ? 'ind' : rng() < 0.08 ? 'com' : 'res'),
+      level: (k, d, rng) => (k === 'com' ? (d < 1 ? 5 : 4) : k === 'res' ? Math.max(3, Math.round(7 - d * 0.6 + rng() - 0.5)) : 3),
+      plants: ['coal', 'coal'],
+      police: 2,
+      fire: 2,
+      shore: 0.3,
+    },
+    // The first forecast opens the news, after the goal.
+    start: (sim) => tideForecast(sim, 0),
+    monthly: (sim) => {
+      const sc = sim.world.city.scenario;
+      if (!sc) return;
+      const since = sim.world.city.month - (sc.end - 10 * 12);
+      if (since % 6 === 0 && since < 10 * 12) tideForecast(sim, since / 6);
+      if (since % 6 === 3) sim.disasters.tide(tideLine((since - 3) / 6));
+    },
+    check: (sim) => {
+      const r = sim.stats.residents;
+      const sc = sim.stats.score;
+      return {
+        progress: Math.min(1, r / 20000) * Math.min(1, sc / 501),
+        status: `${num(r)} of 20,000 residents · score ${sc} (goal over 500)`,
+        met: r >= 20000 && sc > 500,
+        rows: [atLeast('Residents', r, 20000), { label: 'City score', value: String(sc), goal: 'over 500', met: sc > 500 }],
+      };
+    },
+    // How to keep the water out, after a forecast that the next tide would reach something, while the city is short.
+    advise: (sim) => {
+      const sc = sim.world.city.scenario;
+      const since = sc ? sim.world.city.month - (sc.end - 10 * 12) : 1;
+      return since % 6 === 0 && sim.stats.residents < 20000 && tideAhead(sim, since / 6).length
+        ? 'Level land raises open ground to the height where you first press: start on high ground and drag along the shore. The water comes through any gap, a road included.'
+        : null;
+    },
+  },
 ];
 
 /**
@@ -445,10 +521,12 @@ function layCity(world: World, plan: CityPlan, rng: Rng): void {
   const { w, h } = world;
   // Find the flattest dry area for the grid.
   const span = plan.radius * 2 * 4 + 1;
+  const sea = plan.shore ? shoreDistance(world, span) : null;
   let best = { x: 4, y: 4, bad: Infinity };
   for (let y = 2; y + span < h - 2; y += 2) {
     for (let x = 2; x + span < w - 2; x += 2) {
-      let bad = 0;
+      // On the sea front, the disc's edge comes down to the water.
+      let bad = sea ? Math.abs(sea[(y + (span >> 1)) * w + x + (span >> 1)] - (span >> 1) - 2) * 4 : 0;
       for (let dy = 0; dy < span; dy += 2) {
         for (let dx = 0; dx < span; dx += 2) {
           const i = (y + dy) * w + x + dx;
@@ -469,15 +547,31 @@ function layCity(world: World, plan: CityPlan, rng: Rng): void {
   const blocks = Math.ceil((plan.radius * 2 * 4) / stride);
   const centre = blocks / 2 - 0.5;
   const scale = stride / 4;
-  // Level the site gently so zones fit.
-  for (let y = oy; y < oy + span && y < h; y++) {
-    for (let x = ox; x < ox + span && x < w; x++) {
-      const i = y * w + x;
-      if (world.water[i]) continue;
-      const d = Math.hypot(x - ox - span / 2, y - oy - span / 2) / (span / 2);
-      if (d > 1.05) continue;
-      world.height[i] = world.height[i] * 0.35 + 4 * 0.65;
-      world.trees[i] = 0;
+  if (plan.shore && sea) {
+    // A plain rising gently from the shore, blending into the land round it.
+    for (let y = Math.max(0, oy - 12); y < Math.min(h, oy + span + 12); y++) {
+      for (let x = Math.max(0, ox - 12); x < Math.min(w, ox + span + 12); x++) {
+        const i = y * w + x;
+        if (world.water[i]) continue;
+        const d = Math.hypot(x - ox - span / 2, y - oy - span / 2) / (span / 2);
+        if (d > 1.5) continue;
+        const ramp = 1.5 + plan.shore * sea[i];
+        const t = Math.max(0, Math.min(1, (d - 1) / 0.5));
+        world.height[i] = ramp + (world.height[i] - ramp) * t;
+        if (d <= 1.05) world.trees[i] = 0;
+      }
+    }
+  } else {
+    // Level the site gently so zones fit.
+    for (let y = oy; y < oy + span && y < h; y++) {
+      for (let x = ox; x < ox + span && x < w; x++) {
+        const i = y * w + x;
+        if (world.water[i]) continue;
+        const d = Math.hypot(x - ox - span / 2, y - oy - span / 2) / (span / 2);
+        if (d > 1.05) continue;
+        world.height[i] = world.height[i] * 0.35 + 4 * 0.65;
+        world.trees[i] = 0;
+      }
     }
   }
   const inCity = (c: number, r: number) => Math.hypot(c - centre, r - centre) * scale <= plan.radius + 0.3;
@@ -574,9 +668,19 @@ function layCity(world: World, plan: CityPlan, rng: Rng): void {
   }
   // Big buildings and plants just outside the grid, wired in.
   const outside: Kind[] = [...(plan.plantsAmongHomes ? [] : plan.plants), ...(plan.extras ?? []).filter((e) => BUILDINGS[e].size !== 3)];
-  let angle = sideAngle + Math.PI;
   const cx = ox + span / 2;
   const cy = oy + span / 2;
+  let angle = sideAngle + Math.PI;
+  if (sea) {
+    // Away from the sea: the way the land climbs from the centre.
+    let gx = 0, gy = 0;
+    for (let y = oy; y < Math.min(h, oy + span); y++) for (let x = ox; x < Math.min(w, ox + span); x++) {
+      const v = sea[y * w + x];
+      gx += (x - cx) * v;
+      gy += (y - cy) * v;
+    }
+    angle = Math.atan2(gy, gx) - 0.9;
+  }
   for (const kind of outside) {
     const size = BUILDINGS[kind].size;
     let placed = false;
