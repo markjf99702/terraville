@@ -355,6 +355,42 @@ export const SCENARIOS: Scenario[] = [
         : null;
     },
   },
+  {
+    id: 'crime',
+    name: 'Crime Wave',
+    year: 1972,
+    years: 10,
+    funds: 20000,
+    blurb: 'Land values have fallen, work is scarce, and crime has taken hold of the crowded streets, with no police station left in the city. Make the streets safe, and make the city worth moving to again.',
+    goal: 'After 10 years, have the crime index under 5 and at least 22,000 residents.',
+    win: 'The streets are safe again, and people are moving back.',
+    lose: 'The city is still waiting for its comeback.',
+    kind: 'hold',
+    terrain: { seed: 'crime-wave-9', style: 'lakes', hills: 10, lakes: 5, rivers: 0, forest: 5 },
+    city: {
+      radius: 6,
+      superblocks: true,
+      mix: (d, rng) => (d < 1.2 ? 'com' : rng() < 0.22 ? 'ind' : rng() < 0.06 ? 'com' : 'res'),
+      level: (k, d, rng) => (k === 'com' ? 4 : k === 'res' ? Math.max(4, Math.round(7.5 - d * 0.5 + rng() - 0.5)) : 3 + Math.round(rng())),
+      plants: ['coal', 'coal'],
+      police: 0,
+      fire: 2,
+    },
+    check: (sim) => {
+      const c = idx(sim.stats.avgCrime);
+      const r = sim.stats.residents;
+      return {
+        progress: Math.max(0, Math.min(1, (20 - c) / 15)) * Math.min(1, r / 22000),
+        status: `Crime ${c} (goal under 5) · ${num(r)} of 22,000 residents`,
+        met: c < 5 && r >= 22000,
+        rows: [{ label: 'Crime index', value: String(c), goal: 'under 5', met: c < 5 }, atLeast('Residents', r, 22000)],
+      };
+    },
+    advise: (sim) => {
+      const c = idx(sim.stats.avgCrime);
+      return c >= 5 ? `Crime index ${c}: the goal is under 5. A police station cuts crime within about 18 tiles, and higher land value cuts it too.` : null;
+    },
+  },
 ];
 
 /**

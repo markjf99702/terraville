@@ -1507,6 +1507,39 @@ await test("High Water's tides come each April and October, a quarter of a metre
   assert.equal(tides.at(-1)![1], 6.75);
 }));
 
+await test('Crime Wave opens with no police and crime its people’s top worry, and a few police stations bring it under the line', () => seeded(3, () => {
+  const s = SCENARIOS.find((x) => x.id === 'crime')!;
+  const w = buildScenario(s, 120, 100);
+  const sim = new Sim(w);
+  openScenario(sim);
+  sim.evaluate(false);
+  const index = () => Math.round(sim.stats.avgCrime / 2.55);
+  assert.equal([...w.buildings.values()].filter((b) => b.kind === 'police').length, 0);
+  assert.equal(sim.stats.unpowered, 0);
+  assert.ok(index() >= 15, `crime index ${index()} at the opening`);
+  assert.equal(sim.stats.problems[0].id, 'crime');
+  assert.equal(s.advise!(sim), `Crime index ${index()}: the goal is under 5. A police station cuts crime within about 18 tiles, and higher land value cuts it too.`);
+  // Four stations in place of homes, one in the middle and three around it, as the guide's tip has it.
+  let cx = 0, cy = 0, n = 0;
+  for (const b of w.buildings.values()) if (b.kind === 'res' || b.kind === 'com' || b.kind === 'ind') { cx += b.x; cy += b.y; n++; }
+  cx /= n;
+  cy /= n;
+  for (const [dx, dy] of [[0, 0], [15, 0], [-8, 13], [-8, -13]]) {
+    let pick: { id: number; x: number; y: number; d: number } | undefined;
+    for (const b of w.buildings.values()) {
+      const d = Math.hypot(b.x - cx - dx, b.y - cy - dy);
+      if (b.kind === 'res' && (!pick || d < pick.d)) pick = { id: b.id, x: b.x, y: b.y, d };
+    }
+    w.remove(pick!.id);
+    w.place('police', pick!.x, pick!.y);
+  }
+  sim.computePower();
+  sim.computeMaps();
+  sim.computeMaps();
+  assert.ok(index() < 5, `crime index ${index()} with four police stations`);
+  assert.equal(s.advise!(sim), null);
+}));
+
 await test("Aftershock's opening quakes strike under zones, and neither they nor its fires touch the power plants", () => {
   const random = Math.random;
   const aftershock = SCENARIOS.find((x) => x.id === 'aftershock')!;
@@ -1657,10 +1690,11 @@ await test('each challenge lists its conditions as rows, ticked when met, withou
   assert.deepEqual(rows('aftershock'), [['Residents 17,544 / 45,000', false]]);
   assert.deepEqual(rows('monster'), [['Approval 58% · over 60%', false], ['Residents 17,544 / 18,000', false]]);
   assert.deepEqual(rows('tide'), [['Residents 17,544 / 20,000', false], ['City score 512 · over 500', true]]);
+  assert.deepEqual(rows('crime'), [['Crime index 0 · under 5', true], ['Residents 17,544 / 22,000', false]]);
   // The goal is met when every row is, and the bar and the one-line status are as they were.
   assert.deepEqual([goal('gridlock').met, goal('gridlock').progress], [false, 0.5]);
   assert.equal(goal('gridlock').status, 'Traffic 25 (goal under 28) · 17,544 of 20,000 residents · 14,960 of 10,000 jobs');
-  for (const stats of [{ residents: 60000, approval: 70, avgPollution: 5 }, { residents: 21000, approval: 61, avgTraffic: 70, score: 480 }, { residents: 30000, comJobs: 0, indJobs: 0 }]) {
+  for (const stats of [{ residents: 60000, approval: 70, avgPollution: 5 }, { residents: 21000, approval: 61, avgTraffic: 70, score: 480, avgCrime: 12 * 2.55 }, { residents: 30000, comJobs: 0, indJobs: 0 }]) {
     Object.assign(sim.stats, stats);
     for (const s of SCENARIOS) assert.equal(s.check(sim).met, s.check(sim).rows.every((r) => r.met), `${s.name}: met and its rows disagree`);
   }
@@ -1678,6 +1712,7 @@ await test('a goal judged at the deadline says when; Smog Valley counts only the
   assert.equal(judged('monster'), 'Judged at the end of 1966');
   assert.equal(judged('smog'), 'Judged at the end of 1975');
   assert.equal(judged('tide'), 'Judged at the end of 2056');
+  assert.equal(judged('crime'), 'Judged at the end of 1981');
   assert.equal(judged('boomtown'), undefined, 'Boomtown is won the month it gets there');
   assert.equal(judged('aftershock'), undefined);
   const end = (1968 - 1900 + 8) * 12;

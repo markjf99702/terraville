@@ -38,6 +38,7 @@ Play it at [terraville.junkdrawer.works](https://terraville.junkdrawer.works/), 
 - *Aftershock* (1989): rebuild after an earthquake and keep growing.
 - *Monster Bay* (1957): something in the bay surfaces every two years, and comes ashore if the air is smoky.
 - *High Water* (2047): twice a year the tide comes in over the seafront, a little higher each time; build up the shore and grow behind it.
+- *Crime Wave* (1972): crime has taken hold of a crowded city with no police; make the streets safe and bring people back.
 
 The Challenges list marks each one you have won in this browser, with the year you won it in.
 
