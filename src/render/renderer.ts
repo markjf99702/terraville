@@ -1187,10 +1187,6 @@ export class Renderer {
   }
 
   /**
-   * The tile or building the Inspect card describes, in caution yellow over a dark edge (as the brush ring is drawn),
-   * 2 px wide just outside its footprint so a finger's worth of neighbours can't be taken for it.
-   */
-  /**
    * Who drives or rides along the selected tile: the map dimmed (as a layer dims it), and their homes, shops and
    * factories filled in their zone's colour and outlined.
    */
@@ -1220,6 +1216,10 @@ export class Renderer {
     paint(t.jobs);
   }
 
+  /**
+   * The tile or building the Inspect card describes, in caution yellow over a dark edge (as the brush ring is drawn),
+   * 2 px wide just outside its footprint so a finger's worth of neighbours can't be taken for it.
+   */
   private drawSelected(ctx: CanvasRenderingContext2D): void {
     const s = this.selected;
     if (!s) return;
