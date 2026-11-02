@@ -928,6 +928,8 @@ export class UI {
       };
       d.appendChild(b);
     };
+    // A phone has no room for Redo in the top bar, and no keyboard for Ctrl+Shift+Z.
+    if (this.game.mode === 'city' && this.narrow() && this.game.canRedo()) add('redo', 'Redo', () => this.game.redo());
     const drive = this.game.drive;
     if (this.game.mode === 'city' && drive.status() === 'signin') {
       add('cloud', 'Sign in to Google Drive', () => this.connectDrive());

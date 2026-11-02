@@ -850,6 +850,38 @@ try {
     await tablet.close();
   });
 
+  await test('on a phone, the menu offers Redo after an undo', async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await found(page);
+    const menu = async () => {
+      await page.click('[data-act="menu"]');
+      const items = await page.$$eval('.dropdown button', (b) => b.map((x) => x.textContent.trim()));
+      await page.click('[data-act="menu"]');
+      return items;
+    };
+    assert.ok(!(await menu()).includes('Redo'), 'nothing to redo yet');
+    const roads = () => page.evaluate(() => window.__terraville.world.net.filter((v) => v & 1).length);
+    await page.evaluate(() => {
+      const g = window.__terraville;
+      const w = g.world;
+      const i = w.height.findIndex((h, i) => !w.water[i] && !w.occ[i] && i % w.w > 5 && i % w.w < w.w - 10 && Math.floor(i / w.w) > 5);
+      const x = (i % w.w) + 0.5;
+      const y = Math.floor(i / w.w) + 0.5;
+      g.setTool('road');
+      g.pointerDown(x, y, 10, 10);
+      g.pointerUp(x, y, 10, 10);
+      g.undo();
+    });
+    assert.equal(await roads(), 0);
+    assert.ok((await menu()).includes('Redo'));
+    await page.click('[data-act="menu"]');
+    await page.click('.dropdown button:has-text("Redo")');
+    assert.equal(await roads(), 1, 'Redo put the road back');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('on a phone, Inspect takes the bottom slot from the map layer card and the news log', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);
