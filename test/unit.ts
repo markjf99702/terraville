@@ -8,7 +8,7 @@ import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST, UPGRADE_LV, Kind, BUILDINGS, 
 import { DAMAGED_CODE, encode, encodeNow, decode, listSlots, pushSaved, saveCode, SlotMeta } from '../src/save';
 import { Drive, GisOAuth2 } from '../src/drive';
 import { makeRng } from '../src/rng';
-import { SCENARIOS, buildScenario, goalRowText, goalState, openScenario, scenarioMonth, successLine } from '../src/scenarios';
+import { SCENARIOS, buildScenario, goalRowText, goalState, openScenario, scenarioMonth, scenarioNews, successLine } from '../src/scenarios';
 import { Game } from '../src/game';
 import { chartAxis, spreadLabels, tickLabel } from '../src/ui/charts';
 
@@ -1322,6 +1322,54 @@ await test('a goal judged at the deadline says when; Smog Valley counts only the
   assert.equal(held(), 'Held 1 month in a row · must hold through 1975');
 });
 
+await test("the advisor names a challenge's own problem every six months while it lasts, and warns once a year and three months out", () => {
+  const w = flat();
+  const stats: Partial<Sim['stats']> = { avgTraffic: 31 * 2.55, residents: 21000, comJobs: 6000, indJobs: 5000, avgPollution: 13 * 2.55, approval: 70 };
+  /** The news from `from` months before a challenge's deadline to `to` months before it, on a city with `stats`. */
+  const play = (id: string, from: number, to: number, each: (sim: Sim, left: number) => void = () => {}) => {
+    const s = SCENARIOS.find((x) => x.id === id)!;
+    w.city.scenario = buildScenario(s, 40, 30).city.scenario;
+    const end = w.city.scenario!.end;
+    const sim = new Sim(w);
+    const said: string[] = [];
+    sim.on((e) => {
+      if (e.type === 'message') said.push(e.message.text);
+    });
+    for (let m = end - from; m < end - to; m++) {
+      w.city.month = m;
+      Object.assign(sim.stats, stats);
+      each(sim, end - m);
+      scenarioNews(s, sim, scenarioMonth(s, sim));
+    }
+    return said;
+  };
+  // Gridlock over the traffic line from two years out: the advice comes every six months, and the deadline twice.
+  const traffic = 'Traffic index 31: the council wants it under 28. Rail into downtown takes commuters off the streets.';
+  assert.deepEqual(play('gridlock', 24, 0), [
+    traffic, traffic,
+    'One year left: the goal is judged at the end of 1960. Not met yet: Traffic index 31 · under 28.',
+    traffic, traffic,
+    'Three months left. Not met yet: Traffic index 31 · under 28.',
+  ]);
+  // Under the line it says nothing of traffic.
+  stats.avgTraffic = 25 * 2.55;
+  assert.deepEqual(play('gridlock', 13, 2), ['One year left: the goal is judged at the end of 1960. The goal is met for now.', 'Three months left. The goal is met for now.']);
+  assert.deepEqual(play('smog', 14, 10), ['Pollution index 13 where people live: the goal is under 12.', 'One year left: the goal must hold from now to the end.']);
+  stats.residents = 9000;
+  assert.deepEqual(play('boomtown', 13, 2), ['One year left. Not met yet: Residents 9,000 / 12,000.', 'Three months left. Not met yet: Residents 9,000 / 12,000.']);
+  assert.deepEqual(play('aftershock', 13, 11), ['One year left. Not met yet: Residents 9,000 / 55,000.']);
+  // Monster Bay's advice comes with the monster (here between its visits every two years, set loose by hand).
+  const rampage = play('monster', 30, 20, (sim, left) => {
+    if (left === 26) sim.disasters.roamers.push({ kind: 'monster', x: 5, y: 5, px: 5, py: 5, vx: 0, vy: 0, weeks: 30, heading: 0 });
+  });
+  assert.deepEqual(rampage, ['The monster heads for the smokiest spot in town.']);
+  // Once the challenge is decided, the advisor lets it be.
+  const quiet = play('gridlock', 13, 2, () => {
+    w.city.scenario!.done = 'won';
+  });
+  assert.deepEqual(quiet, []);
+});
+
 await test('undo snapshots restore the map but never money, and only onto the same map', () => {
   const w = flat();
   w.city.funds = 1000;
@@ -1508,6 +1556,17 @@ await test('a challenge opens with its goal in the news and its real monthly bal
   assert.equal(successLine(aftershock, end - 12, end), 'Aftershock is a success in 1996, one year early.');
   assert.equal(successLine(aftershock, end - 5, end), 'Aftershock is a success in 1996, five months early.');
   assert.equal(successLine(aftershock, end, end), 'Aftershock is a success in 1997.');
+}));
+
+await test("a challenge's deadline notices come from the game's own month ends, once each", () => seeded(5, () => {
+  const g = headless(flat(40, 30));
+  g.startScenario('gridlock');
+  const sc = g.world.city.scenario;
+  g.world.city.disasters = false;
+  g.world.city.month = sc.end - 13;
+  weeks(g, 4 * 11);
+  const notices = g.sim.messages.filter((m: any) => /^(One year|Three months) left/.test(m.text)).map((m: any) => [m.text.split('.')[0], sc.end - m.month]);
+  assert.deepEqual(notices, [['One year left: the goal is judged at the end of 1960', 12], ['Three months left', 3]]);
 }));
 
 await test('undo leaves alone what a disaster has wrecked since, and refunds nothing for it', () => seeded(42, () => {

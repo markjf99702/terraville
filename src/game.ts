@@ -13,7 +13,7 @@ import {
   SaveFile, SlotMeta, citySlot, decode, deleteSlot, encode, encodeNow, listSlots, newCityId, pushSaved, readCode, saveCode, saveSlot, slotKey,
   thisDevice, worldFrom,
 } from './save';
-import { SCENARIOS, buildScenario, goalState, openScenario, scenarioMonth } from './scenarios';
+import { SCENARIOS, buildScenario, goalState, openScenario, scenarioMonth, scenarioNews } from './scenarios';
 import { Sim } from './sim';
 import { DEFAULT_TERRAIN, TerrainParams, TerrainStyle, addSpring, applyBrush, cleanTerrain, generateTerrain } from './terrain';
 import {
@@ -587,7 +587,9 @@ export class Game {
       this.audio.play(st.met ? 'fanfare' : 'error');
       this.ui.updateGoal(s, st, sc.end - month, sc.done);
       this.ui.scenarioResult(s, st, sc.done === 'won');
+      return;
     }
+    scenarioNews(s, this.sim, st);
   }
 
   /** Fill in the goal tracker as a challenge starts or opens from a save, without a month's events or judging. */

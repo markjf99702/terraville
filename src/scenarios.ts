@@ -59,6 +59,8 @@ export interface Scenario {
   check(sim: Sim): GoalState;
   start?(sim: Sim): void;
   monthly?(sim: Sim): void;
+  /** The advisor's word on the challenge's own problem, while part of the goal is failing. */
+  advise?(sim: Sim): string | null;
 }
 
 interface CityPlan {
@@ -128,6 +130,10 @@ export const SCENARIOS: Scenario[] = [
         rows: [{ label: 'Traffic index', value: String(t), goal: 'under 28', met: t < 28 }, atLeast('Residents', r, 20000), atLeast('Jobs', j, 10000)],
       };
     },
+    advise: (sim) => {
+      const t = idx(sim.stats.avgTraffic);
+      return t >= 28 ? `Traffic index ${t}: the council wants it under 28. Rail into downtown takes commuters off the streets.` : null;
+    },
   },
   {
     id: 'smog',
@@ -160,6 +166,10 @@ export const SCENARIOS: Scenario[] = [
         met: p < 12 && size,
         rows: [{ label: 'Pollution index', value: String(p), goal: 'under 12', met: p < 12 }, atLeast('Residents', r, 20000), atLeast('Jobs', j, 9000)],
       };
+    },
+    advise: (sim) => {
+      const p = idx(sim.stats.avgPollution);
+      return p >= 12 ? `Pollution index ${p} where people live: the goal is under 12.` : null;
     },
   },
   {
@@ -228,6 +238,8 @@ export const SCENARIOS: Scenario[] = [
         rows: [{ label: 'Approval', value: `${a}%`, goal: 'over 60%', met: a > 60 }, atLeast('Residents', r, 25000)],
       };
     },
+    // Said as it comes ashore (it stays about 30 weeks, so within the last month), once a visit.
+    advise: (sim) => (sim.disasters.roamers.some((r) => r.kind === 'monster' && r.weeks >= 26) ? 'The monster heads for the smokiest spot in town.' : null),
   },
 ];
 
@@ -241,6 +253,27 @@ export function scenarioMonth(s: Scenario, sim: Sim): GoalState {
   const now = s.check(sim);
   if (sc && !sc.done && s.holdMonths) sc.held = now.met ? (sc.held ?? 0) + 1 : 0;
   return goalState(s, sim, now);
+}
+
+/**
+ * The advisor on a challenge, at a month end before the deadline: a year and three months before it, how things
+ * stand; and while part of the goal is failing, the challenge's own advice, at most every six months.
+ */
+export function scenarioNews(s: Scenario, sim: Sim, st: GoalState): void {
+  const sc = sim.world.city.scenario;
+  if (!sc || sc.done) return;
+  const left = sc.end - sim.world.city.month;
+  const short = st.rows.filter((r) => !r.met);
+  const stand = short.length ? ` Not met yet: ${short.map(goalRowText).join(', ')}.` : ' The goal is met for now.';
+  if (left === 12) {
+    const text = s.holdMonths ? 'One year left: the goal must hold from now to the end.'
+      : s.kind === 'hold' ? `One year left: the goal is judged at the end of ${lastYear(sc.end)}.${stand}` : `One year left.${stand}`;
+    sim.say('deadline', text, short.length ? 'warn' : 'info', undefined, 0);
+  } else if (left === 3) {
+    sim.say('deadline', `Three months left.${stand}`, short.length ? 'warn' : 'info', undefined, 0);
+  }
+  const line = s.advise?.(sim);
+  if (line) sim.say(`advise-${s.id}`, line, 'warn', undefined, 6);
 }
 
 const NUMBER_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'];
