@@ -402,6 +402,14 @@ export class Renderer {
     const ccx = (W / 2 - ox) / (CS * zd);
     const ccy = (H / 2 - oy) / (CS * zd);
     todo.sort((a, b) => Math.hypot(a[0] + 0.5 - ccx, a[1] + 0.5 - ccy) - Math.hypot(b[0] + 0.5 - ccx, b[1] + 0.5 - ccy));
+    // No map size is a whole number of chunks: the last column and row hang past the edge, painted with the edge
+    // tiles stretched, so only the map itself is drawn and the overhang shows the same margin as the other sides.
+    ctx.save();
+    ctx.beginPath();
+    const mx = Math.round(ox);
+    const my = Math.round(oy);
+    ctx.rect(mx, my, Math.round(ox + this.world.w * zd) - mx, Math.round(oy + this.world.h * zd) - my);
+    ctx.clip();
     for (const [cx, cy] of todo) {
       let c = this.chunks.get(this.key(cx, cy, wantL));
       const stale = !c || c.dirty || c.contours !== this.contours;
@@ -425,6 +433,7 @@ export class Renderer {
       const y1 = Math.round(oy + (cy + 1) * CS * zd);
       ctx.drawImage(c.canvas, x0, y0, x1 - x0, y1 - y0);
     }
+    ctx.restore();
     this.evict();
 
     // Everything else is drawn in tile units.

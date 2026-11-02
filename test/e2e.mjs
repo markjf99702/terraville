@@ -714,6 +714,37 @@ try {
     await ctx.close();
   });
 
+  await test('past its right and bottom edges the map shows the dark margin, on every map size', async () => {
+    const ctx = await profile(DESK);
+    const { page, problems } = await open(ctx);
+    await page.click('[data-act="editor"]');
+    await page.waitForFunction(() => window.__terraville.mode === 'editor');
+    for (const [w, h] of [[72, 60], [120, 100], [180, 150]]) {
+      for (const zoom of [0, 24]) {
+        await page.evaluate(([w, h, zoom]) => {
+          const g = window.__terraville;
+          if (g.world.w !== w) g.regenerate({ w, h });
+          g.renderer.cam.zoom = zoom || g.renderer.minZoom();
+          g.renderer.centerOn(w, h);
+        }, [w, h, zoom]);
+        await page.evaluate(() => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok))));
+        const past = await page.evaluate(() => {
+          const g = window.__terraville;
+          const r = g.renderer;
+          const ctx = document.querySelector('#map').getContext('2d');
+          const at = (x, y) => {
+            const p = r.tileToScreen(x, y);
+            return [...ctx.getImageData(Math.round(p.x * devicePixelRatio), Math.round(p.y * devicePixelRatio), 1, 1).data].slice(0, 3).join();
+          };
+          return [at(g.world.w + 0.6, r.cam.y), at(g.world.w - 3, g.world.h + 0.6)];
+        });
+        assert.deepEqual(past, ['14,20,18', '14,20,18'], `${w}x${h} at zoom ${zoom || 'out'}: right and bottom of the edge`);
+      }
+    }
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('on a phone, Inspect takes the bottom slot from the map layer card and the news log', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);
