@@ -76,7 +76,8 @@ const touchHelp = (city: boolean) => `<h3 class="touch-h">Touch</h3>
   <dl class="kv touch-help">
     <dt>One finger</dt><dd>Use the tool (with ${city ? 'Inspect' : 'Look around'}, move the map)</dd>
     <dt>Two fingers</dt><dd>Pinch to zoom, drag to move the map</dd>
-    ${city ? '<dt>Bulldoze</dt><dd>Pick the bulldozer and drag over what to clear</dd>' : ''}
+    ${city ? `<dt>Bulldoze</dt><dd>Pick the bulldozer and drag over what to clear</dd>
+    <dt>Second finger, mid-drag</dt><dd>Calls off the road, zone or bulldozer drag</dd>` : ''}
   </dl>`;
 
 /**
@@ -1269,7 +1270,7 @@ export class UI {
     add('file', this.game.mode === 'city' ? 'Save, open and share' : 'Save, open and share terrain', () => this.openFiles());
     add('book', 'Strategy guide', () => this.openGuide());
     add('settings', touchScreen() ? 'Settings and touch' : 'Settings and keys', () => this.openSettings());
-    if (this.game.mode === 'city') add('guide', 'Show the starter checklist', () => {
+    if (this.checklistFits()) add('guide', 'Show the starter checklist', () => {
       this.guideDismissed = false;
       this.guideForced = true;
       this.updateGuide(true);
@@ -1547,12 +1548,17 @@ export class UI {
   // ---- starter checklist ------------------------------------------------------------
 
   /** Redraw the checklist; `force` looks at it even while it is hidden, as when a city opens or the menu asks. */
+  /** Whether the checklist has a place here: in a city, but not one a challenge hands over ready-made. */
+  private checklistFits(): boolean {
+    // Boomtown, an empty coast, has a use for it.
+    const sc = this.game.world.city.scenario;
+    return this.game.mode === 'city' && !(sc && SCENARIOS.find((x) => x.id === sc.id)?.city);
+  }
+
   private updateGuide(force: boolean): void {
     const g = this.game;
     const box = $(this.root, '#guide');
-    // A challenge that hands over a ready-made city has no use for it; Boomtown, an empty coast, does.
-    const sc = g.world.city.scenario;
-    if (g.mode !== 'city' || this.guideDismissed || (sc && SCENARIOS.find((x) => x.id === sc.id)?.city)) {
+    if (!this.checklistFits() || this.guideDismissed) {
       box.hidden = true;
       return;
     }
@@ -2373,7 +2379,8 @@ export class UI {
         <div class="bars">${s.problems.map((p) => {
           const to = WORRY_LAYERS[p.id];
           const inner = `<span>${p.label}</span><div class="track" role="img" aria-label="${p.label}: ${word(p.value)}"><i style="width:${Math.max(2, p.value)}%;background:${sev(p.value)}"></i></div><span class="v">${word(p.value)}</span>`;
-          return to ? `<button class="barrow worry" data-to="${to}" title="${to === 'budget' ? 'Open the budget' : `Show the ${OVERLAYS.find((o) => o.id === to)!.name.toLowerCase()} layer`}">${inner}</button>` : `<div class="barrow">${inner}</div>`;
+          // A chevron says the row opens something; its title, read as its description, says what.
+          return to ? `<button class="barrow worry" data-to="${to}" title="${to === 'budget' ? 'Open the budget' : `Show the ${OVERLAYS.find((o) => o.id === to)!.name.toLowerCase()} layer`}">${inner}<i class="chev right" aria-hidden="true"></i></button>` : `<div class="barrow">${inner}</div>`;
         }).join('')}</div>
       </div>`}
       <div class="cols">

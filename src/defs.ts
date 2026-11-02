@@ -220,7 +220,7 @@ for (const t of CITY_TOOLS) {
 }
 
 export const EDITOR_TOOLS: ToolDef[] = [
-  { id: 'pan', name: 'Look around', kind: 'click', key: 'q', group: 'look', tip: 'Drag to move the map. Click to read elevation.' },
+  { id: 'pan', name: 'Look around', kind: 'click', key: 'q', group: 'look', tip: 'Drag to move the map. Click to read elevation.', touchTip: 'Drag to move the map. Tap to read the height of the land.' },
   { id: 'raise', name: 'Raise', kind: 'brush', key: 'r', group: 'shape', tip: 'Push the ground up. Hold to keep raising.' },
   { id: 'lower', name: 'Lower', kind: 'brush', key: 'f', group: 'shape', tip: 'Dig down. Below sea level it floods.' },
   { id: 'smooth', name: 'Smooth', kind: 'brush', key: 's', group: 'shape', tip: 'Soften cliffs and bumps.' },

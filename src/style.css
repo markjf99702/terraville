@@ -567,7 +567,7 @@ table.ledger tr.total td { font-weight: 800; border-bottom: none; border-top: 2p
 .neg { color: var(--critical-ink); }
 
 .bars { display: flex; flex-direction: column; gap: 8px; }
-.barrow { display: grid; grid-template-columns: 120px 1fr 58px; align-items: center; gap: 10px; font-size: 13px; }
+.barrow { display: grid; grid-template-columns: 120px 1fr 58px 8px; align-items: center; gap: 10px; font-size: 13px; }
 .barrow .track { height: 10px; background: var(--panel-3); border-radius: 5px; overflow: hidden; }
 .barrow .track i { display: block; height: 100%; border-radius: 5px; }
 .barrow .v { text-align: right; font-family: var(--mono); color: var(--muted); }
@@ -683,6 +683,7 @@ kbd { font: 600 11.5px var(--mono); padding: 1px 6px; border: 1px solid var(--li
 #guide .guide-next .num { color: var(--muted); font-size: 12px; white-space: nowrap; }
 .chev { display: inline-block; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: translateY(-2px) rotate(45deg); flex: none; color: var(--muted); }
 .chev.up { transform: translateY(2px) rotate(-135deg); }
+.chev.right { transform: translateX(-2px) rotate(-45deg); }
 
 /* ---- goal tracker ---------------------------------------------------------- */
 #goal { padding: 11px 13px; display: flex; flex-direction: column; gap: 7px; }

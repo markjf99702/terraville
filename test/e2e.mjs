@@ -588,10 +588,18 @@ try {
         await page.click('#guide button.guide-head');
         await page.waitForFunction(() => document.querySelector('#goal').getBoundingClientRect().top - document.querySelector('#guide').getBoundingClientRect().bottom <= 12);
       }
-      // Gridlock hands over a city, and no checklist.
+      const offered = async () => {
+        await page.click('#topbar [data-act="menu"]');
+        const has = await page.locator('[role="menu"] button:has-text("Show the starter checklist")').count();
+        await page.keyboard.press('Escape');
+        return has;
+      };
+      assert.equal(await offered(), 1, 'the menu can bring it back');
+      // Gridlock hands over a city, and no checklist, so the menu doesn't offer one.
       await page.evaluate(() => window.__terraville.startScenario('gridlock'));
       await page.click('.modal footer .btn.primary');
       assert.equal(await page.isHidden('#guide'), true);
+      assert.equal(await offered(), 0, 'nor does the menu');
       assert.equal(await page.evaluate(() => document.querySelector('#goal').style.getPropertyValue('--stack')), '0px');
       assert.deepEqual(problems, []);
       await ctx.close();
@@ -1916,7 +1924,18 @@ try {
     assert.match(tip, /^Bulldoze\$1 a tileDrag to clear buildings/);
     await page.click('[data-act="menu"]');
     await page.click('.dropdown button:has-text("Settings and touch")');
-    assert.match(await page.textContent('.modal .touch-help'), /One finger.*Two fingers.*Pinch to zoom.*Bulldoze.*Pick the bulldozer/s);
+    assert.match(await page.textContent('.modal .touch-help'), /One finger.*Two fingers.*Pinch to zoom.*Bulldoze.*Pick the bulldozer.*Second finger, mid-drag.*Calls off the road, zone or bulldozer drag/s);
+    await page.keyboard.press('Escape');
+    // In the terrain editor, Look around says what a tap does there.
+    await page.goto(base);
+    await titleUp(page);
+    await page.click('[data-act="editor"]');
+    await page.waitForFunction(() => window.__terraville.mode === 'editor');
+    await page.tap('[data-tool="pan"]');
+    assert.match(await page.textContent('#tooltip'), /Drag to move the map\. Tap to read the height of the land\./);
+    await page.click('[data-act="menu"]');
+    await page.click('.dropdown button:has-text("Settings and touch")');
+    assert.doesNotMatch(await page.textContent('.modal .touch-help'), /Second finger/);
     assert.deepEqual(problems, []);
     await ctx.close();
   });
@@ -2084,6 +2103,8 @@ try {
     await page.click('.modal footer .btn');
     await page.evaluate(() => { window.__terraville.startScenario('gridlock'); window.__terraville.ui.closeModal(); });
     await page.click('#citySign');
+    // Each worry that opens something looks it: a chevron at its end, with where it goes as its description.
+    assert.ok(await page.$$eval('.modal .worry', (ws) => ws.length && ws.every((w) => w.lastElementChild.matches('.chev[aria-hidden="true"]') && /^(Show the .+ layer|Open the budget)$/.test(w.title))));
     await page.click('.worry[data-to="traffic"]');
     assert.deepEqual(await page.evaluate(() => [window.__terraville.renderer.overlay, window.__terraville.ui.modalOpen]), ['traffic', false], 'Traffic opens the traffic layer');
     await page.click('#citySign');
