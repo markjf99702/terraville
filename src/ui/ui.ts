@@ -1552,7 +1552,10 @@ export class UI {
 
   openFound(fromQuick: boolean): void {
     let diff: Difficulty['id'] = 'easy';
+    const style = STYLE_NAMES[this.game.terrain.style];
     const body = el(`<div style="display:flex;flex-direction:column;gap:16px">
+      ${fromQuick ? `<figure class="found-land"><canvas id="fLand" role="img" aria-label="Map of the land: ${esc(style.toLowerCase())}"></canvas>
+        <figcaption><b>${esc(style)}</b>This land was generated at random. Shape it first in the terrain editor, or found the city as it is.</figcaption></figure>` : ''}
       <div class="field"><span><label for="fName">City name</label></span>
         <div class="seedrow"><input class="textin" id="fName" maxlength="28" value="${esc(randomCityName())}" spellcheck="false">
         <button class="iconbtn" id="fDice" aria-label="Another name" title="Another name">${ICONS.dice}</button></div></div>
@@ -1560,8 +1563,17 @@ export class UI {
         <div class="choice" id="fDiff" role="radiogroup" aria-labelledby="fDiffCap">${DIFFICULTIES.map((d) => `<button role="radio" data-d="${d.id}" aria-checked="${d.id === diff}" tabindex="${d.id === diff ? 0 : -1}"><b>${d.name}</b><span>${money(d.funds)} to start</span><small>${difficultyNote(d)}</small></button>`).join('')}</div>
       </div>
       <label class="switch"><span>Random disasters<small>Fires, floods, tornadoes and worse, once the city has ${DISASTER_POP.toLocaleString()} residents. You can also set them off yourself.</small></span><input type="checkbox" id="fDis" checked></label>
-      ${fromQuick ? '<p class="note">This land was generated at random. Shape it first in the terrain editor, or found the city as it is.</p>' : ''}
     </div>`);
+    // A phone has no minimap and the dialog covers the map: the land it would found on, drawn a pixel a tile.
+    const land = body.querySelector<HTMLCanvasElement>('#fLand');
+    const pic = land && this.game.minimap.picture();
+    if (land && pic) {
+      land.width = pic.width * 3;
+      land.height = pic.height * 3;
+      const ctx = land.getContext('2d')!;
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(pic, 0, 0, land.width, land.height);
+    }
     $(body, '#fDice').onclick = () => ($<HTMLInputElement>(body, '#fName').value = randomCityName());
     // A group of radio buttons: one stop for Tab, the arrow keys move the choice.
     const choose = (b: HTMLElement) => {

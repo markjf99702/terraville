@@ -23,6 +23,14 @@ export class Minimap {
     this.dirty = true;
   }
 
+  /** The map at a pixel a tile, brought up to date now, for a picture of the land elsewhere. */
+  picture(): HTMLCanvasElement | null {
+    const world = this.renderer.world;
+    if (!world) return null;
+    if (this.dirty) this.rebuild(world);
+    return this.base;
+  }
+
   private rebuild(world: World): void {
     if (this.base.width !== world.w || this.base.height !== world.h) {
       this.base.width = world.w;

@@ -693,6 +693,34 @@ try {
     await desk.close();
   });
 
+  await test('Found a city shows the land it founds on, redrawn for Different land, and still fits a phone', async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await page.click('[data-act="quick"]');
+    const land = () => page.evaluate(() => {
+      const c = document.querySelector('#fLand');
+      const px = c.getContext('2d').getImageData(c.width / 2, c.height / 2, 1, 1).data;
+      const body = document.querySelector('.modal .body');
+      return { url: c.toDataURL(), opaque: px[3] === 255, caption: document.querySelector('.found-land b').textContent, seed: window.__terraville.terrain.seed,
+        fits: body.scrollHeight <= body.clientHeight && document.querySelector('.modal footer').getBoundingClientRect().bottom <= innerHeight };
+    });
+    const first = await land();
+    assert.equal(first.opaque, true, 'the picture is drawn');
+    assert.ok(['Coastline', 'Island', 'Archipelago', 'Lake country', 'River valley'].includes(first.caption), first.caption);
+    assert.equal(first.fits, true, 'the dialog fits a phone without scrolling');
+    await page.click('.modal footer button:has-text("Different land")');
+    await page.waitForFunction((seed) => window.__terraville.terrain.seed !== seed && document.querySelector('#fLand'), first.seed);
+    const second = await land();
+    assert.notEqual(second.url, first.url, 'the new land is drawn');
+    assert.equal(second.fits, true);
+    // Founding from the terrain editor has the land in view, so no picture.
+    await page.click('.modal footer button:has-text("Shape the land first")');
+    await page.click('#topbar button:has-text("Found a city here")');
+    assert.equal(await page.locator('#fLand').count(), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('the found dialog names its field and its difficulty choice for a screen reader, and the editor names its button rows', async () => {
     const ctx = await profile(DESK);
     const { page, problems } = await open(ctx);
