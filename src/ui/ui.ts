@@ -1,7 +1,7 @@
 // Everything in the DOM: top bar, toolbox, panels, dialogs, title screen.
 import {
-  BUILDINGS, BULLDOZE_COST, DIFFICULTIES, DISASTER_POP, Difficulty, Kind, LANDMARK_LIMITS, MAP_SIZES, RAIL, ROAD, SEP, ToolDef, UPGRADE_LV,
-  article, cityClass, dateLabel, MONTHS, isZone, nextUpgrade, num,
+  BUILDINGS, BULLDOZE_COST, DIFFICULTIES, DISASTER_POP, Difficulty, GIFT_LV, GIFT_REACH, Kind, LANDMARK_LIMITS, MAP_SIZES, RAIL, ROAD, SEP,
+  ToolDef, UPGRADE_LV, article, cityClass, dateLabel, MONTHS, isGift, isZone, nextUpgrade, num,
 } from '../defs';
 import { DISASTER_NAMES, DisasterKind } from '../disasters';
 import { Game, SPEED_NAMES, randomCityName } from '../game';
@@ -830,6 +830,7 @@ export class UI {
     if (rci && rci.getAttribute('aria-label') !== said) rci.setAttribute('aria-label', said);
     // Its card, while open, follows the bars.
     if (this.dropdownEl?.classList.contains('demand-card')) this.fillDemand(this.dropdownEl);
+    this.syncGifts();
     // The sign opens the report, and says what it shows.
     const sign = this.root.querySelector('#citySign');
     const name = `${city.name}, ${num(s.residents)} residents, ${cityClass(s.residents).toLowerCase()}. City report`;
@@ -879,6 +880,13 @@ export class UI {
         const b = el<HTMLButtonElement>(`<button class="tool" data-tool="${t.id}" aria-label="${esc(t.name)}"${t.key ? ` aria-keyshortcuts="${t.key}"` : ''}></button>`);
         b.appendChild(this.toolIcon(t));
         if (t.key) b.appendChild(el(`<span class="key">${t.key.toUpperCase()}</span>`));
+        // A gift shows once the city has been given it, marked as one, until it is placed.
+        if (t.building && isGift(t.building)) {
+          b.appendChild(el('<span class="gift" aria-hidden="true">Gift</span>'));
+          b.dataset.gift = t.building;
+          b.setAttribute('aria-label', `${t.name}, a gift`);
+          b.hidden = !this.game.giftReady(t.building);
+        }
         b.addEventListener('click', () => {
           this.game.setTool(t.id);
           this.game.audio.play('click');
@@ -1791,6 +1799,35 @@ export class UI {
     }
     this.fitInspect();
     $(this.root, '#announce').textContent = card.querySelector('h3')?.textContent ?? '';
+  }
+
+  /** Show each gift's tool while the city has it to place, and put it away once placed (or put the tool back after an undo). */
+  private syncGifts(): void {
+    for (const b of this.root.querySelectorAll<HTMLElement>('#toolbox .tool[data-gift]')) {
+      const kind = b.dataset.gift as Kind;
+      const ready = this.game.giftReady(kind);
+      if (b.hidden === !ready) continue;
+      b.hidden = !ready;
+      if (!ready && this.game.toolId === kind) this.game.setTool('query');
+    }
+  }
+
+  /** The card for a size class's gift: what it is, what it does, and a button to place it. */
+  gift(kind: Kind): void {
+    const city = this.game.world.city;
+    const name = BUILDINGS[kind].name;
+    this.syncGifts();
+    this.showNews(`A gift for ${esc(city.name)}`, `
+      <p class="does">${esc(city.name)} is now a town, and the council has given it a ${esc(name.replace(/^\w/, (c) => c.toLowerCase()))}. It is free: place it from the civic tools, where it is marked Gift.</p>
+      <p class="news-p">It raises land value for about ${GIFT_REACH} tiles around it, up to <span class="num">${money(GIFT_LV * 40)}</span>/acre at its door, so the homes and shops near it can grow denser.</p>`, [
+      {
+        label: 'Place it', primary: true, act: () => {
+          this.game.setTool(kind);
+          // On a phone the tools are a row that scrolls: bring the gift's into view.
+          this.root.querySelector(`[data-tool="${kind}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        },
+      },
+    ], 'gift');
   }
 
   /** After a year in debt: why the city is short, and the ways out. No game over, and no new rule. */

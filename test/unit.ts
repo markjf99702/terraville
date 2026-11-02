@@ -2180,6 +2180,42 @@ await test("the year's news is kept with a save, starts again each year, and the
   assert.equal(papers.length, 2);
 });
 
+await test("reaching Town gives the city a Mayor's house: free, placed once at a time, raising land value round it", async () => {
+  const w = flat(60, 40);
+  const g = headless(w);
+  const sim: Sim = g.sim;
+  const gifts: string[] = [];
+  g.ui.gift = (k: string) => gifts.push(k);
+  w.city.funds = 5000;
+  assert.equal(w.canPlace('mayor', 30, 20).reason, 'Mayor’s house is a gift for reaching a size class');
+  // Two blocks of towers: past 2,000 residents at the month's end.
+  for (const x of [10, 14]) w.setLevel(w.place('res', x, 10), 8);
+  seeded(2, () => weeks(g, 4));
+  assert.equal(w.city.classReached, 1);
+  assert.deepEqual([w.city.gifts, gifts], [['mayor'], ['mayor']]);
+  assert.equal(g.giftReady('mayor'), true);
+  // Kept with the city.
+  assert.deepEqual((await reopen(sim)).world.city.gifts, ['mayor']);
+  const before = w.landValue[21 * w.w + 31];
+  const funds = w.city.funds;
+  drag(g, 'mayor', 30, 20);
+  const house = [...w.buildings.values()].find((b) => b.kind === 'mayor')!;
+  assert.ok(house, 'placed');
+  assert.equal(w.city.funds, funds, 'free');
+  assert.equal(g.giftReady('mayor'), false);
+  assert.equal(w.canPlace('mayor', 40, 30).reason, 'The city has its mayor’s house already');
+  sim.computeMaps();
+  assert.ok(w.landValue[21 * w.w + 31] - before >= 25, `land value at its door ${before} → ${w.landValue[21 * w.w + 31]}`);
+  assert.ok(Math.abs(w.landValue[21 * w.w + 50] - w.landValue[21 * w.w + 52]) < 3, 'nothing far off');
+  // Undone, it can be placed again; it is one at a time, not one ever.
+  g.undo();
+  assert.equal([...w.buildings.values()].some((b) => b.kind === 'mayor'), false);
+  assert.equal(g.giftReady('mayor'), true);
+  // A challenge city opens at its size class with no gift: it hasn't reached it here.
+  const sc = headless(buildScenario(SCENARIOS.find((x) => x.id === 'gridlock')!));
+  assert.deepEqual(sc.world.city.gifts, []);
+});
+
 await test('on a device too slow for the speed, a frame runs one week of the clock and drops the rest', () => {
   const g = headless(flat());
   g.speed = 4; // Ultra: 14 weeks a second

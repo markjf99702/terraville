@@ -3556,6 +3556,62 @@ try {
     }
   });
 
+  await test("on a phone, reaching Town brings a card for the gift of a Mayor's house, placed free from its marked tool", async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await found(page);
+    const spot = await page.evaluate(() => {
+      const g = window.__terraville;
+      const w = g.world;
+      g.setSpeed(0);
+      for (let i = 0; i < w.n; i++) {
+        if (w.occ[i]) w.remove(w.occ[i]);
+        w.water[i] = 0; w.height[i] = 6; w.trees[i] = 0; w.net[i] = 0; w.rubble[i] = 0;
+      }
+      w.dirtyAll(true);
+      const cx = Math.floor(w.w / 2);
+      const cy = Math.floor(w.h / 2);
+      g.renderer.cam.zoom = 16;
+      g.renderer.centerOn(cx, cy);
+      return { cx, cy };
+    });
+    assert.equal(await page.isHidden('[data-tool="mayor"]'), true, 'no gift before Town');
+    // Two blocks of towers: past 2,000 residents at the month's end.
+    await page.evaluate(([x, y]) => {
+      const g = window.__terraville;
+      for (const dx of [-12, -8]) g.world.setLevel(g.world.place('res', x + dx, y - 10), 8);
+      for (let k = 0; k < 4; k++) g.sim.step();
+    }, [spot.cx, spot.cy]);
+    const name = await page.evaluate(() => window.__terraville.world.city.name);
+    assert.equal(await page.textContent('#inspect h3'), `A gift for ${name}`);
+    assert.match(await page.textContent('#inspect'), /given it a mayor’s house\. It is free: place it from the civic tools, where it is marked Gift\./);
+    await page.tap('#inspect .news-btns button:has-text("Place it")');
+    assert.equal(await page.evaluate(() => window.__terraville.toolId), 'mayor');
+    assert.equal(await page.textContent('[data-tool="mayor"] .gift'), 'Gift');
+    const tool = await page.locator('[data-tool="mayor"]').boundingBox();
+    assert.ok(tool.x >= 0 && tool.x + tool.width <= 390, 'its tool is brought into view in the row');
+    // Two taps, as for any building: free.
+    const p = await page.evaluate(([x, y]) => {
+      const r = window.__terraville.renderer;
+      const m = document.querySelector('#map').getBoundingClientRect();
+      const q = r.tileToScreen(x + 0.5, y + 0.5);
+      return { x: m.left + q.x, y: m.top + q.y };
+    }, [spot.cx, spot.cy]);
+    const funds = await page.evaluate(() => window.__terraville.world.city.funds);
+    await page.touchscreen.tap(p.x, p.y);
+    await page.waitForTimeout(150);
+    assert.match(await page.textContent('#placeCard'), /free/);
+    await page.touchscreen.tap(p.x, p.y);
+    await page.waitForTimeout(400);
+    assert.equal(await page.evaluate(() => [...window.__terraville.world.buildings.values()].filter((b) => b.kind === 'mayor').length), 1);
+    assert.equal(await page.evaluate(() => window.__terraville.world.city.funds), funds);
+    // Placed: its tool goes, and the toolbox is back on Inspect.
+    await page.waitForFunction(() => document.querySelector('[data-tool="mayor"]').hidden);
+    assert.equal(await page.evaluate(() => window.__terraville.toolId), 'query');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('a city in debt can still bulldoze, though it cannot build', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

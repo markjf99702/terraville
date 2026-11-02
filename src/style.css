@@ -298,7 +298,10 @@ button.rci:hover .lab, button.rci[aria-expanded="true"] .lab { color: var(--text
   font: 700 10px/1 var(--mono);
   color: var(--faint);
 }
-.tool:hover .key { color: var(--muted); } /* the faint grey would be too faint on the hover's lighter panel */
+.tool:hover .key { color: var(--muted); }
+/* A gift's tool is marked as one. */
+.tool .gift { position: absolute; top: 3px; left: 3px; padding: 0 3px; border-radius: 4px; background: var(--caution); color: #1d2925; font-size: 9px; font-weight: 800; letter-spacing: 0.06em; line-height: 13px; text-transform: uppercase; pointer-events: none; }
+.tool[hidden] { display: none; } /* the faint grey would be too faint on the hover's lighter panel */
 .tool[aria-pressed="true"] .key { color: rgba(255, 255, 255, 0.8); }
 @media (hover: none) and (pointer: coarse) {
   .tool .key { display: none; } /* no keyboard to press them on */

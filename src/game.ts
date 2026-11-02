@@ -565,6 +565,7 @@ export class Game {
           this.audio.play('fanfare');
           this.ui.toast(e.text);
           this.ui.glowSign();
+          if (e.gift) this.ui.gift(e.gift);
           break;
         case 'destroyed':
           this.renderer.vehicles.addDust(e.x, e.y);
@@ -869,6 +870,13 @@ export class Game {
       this.paperWaiting = null;
       if (this.settings.paper && this.mode === 'city') this.ui.paper(paper);
     }
+  }
+
+  /** Whether the city has a gift building to place: given it for a size class, and none of it standing. */
+  giftReady(kind: Kind): boolean {
+    if (this.mode !== 'city' || !this.world.city.gifts.includes(kind)) return false;
+    for (const b of this.world.buildings.values()) if (b.kind === kind) return false;
+    return true;
   }
 
   /** A city founded here whose clock hasn't run yet: the Normal button is marked as the way to start it. */
@@ -1206,9 +1214,10 @@ export class Game {
         t.kind === 'zone' ? `${plan.count} zone${plan.count > 1 ? 's' : ''}` :
         t.id === 'bulldoze' ? `${plan.count} to clear` :
         t.kind === 'rect' ? `${plan.count} tile${plan.count > 1 ? 's' : ''}` : t.name;
-      html = `${t.kind === 'place' ? '' : t.name + SEP}${what}${SEP}<span class="num">${fmtMoney(plan.cost)}</span>${priceIncludes(plan, t.kind === 'line', t.net === POWER)}`;
+      // A gift costs nothing, unless there are trees to clear.
+      html = `${t.kind === 'place' ? '' : t.name + SEP}${what}${SEP}${plan.cost ? `<span class="num">${fmtMoney(plan.cost)}</span>` : 'free'}${priceIncludes(plan, t.kind === 'line', t.net === POWER)}`;
       if (!this.affordable(plan)) {
-        html += `${SEP}not enough money`;
+        html += plan.cost ? `${SEP}not enough money` : `${SEP}nothing new can be built in debt`;
         bad = true;
       } else if (plan.bad.length && plan.reason) {
         // Why, in the reason's words: '1 blocked: something is already here'.

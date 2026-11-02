@@ -8,7 +8,8 @@ export type Kind =
   | 'res' | 'com' | 'ind'
   | 'police' | 'fire' | 'school' | 'hospital'
   | 'park' | 'stadium' | 'seaport' | 'airport'
-  | 'coal' | 'nuclear' | 'wind' | 'solar';
+  | 'coal' | 'nuclear' | 'wind' | 'solar'
+  | 'mayor';
 
 /**
  * Past these a city stops growing until it builds the landmark that goes with them: housing (residents) a stadium,
@@ -39,6 +40,10 @@ export const LANDMARK_LETS = {
   seaport: `Lets industry grow past ${limit('ind')} jobs`,
 };
 
+/** How far the Mayor's house raises land value, in tiles, and by how much at its door (0-255; 40 is $1,600 an acre). */
+export const GIFT_REACH = 10;
+export const GIFT_LV = 30;
+
 /** What each building that isn't a zone does, as the guide's table and the Inspect card say it (see LANDMARK_LETS). */
 export const DOES: Record<Exclude<Kind, 'res' | 'com' | 'ind'>, string> = {
   police: 'Cuts crime within about 18 tiles',
@@ -53,7 +58,19 @@ export const DOES: Record<Exclude<Kind, 'res' | 'com' | 'ind'>, string> = {
   nuclear: 'Powers the zones its grid reaches, with clean air',
   wind: 'Powers the zones its grid reaches',
   solar: 'Powers the zones its grid reaches',
+  mayor: `Raises land value within about ${GIFT_REACH} tiles`,
 };
+
+/**
+ * The building a city is given for reaching each size class, by the class's place in CITY_CLASSES: free, placed once
+ * from the civic tools, with one standing at a time. Only Town has one so far.
+ */
+export const GIFTS: Partial<Record<number, Kind>> = { 1: 'mayor' };
+
+/** Whether a kind of building is a gift. */
+export function isGift(k: Kind): boolean {
+  return Object.values(GIFTS).includes(k);
+}
 
 /** 'a' or 'an', as said before `word`. */
 export function article(word: string): 'a' | 'an' {
@@ -93,6 +110,7 @@ export const BUILDINGS: Record<Kind, BuildingDef> = {
   nuclear: { kind: 'nuclear', name: 'Nuclear plant', size: 4, cost: 5000, upkeep: 60, capacity: 2000, maxSpread: 8, blurb: '2,000 MW and clean air. Rarely, a meltdown.' },
   wind: { kind: 'wind', name: 'Wind turbine', size: 1, cost: 250, upkeep: 2, capacity: 18, maxSpread: 40, blurb: '18 MW. Hilltops are fine.' },
   solar: { kind: 'solar', name: 'Solar farm', size: 3, cost: 2600, upkeep: 12, capacity: 160, maxSpread: 9, blurb: '160 MW of quiet power.' },
+  mayor: { kind: 'mayor', name: 'Mayor’s house', size: 2, cost: 0, upkeep: 0, maxSpread: 9, blurb: 'The city’s gift for reaching Town: free, and it raises land value around it.' },
 };
 
 /** Something a city with money to spare can make of a landmark. */
@@ -201,6 +219,7 @@ export const CITY_TOOLS: ToolDef[] = [
   { id: 'school', name: 'School', kind: 'place', building: 'school', group: 'civic', tip: '' },
   { id: 'hospital', name: 'Hospital', kind: 'place', building: 'hospital', group: 'civic', tip: '' },
   { id: 'stadium', name: 'Stadium', kind: 'place', building: 'stadium', group: 'civic', tip: '' },
+  { id: 'mayor', name: 'Mayor’s house', kind: 'place', building: 'mayor', group: 'civic', tip: '' },
   { id: 'coal', name: 'Coal plant', kind: 'place', building: 'coal', group: 'power', tip: '' },
   { id: 'nuclear', name: 'Nuclear', kind: 'place', building: 'nuclear', group: 'power', tip: '' },
   { id: 'wind', name: 'Wind turbine', kind: 'place', building: 'wind', group: 'power', tip: '' },

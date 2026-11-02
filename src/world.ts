@@ -1,7 +1,7 @@
 // The map and everything built on it. Pure data plus placement rules; the
 // simulation and renderer both read from here.
 import {
-  AUTO_GRADE, BUILDINGS, BuildingDef, CITY_CLASSES, Difficulty, FIRE_WEEKS, Kind, POWER, RAIL, ROAD, isZone, topLevel, ZONE_POP,
+  AUTO_GRADE, BUILDINGS, BuildingDef, CITY_CLASSES, Difficulty, FIRE_WEEKS, Kind, POWER, RAIL, ROAD, isGift, isZone, topLevel, ZONE_POP,
 } from './defs';
 
 export interface Building {
@@ -77,6 +77,8 @@ export interface CityState {
   debtMonths: number;
   /** The year's news so far; set when the city first runs. */
   year?: YearNews;
+  /** The gift buildings the city has been given for reaching a size class (see GIFTS). */
+  gifts: Kind[];
   /**
    * Set when the city is a challenge: which one, the deadline month, and the outcome once decided, with the month it
    * was decided and whether the goal tracker has been closed since. For a goal that must hold to the end, also how many
@@ -109,6 +111,7 @@ export function newCityState(): CityState {
     loan: 0,
     approval: 50,
     debtMonths: 0,
+    gifts: [],
   };
 }
 
@@ -143,6 +146,7 @@ function cleanCity(raw: unknown): CityState {
     // Saves from before approval was kept open at 50%, as every city used to.
     approval: num(s.approval, 50, 0, 100),
     debtMonths: Math.floor(num(s.debtMonths, 0, 0)),
+    gifts: Array.isArray(s.gifts) ? [...new Set(s.gifts.filter((k): k is Kind => typeof k === 'string' && k in BUILDINGS && isGift(k as Kind)))] : [],
   };
   const y = record(s.year);
   if (Array.isArray(y.disasters) && Array.isArray(y.landmarks)) {
@@ -339,6 +343,10 @@ export class World {
   canPlace(kind: Kind, x: number, y: number, grade = false): { ok: boolean; reason?: string; clear: number; grade: number } {
     const def = BUILDINGS[kind];
     const s = def.size;
+    if (isGift(kind)) {
+      if (!this.city.gifts.includes(kind)) return { ok: false, reason: `${def.name} is a gift for reaching a size class`, clear: 0, grade: 0 };
+      for (const b of this.buildings.values()) if (b.kind === kind) return { ok: false, reason: `The city has its ${def.name.replace(/^\w/, (c) => c.toLowerCase())} already`, clear: 0, grade: 0 };
+    }
     if (x < 0 || y < 0 || x + s > this.w || y + s > this.h) return { ok: false, reason: 'Off the map', clear: 0, grade: 0 };
     let clear = 0;
     for (let dy = 0; dy < s; dy++) {

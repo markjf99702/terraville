@@ -698,6 +698,7 @@ export function drawBuilding(dc: DC, b: Building): void {
     case 'nuclear': drawNuclear(dc, X, Y); break;
     case 'wind': drawWind(dc, X, Y); break;
     case 'solar': drawSolar(dc, X, Y); break;
+    case 'mayor': drawMayor(dc, X, Y, r); break;
   }
   ctx.restore();
 }
@@ -1092,6 +1093,33 @@ function drawHospital(dc: DC, X: number, Y: number, r: Rng): void {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('H', X + L * 0.55, Y + L * 2.62);
+  }
+}
+
+/** The Mayor's house: a white house with a slate roof and a porch, on a lawn with a drive, a flag and clipped trees. */
+function drawMayor(dc: DC, X: number, Y: number, r: Rng): void {
+  const { ctx, L } = dc;
+  // A clipped hedge round a mown lawn, paler than the grass beyond.
+  fill(ctx, X, Y, L * 2, L * 2, '#3F7D36');
+  fill(ctx, X + L * 0.08, Y + L * 0.08, L * 1.84, L * 1.84, '#9CCB6C');
+  // The drive, from the gate up to the porch, and a round bed in front.
+  fill(ctx, X + L * 0.86, Y + L * 1.2, L * 0.28, L * 0.8, '#E3D6B3');
+  if (L >= 12) {
+    circle(ctx, X + L, Y + L * 1.6, L * 0.2, '#E3D6B3');
+    circle(ctx, X + L, Y + L * 1.6, L * 0.12, '#D9534F');
+  }
+  house(dc, X + L * 0.2, Y + L * 0.14, L * 1.6, L * 1.0, L * 0.4, '#4E5A66', '#F3EFE6', true, r);
+  // The porch's columns under its pediment.
+  if (L >= 16) {
+    fill(ctx, X + L * 0.74, Y + L * 0.98, L * 0.52, L * 0.08, '#FFFFFF');
+    for (let k = 0; k < 4; k++) fill(ctx, X + L * (0.77 + k * 0.14), Y + L * 1.06, Math.max(1, L * 0.035), L * 0.14, '#FFFFFF');
+  }
+  // Clipped trees at the corners, and a flag by the drive.
+  for (const [tx, ty] of [[0.32, 1.42], [1.68, 1.42], [0.32, 1.74], [1.68, 1.74]]) tree(dc, X + L * tx, Y + L * ty, L * 0.13, '#3F7D36', false);
+  if (L >= 12) {
+    fill(ctx, X + L * 1.36, Y + L * 1.18, Math.max(1, L * 0.03), L * 0.5, '#7F8C8D');
+    fill(ctx, X + L * 1.39, Y + L * 1.18, L * 0.2, L * 0.12, '#0B6E4F');
+    fill(ctx, X + L * 1.39, Y + L * 1.18, L * 0.2, Math.max(1, L * 0.025), '#FFFFFF');
   }
 }
 

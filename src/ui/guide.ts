@@ -2,8 +2,8 @@
 // Tables pull from the game's own data so the numbers cannot drift, and the
 // pictures are drawn with the game's renderer.
 import {
-  AUTO_GRADE, BRIDGE_COST, BUILDINGS, CITY_CLASSES, DISASTER_POP, DOES, GRADE_COST, Kind, LANDMARK_LIMITS, NET_COST,
-  NET_MAX_SLOPE, NET_UPKEEP, POWER, ROAD, STATION_POP, UPGRADES, UPGRADE_LV, ZONE_LV_GATE, ZONE_POP, num,
+  AUTO_GRADE, BRIDGE_COST, BUILDINGS, CITY_CLASSES, DISASTER_POP, DOES, GIFT_LV, GIFT_REACH, GRADE_COST, Kind, LANDMARK_LIMITS, NET_COST,
+  NET_MAX_SLOPE, NET_UPKEEP, POWER, ROAD, STATION_POP, UPGRADES, UPGRADE_LV, ZONE_LV_GATE, ZONE_POP, isGift, num,
 } from '../defs';
 import { lessMotion } from '../motion';
 import { DC, drawBuilding, drawNet, drawTrees } from '../render/sprites';
@@ -33,7 +33,7 @@ const tip = (text: string) => `<p class="tip"><span class="caution" aria-hidden=
 function sections(): Section[] {
   const b = BUILDINGS;
   const plants: Kind[] = ['coal', 'nuclear', 'wind', 'solar'];
-  const civic: [Kind, string][] = (['police', 'fire', 'school', 'hospital', 'park', 'stadium', 'airport', 'seaport'] as const)
+  const civic: [Kind, string][] = (['police', 'fire', 'school', 'hospital', 'park', 'stadium', 'airport', 'seaport', 'mayor'] as const)
     .map((k) => [k, DOES[k]]);
   return [
     {
@@ -168,7 +168,7 @@ function sections(): Section[] {
       title: 'Services and landmarks',
       html: `
         ${table(['Building', 'Cost', 'Upkeep', 'What it does'], civic.map(([k, what]) => [
-          b[k].name, money(b[k].cost), b[k].upkeep < 1 ? `$${b[k].upkeep}/mo` : `${money(b[k].upkeep)}/mo`, what,
+          b[k].name, isGift(k) ? 'Free, a gift' : money(b[k].cost), !b[k].upkeep ? 'None' : b[k].upkeep < 1 ? `$${b[k].upkeep}/mo` : `${money(b[k].upkeep)}/mo`, what,
         ]), [1, 2])}
         <p>Crime grows where people are crowded and land is cheap. Police coverage cancels it out, so place stations in dense, low-value neighbourhoods first. Service buildings need power too; an unpowered station works at about a third of its strength.</p>
         <p>Once a city has money to spare, each landmark can be upgraded twice from its Inspect card. Every upgrade raises land value across the whole city by ${money(UPGRADE_LV * 40)}/acre, so homes and shops can grow denser and taxes bring in more, but they cost a lot and add to the upkeep. Only the most upgraded stadium, seaport and airport count, so upgrading a second one adds nothing.</p>
@@ -223,6 +223,7 @@ function sections(): Section[] {
       title: 'City sizes and score',
       html: `${table(['Class', 'Residents'], CITY_CLASSES.map((c) => [c.name, c.min ? `${num(c.min)}+` : 'under 2,000']), [1])}
         <p>The city report scores the city out of 1,000. The mayor’s approval weighs most, 7 points for each percent, up to 700. Each size class past ${CITY_CLASSES[0].name} adds 50, up to ${(CITY_CLASSES.length - 1) * 50} for a ${CITY_CLASSES[CITY_CLASSES.length - 1].name.toLowerCase()}, and land value adds up to 50. The History charts show the approval behind it.</p>
+        <p>Reaching Town brings a gift: a Mayor’s house, free, placed from the civic tools where it is marked Gift. It raises land value for about ${GIFT_REACH} tiles around it, up to ${money(GIFT_LV * 40)}/acre at its door. A city has one at a time: if it is lost, the tool comes back.</p>
         <p>At the end of each year the city’s paper comes out: the year’s biggest news as its headline (a year in debt, a disaster, a new size class, a landmark, record growth, brownouts), residents and the change on the year before, the top worry, approval, and the year’s surplus or deficit. On Ultra it waits until you pause, and Settings turns it off.</p>`,
     },
   ];
