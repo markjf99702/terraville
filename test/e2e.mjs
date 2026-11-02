@@ -1409,6 +1409,68 @@ try {
     await ctx.close();
   });
 
+  await test('the Elevation layer colours the land by its height in the editor and the city, with its bands in the legend', async () => {
+    // The colour the layer gives a tile `m` metres up, and the colour it has drawn for the first land tile that high.
+    const drawn = (page, lo, hi) => page.evaluate(([lo, hi]) => {
+      const r = window.__terraville.renderer;
+      const w = r.world;
+      let i = 0;
+      while (i < w.n && (w.water[i] || w.height[i] < lo || w.height[i] >= hi)) i++;
+      if (i === w.n) return null;
+      const px = r.overlayCanvas.getContext('2d').getImageData(i % w.w, Math.floor(i / w.w), 1, 1).data;
+      return [...px];
+    }, [lo, hi]);
+    const legend = (page) => page.$$eval('#legend > span', (s) => s.map((x) => x.textContent));
+    const BANDS = ['0–5', '5–10', '10–15', '15–25', '25–50', '50–100', '100+ m'];
+    {
+      const ctx = await profile(DESK);
+      const { page, problems } = await open(ctx);
+      await page.click('[data-act="editor"]');
+      await page.waitForFunction(() => window.__terraville.mode === 'editor');
+      assert.deepEqual(await page.$$eval('#overlaySel option:not([disabled])', (o) => o.map((x) => x.textContent)), ['Map', 'Steepness', 'Elevation']);
+      // A coast, which has land low by the sea and higher behind it.
+      await page.click('[data-style="coast"]');
+      await page.waitForFunction(() => window.__terraville.terrain.style === 'coast');
+      await page.selectOption('#overlaySel', 'elevation');
+      assert.equal(await page.evaluate(() => window.__terraville.renderer.overlay), 'elevation');
+      assert.deepEqual(await legend(page), BANDS);
+      await page.waitForTimeout(150);
+      // The canvas keeps its colours premultiplied by their opacity, so each may be a step off.
+      const near = (a, b, what) => assert.ok(a && a.every((v, k) => Math.abs(v - b[k]) <= 2), `${what}: ${a} for ${b}`);
+      near(await drawn(page, 0, 5), [255, 231, 199, 165], 'shore land, 0 to 5 m up, in the palest band');
+      near(await drawn(page, 15, 25), [220, 159, 65, 165], '15 to 25 m up');
+      // A city keeps it, among its other layers.
+      await page.click('[data-act="found"]');
+      await page.click('.modal footer .btn.primary');
+      await page.waitForFunction(() => window.__terraville.mode === 'city');
+      await page.click('#topbar [data-act="layers"]');
+      await page.click('[role="menu"] button:has-text("Map")');
+      await page.click('#topbar [data-act="layers"]');
+      await page.click('[role="menu"] button:has-text("Elevation")');
+      assert.equal(await page.evaluate(() => window.__terraville.renderer.overlay), 'elevation');
+      assert.deepEqual(await legend(page), BANDS);
+      assert.deepEqual(problems, []);
+      await ctx.close();
+    }
+    {
+      // A phone's editor has no layer card to pick it from: the menu has it, beside the steepness.
+      const ctx = await profile(PHONE);
+      const { page, problems } = await open(ctx);
+      await page.click('[data-act="editor"]');
+      await page.waitForFunction(() => window.__terraville.mode === 'editor');
+      await page.click('#topbar [data-act="menu"]');
+      await page.click('[role="menu"] button:has-text("Show the elevation")');
+      assert.equal(await page.evaluate(() => window.__terraville.renderer.overlay), 'elevation');
+      assert.ok(await page.isVisible('#legend'), 'its legend shows');
+      await page.click('#topbar [data-act="menu"]');
+      assert.deepEqual(await page.$$eval('[role="menu"] button', (b) => b.map((x) => x.textContent).filter((t) => /steepness|elevation/.test(t))), ['Show the steepness', 'Hide the elevation']);
+      await page.click('[role="menu"] button:has-text("Hide the elevation")');
+      assert.equal(await page.evaluate(() => window.__terraville.renderer.overlay), 'none');
+      assert.deepEqual(problems, []);
+      await ctx.close();
+    }
+  });
+
   await test('every corner tile of the map can be brought out from under the panels, on a laptop and a phone', async () => {
     for (const opts of [DESK, PHONE]) {
       const ctx = await profile(opts);

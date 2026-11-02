@@ -390,6 +390,10 @@ input[type="range"] { width: 100%; accent-color: var(--sign-hi); margin: 0; touc
 .mm-phone #legend.slope { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 6px; }
 .mm-phone #legend.slope > span { flex-wrap: wrap; row-gap: 0; margin-right: 0 !important; }
 .mm-phone #legend.slope .num { flex-basis: 100%; padding-left: 14px; white-space: nowrap; }
+/* The Elevation layer's bands: a swatch and its heights each, wrapping as they need. */
+#legend.elevation { gap: 4px 8px; }
+#legend.elevation > span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+#legend.elevation i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
 /* Whole map sits on the overview map's corner, leaving the layer's name its room in the row below. */
 #zoomFit { position: absolute; top: 12px; right: 12px; width: 28px; height: 28px; border: 1px solid var(--line-2); background: rgba(14, 20, 18, 0.78); }
 #zoomFit:hover { background: var(--panel-3); }

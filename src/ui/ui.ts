@@ -5,7 +5,7 @@ import {
 } from '../defs';
 import { DISASTER_NAMES, DisasterKind } from '../disasters';
 import { Game, SPEED_NAMES, randomCityName } from '../game';
-import { OVERLAYS, Overlay, RIDERS_COLOR, SLOPE_CLASSES } from '../render/renderer';
+import { EDITOR_OVERLAYS, ELEVATION_BANDS, OVERLAYS, Overlay, RIDERS_COLOR, SLOPE_CLASSES } from '../render/renderer';
 import { ZONE_COLORS } from '../render/color';
 import { drawBuilding } from '../render/sprites';
 import { randomSeedName } from '../rng';
@@ -1248,7 +1248,7 @@ export class UI {
   }
 
   setOverlay(o: Overlay): void {
-    if (this.game.mode === 'editor' && o !== 'none' && o !== 'slope') o = 'none';
+    if (this.game.mode === 'editor' && !EDITOR_OVERLAYS.includes(o)) o = 'none';
     this.game.renderer.setOverlay(o);
     this.syncOverlay();
   }
@@ -1259,12 +1259,13 @@ export class UI {
     sel.value = o;
     const editor = this.game.mode === 'editor';
     sel.disabled = this.game.mode === 'title';
-    for (const opt of sel.options) opt.disabled = editor && opt.value !== 'none' && opt.value !== 'slope';
+    for (const opt of sel.options) opt.disabled = editor && !EDITOR_OVERLAYS.includes(opt.value as Overlay);
     const def = OVERLAYS.find((x) => x.id === o)!;
     $(this.root, '#minimapCard').classList.toggle('show', o !== 'none');
     this.syncOverview();
     const leg = $(this.root, '#legend');
     leg.classList.toggle('slope', o === 'slope');
+    leg.classList.toggle('elevation', o === 'elevation');
     leg.classList.toggle('rows', o === 'traffic');
     if (o === 'none') {
       leg.hidden = true;
@@ -1274,6 +1275,17 @@ export class UI {
     if (o === 'slope') {
       leg.style.flexWrap = 'wrap';
       leg.innerHTML = SLOPE_CLASSES.map((c, k) => `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:6px" title="${c.note}"><i style="width:10px;height:10px;border-radius:3px;display:inline-block;background:${c.alpha ? `rgba(235,104,52,${c.alpha / 255})` : 'transparent'};border:1px solid var(--line-2)"></i>${c.label} <span class="num">${k < 3 ? `≤${c.max}` : `>${SLOPE_CLASSES[2].max}`} m</span></span>`).join('');
+      return;
+    }
+    if (o === 'elevation') {
+      // The bands' heights above the sea, the unit once at the end.
+      leg.style.flexWrap = 'wrap';
+      leg.innerHTML = ELEVATION_BANDS.map((b, k) => {
+        const lo = k ? ELEVATION_BANDS[k - 1].max : 0;
+        const range = b.max === Infinity ? `${lo}+ m` : `${lo}–${b.max}`;
+        const title = b.max === Infinity ? `${lo} m and more above the sea` : `${lo} to ${b.max} m above the sea`;
+        return `<span title="${title}"><i style="background:${b.color}"></i><span class="num">${range}</span></span>`;
+      }).join('');
       return;
     }
     leg.style.flexWrap = '';
@@ -1460,10 +1472,11 @@ export class UI {
       };
       d.appendChild(b);
     };
-    // A phone's editor hides the map layer card, which is where the steepness layer is picked.
+    // A phone's editor hides the map layer card, which is where its layers are picked.
     if (this.game.mode === 'editor' && this.compact()) {
-      const on = this.game.renderer.overlay === 'slope';
-      add('contour', on ? 'Hide the steepness' : 'Show the steepness', () => this.setOverlay(on ? 'none' : 'slope'));
+      const o = this.game.renderer.overlay;
+      add('contour', o === 'slope' ? 'Hide the steepness' : 'Show the steepness', () => this.setOverlay(o === 'slope' ? 'none' : 'slope'));
+      add('layers', o === 'elevation' ? 'Hide the elevation' : 'Show the elevation', () => this.setOverlay(o === 'elevation' ? 'none' : 'elevation'));
     }
     // A phone has no room for Redo in the top bar, and no keyboard for Ctrl+Shift+Z.
     if (this.game.mode === 'city' && this.compact() && this.game.canRedo()) add('redo', 'Redo', () => this.game.redo());

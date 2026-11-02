@@ -72,7 +72,7 @@ interface Lights {
   used: number;
 }
 
-export type Overlay = 'none' | 'traffic' | 'pollution' | 'crime' | 'landValue' | 'density' | 'power' | 'police' | 'fire' | 'service' | 'slope';
+export type Overlay = 'none' | 'traffic' | 'pollution' | 'crime' | 'landValue' | 'density' | 'power' | 'police' | 'fire' | 'service' | 'slope' | 'elevation';
 
 export const OVERLAYS: { id: Overlay; name: string; color: string; low: string; high: string }[] = [
   { id: 'none', name: 'Map', color: '', low: '', high: '' },
@@ -86,6 +86,25 @@ export const OVERLAYS: { id: Overlay; name: string; color: string; low: string; 
   { id: 'fire', name: 'Fire cover', color: '#eb6834', low: 'None', high: 'Full' },
   { id: 'service', name: 'Schools & health', color: '#1baf7a', low: 'None', high: 'Full' },
   { id: 'slope', name: 'Steepness', color: '#eb6834', low: 'Flat', high: 'Cliff' },
+  { id: 'elevation', name: 'Elevation', color: '#c78b28', low: 'Shore', high: 'Peaks' },
+];
+
+/** The layers the terrain editor has: the land's own, with nothing built to show. */
+export const EDITOR_OVERLAYS: Overlay[] = ['none', 'slope', 'elevation'];
+
+/**
+ * Height bands for the Elevation layer, up to `max` metres above the sea: 5 m apart near the water, where a flood starts
+ * on shore up to 6 m and rises 2.5 to 5 m above it (see Disasters.startFlood), wider above. One amber, light to dark,
+ * with each step about the same lightness apart.
+ */
+export const ELEVATION_BANDS = [
+  { max: 5, color: '#ffe7c7' },
+  { max: 10, color: '#f7ce97' },
+  { max: 15, color: '#ecb668' },
+  { max: 25, color: '#dc9f41' },
+  { max: 50, color: '#c78b28' },
+  { max: 100, color: '#b07812' },
+  { max: Infinity, color: '#986603' },
 ];
 
 /** The Traffic layer shades track by its riders, in a colour of its own: see Sim.riders. */
@@ -1244,7 +1263,7 @@ export class Renderer {
     // Dim the map a little so the data reads.
     ctx.fillStyle = 'rgba(14,20,18,0.55)';
     ctx.fillRect(0, 0, this.world.w, this.world.h);
-    ctx.imageSmoothingEnabled = this.overlay !== 'power' && this.overlay !== 'traffic' && this.overlay !== 'slope';
+    ctx.imageSmoothingEnabled = this.overlay !== 'power' && this.overlay !== 'traffic' && this.overlay !== 'slope' && this.overlay !== 'elevation';
     ctx.drawImage(this.overlayCanvas, 0, 0, this.world.w, this.world.h);
     ctx.imageSmoothingEnabled = true;
   }
@@ -1265,6 +1284,10 @@ export class Renderer {
     const cr = (base >> 16) & 255;
     const cg = (base >> 8) & 255;
     const cb = base & 255;
+    const bandRgb = ELEVATION_BANDS.map((b) => {
+      const v = parseInt(b.color.slice(1), 16);
+      return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+    });
     const rail = parseInt(RIDERS_COLOR.slice(1), 16);
     const rr = (rail >> 16) & 255;
     const rg = (rail >> 8) & 255;
@@ -1280,6 +1303,12 @@ export class Renderer {
       this.overlay === 'service' ? world.serviceCov : null;
     for (let i = 0; i < world.n; i++) {
       const o = i * 4;
+      if (this.overlay === 'elevation') {
+        if (world.water[i]) continue;
+        const c = bandRgb[ELEVATION_BANDS.findIndex((b) => world.height[i] < b.max)];
+        d[o] = c[0]; d[o + 1] = c[1]; d[o + 2] = c[2]; d[o + 3] = 165;
+        continue;
+      }
       if (this.overlay === 'slope') {
         if (world.water[i]) continue;
         const s = world.slope(i % world.w, (i / world.w) | 0);
