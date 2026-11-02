@@ -19,7 +19,7 @@ Play it at [terraville.junkdrawer.works](https://terraville.junkdrawer.works/), 
 - Sculpting brushes: raise, lower, smooth, flatten, roughen. Paint water, dry land, forest, or clear trees. Drop a spring on a hilltop and a river finds its own way downhill.
 - Real elevation with hillshading and contour lines. Beaches form on low coasts; rivers widen as they run. The Elevation layer, in the city too, colours the land in height bands, 5 m apart near the water where floods reach.
 - Undo and redo through everything, including regenerations.
-- The land being shaped is kept as a draft every 90 seconds and whenever you leave the page, and **Continue shaping the land** on the title screen brings it back. Founding a city on it, or starting new land, lets the draft go.
+- The land being shaped is kept as a draft every 90 seconds and whenever you leave the page, and **Continue shaping the land** on the title screen brings it back. Founding a city, on this land or any other, or starting new land lets the draft go; playing a challenge or a saved city meanwhile keeps it.
 - **Shape this land again**, on a saved city in Save, open and share, opens the city's land in the editor with everything built on it cleared, as the 1989 generator's ClearUnnatural pass kept only the natural ground. The city itself is kept as it was.
 
 **City**
