@@ -150,6 +150,11 @@ export function ago(t: number): string {
   return `on ${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
 }
 
+/** How the city report words a worry of 0 to 100. */
+export function worryWord(v: number): 'Severe' | 'Serious' | 'Minor' | 'Fine' {
+  return v > 60 ? 'Severe' : v > 35 ? 'Serious' : v > 15 ? 'Minor' : 'Fine';
+}
+
 export function money(n: number): string {
   const v = Math.round(n);
   return (v < 0 ? '−$' : '$') + num(Math.abs(v));
@@ -2336,7 +2341,6 @@ export class UI {
     if (!sim) return;
     const s = sim.stats;
     const sev = (v: number) => (v > 60 ? 'var(--critical)' : v > 35 ? 'var(--serious)' : v > 15 ? 'var(--warn)' : 'var(--good)');
-    const word = (v: number) => (v > 60 ? 'Severe' : v > 35 ? 'Serious' : v > 15 ? 'Minor' : 'Fine');
     const approval = Math.round(s.approval);
     // Nobody to approve or worry yet: say so rather than show 50% of no one and an empty list.
     const empty = s.residents === 0;
@@ -2378,7 +2382,7 @@ export class UI {
         <h3>What people worry about</h3>
         <div class="bars">${s.problems.map((p) => {
           const to = WORRY_LAYERS[p.id];
-          const inner = `<span>${p.label}</span><div class="track" role="img" aria-label="${p.label}: ${word(p.value)}"><i style="width:${Math.max(2, p.value)}%;background:${sev(p.value)}"></i></div><span class="v">${word(p.value)}</span>`;
+          const inner = `<span>${p.label}</span><div class="track" role="img" aria-label="${p.label}: ${worryWord(p.value)}"><i style="width:${Math.max(2, p.value)}%;background:${sev(p.value)}"></i></div><span class="v">${worryWord(p.value)}</span>`;
           // A chevron says the row opens something; its title, read as its description, says what.
           return to ? `<button class="barrow worry" data-to="${to}" title="${to === 'budget' ? 'Open the budget' : `Show the ${OVERLAYS.find((o) => o.id === to)!.name.toLowerCase()} layer`}">${inner}<i class="chev right" aria-hidden="true"></i></button>` : `<div class="barrow">${inner}</div>`;
         }).join('')}</div>

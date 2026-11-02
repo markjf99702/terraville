@@ -1047,7 +1047,8 @@ export class Sim {
       { id: 'crime', label: 'Crime', value: clamp((s.avgCrime / 255) * 160, 0, 100) },
       { id: 'pollution', label: 'Pollution', value: clamp((s.avgPollution / 255) * 170, 0, 100) },
       { id: 'housing', label: 'Housing costs', value: clamp(((s.avgLandValue - 60) / 195) * 90, 0, 100) },
-      { id: 'taxes', label: 'Taxes', value: clamp((city.tax - 4) * 6.5, 0, 100) },
+      // Nobody minds the neutral 7%. Each point above it adds 10: Minor from 9%, Serious from 11%, Severe from 14%.
+      { id: 'taxes', label: 'Taxes', value: clamp((city.tax - 7) * 10, 0, 100) },
       { id: 'traffic', label: 'Traffic', value: clamp((s.avgTraffic / 255) * 190, 0, 100) },
       { id: 'jobs', label: 'Unemployment', value: clamp(s.unemployment * 160, 0, 100) },
       { id: 'fire', label: 'Fires', value: clamp(s.fires * 4, 0, 100) },

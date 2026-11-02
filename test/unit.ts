@@ -12,7 +12,7 @@ import { SCENARIOS, buildScenario, goalRowText, goalState, openScenario, scenari
 import { Game, priceIncludes } from '../src/game';
 import { chartAxis, spreadLabels, tickLabel } from '../src/ui/charts';
 import { cutOff } from '../src/render/renderer';
-import { ago } from '../src/ui/ui';
+import { ago, worryWord } from '../src/ui/ui';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -736,6 +736,24 @@ await test('each point of tax over 7% takes 0.05 off the demand for every zone',
   const at12 = demand(12);
   // The meter moves halfway to its new reading each month, so half of the 5 x 0.05 shows after one.
   for (const k of ['r', 'c', 'i'] as const) assert.ok(Math.abs(at7[k] - at12[k] - 0.125) < 1e-9, `${k}: ${at7[k] - at12[k]}`);
+});
+
+await test('the report counts taxes a worry only above the neutral 7%: Minor from 9%, Serious from 11%, Severe from 14%', () => {
+  const at = (tax: number) => {
+    const w = flat(40, 30);
+    w.setLevel(w.place('res', 2, 2), 4);
+    w.city.tax = tax;
+    const sim = new Sim(w);
+    sim.stats.approval = 50;
+    sim.evaluate();
+    return { word: worryWord(sim.stats.problems.find((p) => p.id === 'taxes')!.value), approval: sim.stats.approval };
+  };
+  assert.deepEqual([0, 4, 7, 8, 9, 10, 11, 13, 14, 20].map((t) => at(t).word), [
+    'Fine', 'Fine', 'Fine', 'Fine', 'Minor', 'Minor', 'Serious', 'Serious', 'Severe', 'Severe',
+  ]);
+  // Approval: cutting taxes below 7% buys none, and every point above it costs some.
+  assert.equal(at(4).approval, at(7).approval);
+  assert.ok(at(9).approval < at(8).approval && at(8).approval < at(7).approval);
 });
 
 await test('landmark upgrades raise land value everywhere, counting the most upgraded landmark of each kind', () => {
