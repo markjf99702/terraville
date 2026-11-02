@@ -1015,11 +1015,69 @@ try {
     await ctx.close();
   });
 
+  await test('the checklist cheers a city it saw grow, hides quietly on a grown city, and stays when the menu asks for it', async () => {
+    const watchToasts = (page) => page.evaluate(() => {
+      window.__toasts = [];
+      new MutationObserver(() => window.__toasts.push(document.querySelector('#toast').textContent)).observe(document.querySelector('#toast'), { childList: true, subtree: true, characterData: true });
+    });
+    const growing = (page) => page.evaluate(() => window.__toasts.filter((t) => t.includes('growing')));
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await watchToasts(page);
+    await found(page);
+    // A plant, three zones that pass its power along and touch a road, each grown a level: every step is done.
+    await page.evaluate(() => {
+      const g = window.__terraville;
+      const w = g.world;
+      const fits = (x0, y0) => {
+        for (let y = y0 - 1; y < y0 + 4; y++) for (let x = x0; x < x0 + 13; x++) if (!w.isEmptyLand(w.idx(x, y)) || w.slope(x, y) > 2) return false;
+        return true;
+      };
+      let at = null;
+      for (let y = 6; y < w.h - 6 && !at; y++) for (let x = 2; x < w.w - 16 && !at; x++) if (fits(x, y)) at = [x, y];
+      if (!at) throw new Error('no flat land for a town');
+      const [x, y] = at;
+      for (let d = 0; d < 13; d++) w.setNet(1, x + d, y - 1);
+      w.place('coal', x, y);
+      for (const [k, dx] of [['res', 4], ['com', 7], ['ind', 10]]) w.setLevel(w.place(k, x + dx, y), 1);
+      g.sim.computePower();
+    });
+    await page.waitForFunction(() => window.__toasts.some((t) => t.includes('growing')), null, { timeout: 5000 });
+    assert.equal(await page.isHidden('#guide'), true, 'a list it saw finished goes away');
+    const code = await codeOf(page, '(f) => {}');
+    await ctx.close();
+
+    // In a fresh browser, the grown city is opened from its code: nobody asked for the list, so it goes quietly.
+    const other = await profile();
+    const { page: b, problems: inB } = await open(other);
+    await watchToasts(b);
+    await openCode(b, code);
+    await b.waitForFunction(() => window.__terraville.mode === 'city');
+    await b.waitForTimeout(2000);
+    assert.deepEqual(await growing(b), [], 'a city already grown when opened is not cheered');
+    assert.equal(await b.isHidden('#guide'), true);
+    assert.equal(await b.evaluate(() => localStorage.getItem('terraville.guide')), 'done');
+    // Asked for from the menu, the list stays until its close button, with no cheer.
+    await b.click('#topbar [data-act="menu"]');
+    await b.click('[role="menu"] button:has-text("Show the starter checklist")');
+    await b.waitForTimeout(2000);
+    assert.equal(await b.isVisible('#guide'), true, 'the list asked for stays up');
+    assert.match(await b.textContent('#guide'), /All done\..*5 of 5 done/);
+    assert.deepEqual(await growing(b), []);
+    await b.tap('#guide .guide-next');
+    await b.tap('#guide .close');
+    assert.equal(await b.isHidden('#guide'), true, 'its close button hides it');
+    await b.waitForTimeout(1200);
+    assert.equal(await b.isHidden('#guide'), true);
+    assert.deepEqual([...problems, ...inB], []);
+    await other.close();
+  });
+
   await test('the checklist ticks roads and power only when every zone has them, and on a phone it is one line until tapped', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);
     await found(page);
-    assert.match(await page.textContent('#guide'), /^\s*Next: Build a power plant \(coal is cheapest\)\.\s*0 of 5 done\s*$/, 'one line on a phone');
+    assert.match(await page.textContent('#guide'), /^\s*Next: Build a power plant \(coal powers a whole town\)\.\s*0 of 5 done\s*$/, 'one line on a phone');
     assert.ok((await page.evaluate(() => document.querySelector('#guide').getBoundingClientRect().height)) < 60);
     await page.tap('#guide .guide-next');
     assert.equal(await page.isVisible('#guide ol'), true, 'a tap opens the list');

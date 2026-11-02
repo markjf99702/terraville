@@ -180,6 +180,10 @@ export class UI {
   private regenTimer = 0;
   private guideDismissed = false;
   private guideTimer = 0;
+  /** The menu asked for the checklist: it stays until its close button, even with every step done. */
+  private guideForced = false;
+  /** This city's checklist has shown a step not done yet, so finishing it now is news. */
+  private guideSawIncomplete = false;
   /** On a phone, the checklist has been tapped open. */
   private guideOpen = false;
   private chartRange = 120;
@@ -364,6 +368,7 @@ export class UI {
     this.syncOverlay();
     this.updateStats();
     $(this.root, '#goal').hidden = !this.game.world.city.scenario;
+    this.guideForced = this.guideSawIncomplete = false;
     this.updateGuide(true);
   }
 
@@ -988,6 +993,7 @@ export class UI {
     add('settings', touchScreen() ? 'Settings and touch' : 'Settings and keys', () => this.openSettings());
     if (this.game.mode === 'city') add('guide', 'Show the starter checklist', () => {
       this.guideDismissed = false;
+      this.guideForced = true;
       this.updateGuide(true);
     });
     d.appendChild(el('<hr>'));
@@ -1146,6 +1152,7 @@ export class UI {
 
   // ---- starter checklist ------------------------------------------------------------
 
+  /** Redraw the checklist; `force` looks at it even while it is hidden, as when a city opens or the menu asks. */
   private updateGuide(force: boolean): void {
     const g = this.game;
     const box = $(this.root, '#guide');
@@ -1171,17 +1178,21 @@ export class UI {
     }
     const count = (n: number, what: string) => (zones && n < zones ? `${n} of ${zones} zones ${what}` : '');
     const items: [boolean, string, string][] = [
-      [plant, 'Build a power plant (coal is cheapest).', ''],
+      [plant, 'Build a power plant (coal powers a whole town).', ''],
       [res && com && ind, 'Zone residential, commercial and industrial lots.', ''],
       [zones > 0 && roaded === zones, 'Lay roads so each zone touches one.', count(roaded, roaded === 1 ? 'touches a road' : 'touch a road')],
       [zones > 0 && powered === zones, 'Run power lines from the plant to the zones.', count(powered, powered === 1 ? 'has power' : 'have power')],
       [grown, 'Press play and watch the first buildings go up.', ''],
     ];
-    if (items.every(([ok]) => ok) && !force) {
+    // Finished: it goes, with a word only if this visit saw it unfinished (a city opened grown says nothing), unless
+    // the menu asked for it, when only its close button hides it.
+    const complete = items.every(([ok]) => ok);
+    if (!complete) this.guideSawIncomplete = true;
+    else if (!this.guideForced) {
       this.guideDismissed = true;
       try { localStorage.setItem('terraville.guide', 'done'); } catch { /* ignore */ }
       box.hidden = true;
-      this.toast('The city is growing. Keep an eye on the RCI meter at the top.');
+      if (this.guideSawIncomplete) this.toast('The city is growing. Keep an eye on the RCI meter at the top.');
       return;
     }
     box.hidden = false;
@@ -1189,9 +1200,9 @@ export class UI {
     // On a phone the list would cover a third of the map: it is one line, 'Next: …', until tapped open.
     const small = this.compact();
     const folded = small && !this.guideOpen;
-    const next = items.find(([ok]) => !ok)!;
+    const next = items.find(([ok]) => !ok);
     const html = folded
-      ? `<button class="guide-next" aria-expanded="false"><span class="guide-next-text"><b>Next:</b> ${next[1]}</span><span class="num">${done} of ${items.length} done</span><i class="chev" aria-hidden="true"></i></button>`
+      ? `<button class="guide-next" aria-expanded="false"><span class="guide-next-text">${next ? `<b>Next:</b> ${next[1]}` : '<b>All done.</b> Keep an eye on the RCI meter.'}</span><span class="num">${done} of ${items.length} done</span><i class="chev" aria-hidden="true"></i></button>`
       : `<button class="iconbtn close" aria-label="Hide checklist" style="position:absolute;top:6px;right:6px;width:26px;height:26px">${ICONS.close}</button>
       ${small
         ? '<button class="guide-head" aria-expanded="true">Getting started <i class="chev up" aria-hidden="true"></i></button>'
@@ -1216,6 +1227,7 @@ export class UI {
     const close = box.querySelector<HTMLElement>('.close');
     if (close) close.onclick = () => {
       this.guideDismissed = true;
+      this.guideForced = false;
       try { localStorage.setItem('terraville.guide', 'done'); } catch { /* ignore */ }
       box.hidden = true;
     };
