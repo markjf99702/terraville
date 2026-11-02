@@ -755,11 +755,11 @@ export class UI {
     p.classList.toggle('collapsed', this.compact());
     p.innerHTML = `
       <h2 id="edHead" style="cursor:pointer">Generate land</h2>
-      <div class="field"><span>Landscape</span>
-        <div class="seg" id="edStyle">${styles.map((s) => `<button data-style="${s}" aria-pressed="${s === t.style}">${STYLE_NAMES[s]}</button>`).join('')}</div>
+      <div class="field"><span id="edStyleCap">Landscape</span>
+        <div class="seg" id="edStyle" role="group" aria-labelledby="edStyleCap">${styles.map((s) => `<button data-style="${s}" aria-pressed="${s === t.style}">${STYLE_NAMES[s]}</button>`).join('')}</div>
       </div>
-      <div class="field"><span>Map size</span>
-        <div class="seg" id="edSize">${MAP_SIZES.map((m) => `<button data-size="${m.id}" aria-pressed="${m.w === t.w}">${m.name}<br><span class="num" style="font-weight:500;font-size:10.5px">${m.w}×${m.h}</span></button>`).join('')}</div>
+      <div class="field"><span id="edSizeCap">Map size</span>
+        <div class="seg" id="edSize" role="group" aria-labelledby="edSizeCap">${MAP_SIZES.map((m) => `<button data-size="${m.id}" aria-pressed="${m.w === t.w}">${m.name}<br><span class="num" style="font-weight:500;font-size:10.5px">${m.w}×${m.h}</span></button>`).join('')}</div>
       </div>
       ${slider('edWater', 'Sea', 0, 100, 1, t.water)}
       ${slider('edHills', 'Mountains', 0, 100, 1, t.hills)}
@@ -1479,21 +1479,37 @@ export class UI {
   openFound(fromQuick: boolean): void {
     let diff: Difficulty['id'] = 'easy';
     const body = el(`<div style="display:flex;flex-direction:column;gap:16px">
-      <label class="field"><span>City name</span>
+      <div class="field"><span><label for="fName">City name</label></span>
         <div class="seedrow"><input class="textin" id="fName" maxlength="28" value="${esc(randomCityName())}" spellcheck="false">
-        <button class="iconbtn" id="fDice" aria-label="Another name" title="Another name">${ICONS.dice}</button></div></label>
-      <div class="field"><span>Difficulty</span>
-        <div class="choice" id="fDiff">${DIFFICULTIES.map((d) => `<button data-d="${d.id}" aria-pressed="${d.id === diff}"><b>${d.name}</b><span>${money(d.funds)} to start</span><small>${difficultyNote(d)}</small></button>`).join('')}</div>
+        <button class="iconbtn" id="fDice" aria-label="Another name" title="Another name">${ICONS.dice}</button></div></div>
+      <div class="field"><span id="fDiffCap">Difficulty</span>
+        <div class="choice" id="fDiff" role="radiogroup" aria-labelledby="fDiffCap">${DIFFICULTIES.map((d) => `<button role="radio" data-d="${d.id}" aria-checked="${d.id === diff}" tabindex="${d.id === diff ? 0 : -1}"><b>${d.name}</b><span>${money(d.funds)} to start</span><small>${difficultyNote(d)}</small></button>`).join('')}</div>
       </div>
       <label class="switch"><span>Random disasters<small>Fires, floods, tornadoes and worse, once the city has ${DISASTER_POP.toLocaleString()} residents. You can also set them off yourself.</small></span><input type="checkbox" id="fDis" checked></label>
       ${fromQuick ? '<p class="note">This land was generated at random. Shape it first in the terrain editor, or found the city as it is.</p>' : ''}
     </div>`);
     $(body, '#fDice').onclick = () => ($<HTMLInputElement>(body, '#fName').value = randomCityName());
+    // A group of radio buttons: one stop for Tab, the arrow keys move the choice.
+    const choose = (b: HTMLElement) => {
+      diff = b.dataset.d as Difficulty['id'];
+      for (const x of body.querySelectorAll<HTMLElement>('[data-d]')) {
+        x.setAttribute('aria-checked', String(x === b));
+        x.tabIndex = x === b ? 0 : -1;
+      }
+    };
     $(body, '#fDiff').onclick = (e) => {
       const b = (e.target as HTMLElement).closest<HTMLElement>('[data-d]');
-      if (!b) return;
-      diff = b.dataset.d as Difficulty['id'];
-      for (const x of body.querySelectorAll('[data-d]')) x.setAttribute('aria-pressed', String(x === b));
+      if (b) choose(b);
+    };
+    $(body, '#fDiff').onkeydown = (e) => {
+      const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+      if (!step) return;
+      e.preventDefault();
+      e.stopPropagation(); // the arrow keys would also move the map
+      const all = [...body.querySelectorAll<HTMLElement>('[data-d]')];
+      const b = all[(all.findIndex((x) => x.dataset.d === diff) + step + all.length) % all.length];
+      choose(b);
+      b.focus();
     };
     const found = this.btn('Found the city', 'primary', () => {
       const name = $<HTMLInputElement>(body, '#fName').value;

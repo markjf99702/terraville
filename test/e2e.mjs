@@ -693,6 +693,34 @@ try {
     await desk.close();
   });
 
+  await test('the found dialog names its field and its difficulty choice for a screen reader, and the editor names its button rows', async () => {
+    const ctx = await profile(DESK);
+    const { page, problems } = await open(ctx);
+    await page.click('[data-act="quick"]');
+    assert.equal(await page.getByRole('textbox', { name: 'City name', exact: true }).count(), 1, 'the dice button is not part of the name');
+    assert.equal(await page.getByRole('radiogroup', { name: 'Difficulty' }).count(), 1);
+    const checked = () => page.$$eval('#fDiff [role="radio"]', (r) => r.map((x) => [x.getAttribute('aria-checked'), x.tabIndex]));
+    assert.deepEqual(await checked(), [['true', 0], ['false', -1], ['false', -1]]);
+    // Arrow keys move the choice, as in any group of radio buttons.
+    await page.focus('#fDiff [aria-checked="true"]');
+    await page.keyboard.press('ArrowRight');
+    assert.deepEqual(await checked(), [['false', -1], ['true', 0], ['false', -1]]);
+    assert.equal(await page.evaluate(() => document.activeElement.dataset.d), 'medium');
+    await page.click('#fDiff [data-d="hard"]');
+    assert.deepEqual(await checked(), [['false', -1], ['false', -1], ['true', 0]]);
+    await page.click('.modal footer .btn.primary');
+    await page.waitForFunction(() => window.__terraville.mode === 'city');
+    assert.equal(await page.evaluate(() => window.__terraville.world.city.difficulty), 'hard');
+    await page.goto(base);
+    await titleUp(page);
+    await page.click('[data-act="editor"]');
+    await page.waitForFunction(() => window.__terraville.mode === 'editor');
+    assert.equal(await page.getByRole('group', { name: 'Landscape' }).count(), 1);
+    assert.equal(await page.getByRole('group', { name: 'Map size' }).count(), 1);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('a warning toast looks like one, stays long enough to read, and goes when tapped; on a phone it clears the stats and the checklist', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);
