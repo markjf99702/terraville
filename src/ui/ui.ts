@@ -1688,21 +1688,22 @@ export class UI {
       const cut = <T,>(a: T[]) => a.slice(-n);
       const total = h.pop.length;
       const start = g.world.city.month - Math.min(n, total);
-      const people = (v: number) => (Math.abs(v) >= 10000 ? `${Math.round(v / 1000)}k` : Math.round(v).toLocaleString());
+      const people = (v: number) => Math.round(v).toLocaleString();
+      // The names at the line ends are the legend's.
       lineChart($(body, '#ch1'), [
         { name: 'Residents', color: ZONE_COLORS.res, values: cut(h.res) },
-        { name: 'Commerce', color: ZONE_COLORS.com, values: cut(h.com) },
-        { name: 'Industry', color: ZONE_COLORS.ind, values: cut(h.ind) },
-      ], { startMonth: start, format: people, zero: true });
-      lineChart($(body, '#ch2'), [{ name: 'Funds', color: '#3987e5', values: cut(h.funds) }], { startMonth: start, format: (v) => (Math.abs(v) >= 10000 ? `$${Math.round(v / 1000)}k` : money(v)) });
+        { name: 'Commercial jobs', color: ZONE_COLORS.com, values: cut(h.com) },
+        { name: 'Industrial jobs', color: ZONE_COLORS.ind, values: cut(h.ind) },
+      ], { startMonth: start, format: people, zero: true, whole: true });
+      lineChart($(body, '#ch2'), [{ name: 'Funds', color: '#3987e5', values: cut(h.funds) }], { startMonth: start, format: money, money: true, whole: true });
       lineChart($(body, '#ch3'), [
-        { name: 'Income', color: '#3987e5', values: cut(h.income) },
+        { name: 'Tax income', color: '#3987e5', values: cut(h.income) },
         { name: 'Spending', color: '#d95926', values: cut(h.expense) },
-      ], { startMonth: start, format: (v) => money(v), zero: true });
+      ], { startMonth: start, format: money, zero: true, money: true, whole: true });
       lineChart($(body, '#ch4'), [
         { name: 'Crime', color: '#d55181', values: cut(h.crime).map((v) => Math.round((v / 255) * 100)) },
         { name: 'Pollution', color: '#c98500', values: cut(h.pollution).map((v) => Math.round((v / 255) * 100)) },
-      ], { startMonth: start, format: (v) => String(Math.round(v)), zero: true });
+      ], { startMonth: start, format: (v) => String(Math.round(v)), zero: true, whole: true });
     };
     $(body, '#cRange').onclick = (e) => {
       const b = (e.target as HTMLElement).closest<HTMLElement>('[data-n]');

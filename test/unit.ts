@@ -10,6 +10,7 @@ import { Drive, GisOAuth2 } from '../src/drive';
 import { makeRng } from '../src/rng';
 import { SCENARIOS, buildScenario, openScenario, scenarioMonth, successLine } from '../src/scenarios';
 import { Game } from '../src/game';
+import { chartAxis, spreadLabels, tickLabel } from '../src/ui/charts';
 
 let passed = 0;
 async function test(name: string, fn: () => void | Promise<void>) {
@@ -1661,6 +1662,34 @@ await test('one Google sign-in serves every junkdrawer.works app on a device', a
   for (let i = 0; i < 20 && b.status() === 'busy'; i++) await tick();
   assert.equal(b.status(), 'signin');
   assert.equal(storage.getItem('junkdrawer.google'), null);
+});
+
+await test('history axes label each tick as precisely as the step, and never repeat a label', () => {
+  const labels = (min: number, max: number, o: { zero?: boolean; whole?: boolean }, money = false) => {
+    const a = chartAxis(min, max, o);
+    return a.ticks.map((v) => tickLabel(v, a, money));
+  };
+  // City funds between $25,000 and $27,000: steps of $500, which once read '$25k, $26k, $26k, $27k, $27k'.
+  assert.deepEqual(labels(25000, 27000, { whole: true }, true), ['$25k', '$25.5k', '$26k', '$26.5k', '$27k']);
+  // Residents to 15,000: thousands on every tick, not '5,000' beside '10k'.
+  assert.deepEqual(labels(0, 15000, { zero: true, whole: true }), ['0', '5k', '10k', '15k']);
+  assert.deepEqual(labels(0, 3200, { zero: true, whole: true }), ['0', '1,000', '2,000', '3,000', '4,000']);
+  // Nobody yet: whole numbers in steps of at least 1, not '1 1 1 0 0 0'.
+  assert.deepEqual(labels(0, 0, { zero: true, whole: true }), ['0', '1', '2', '3', '4']);
+  assert.deepEqual(labels(0, 1, { zero: true, whole: true }), ['0', '1']);
+  // A flat $20,000 for months: distinct ticks around it.
+  const flat = labels(20000, 20000, { whole: true }, true);
+  assert.equal(new Set(flat).size, flat.length);
+  assert.ok(flat.includes('$20k'));
+  assert.deepEqual(labels(-1200, 800, { zero: true, whole: true }, true), ['−$1,500', '−$1,000', '−$500', '$0', '$500', '$1,000']);
+});
+
+await test('line-end labels that would run below the chart are pushed up, not piled at the bottom', () => {
+  // Three series all ending at zero, at the bottom edge (y = 100): they once all landed on 100.
+  assert.deepEqual(spreadLabels([100, 100, 100], 0, 100, 13), [74, 87, 100]);
+  // Apart already: left alone, in the order given.
+  assert.deepEqual(spreadLabels([60, 10, 35], 0, 100, 13), [60, 10, 35]);
+  assert.deepEqual(spreadLabels([50, 52], 0, 100, 13), [50, 63]);
 });
 
 console.log(`\n${passed} passed`);
