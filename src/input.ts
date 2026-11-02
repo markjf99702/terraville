@@ -43,7 +43,7 @@ export class Input {
         this.game.renderer.hover = null;
         // A lifted finger leaves too, after saying what it built.
         if (e.pointerType === 'mouse' || !this.game.showingBuilt) this.game.ui.cursorTip(0, 0, null);
-        if (this.game.tool().kind !== 'brush') this.game.renderer.preview = null;
+        if (this.game.tool().kind !== 'brush' && !this.game.proposing) this.game.renderer.preview = null;
       }
     });
     canvas.addEventListener('wheel', (e) => this.wheel(e), { passive: false });
@@ -214,7 +214,7 @@ export class Input {
       g.pointerUp(t.x, t.y, p.x, p.y);
       // A finger that lifts leaves no preview behind, though the tip saying what it built stays for its moment.
       if (e.pointerType !== 'mouse') {
-        g.renderer.preview = null;
+        if (!g.proposing) g.renderer.preview = null;
         if (!g.showingBuilt) g.ui.cursorTip(0, 0, null);
       }
     }

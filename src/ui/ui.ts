@@ -1722,8 +1722,8 @@ export class UI {
   }
 
   /**
-   * Put the Build card beside the footprint (l, t)-(r, b) on the map, in the room the panels leave: above it, else
-   * below it, else to one side.
+   * Put the Build card beside the footprint (l, t)-(r, b) on the map, never over it: above it, below it, or to one side,
+   * the first of those in the room the panels leave, or failing that the first anywhere on the screen.
    */
   placePlaceCard(l: number, t: number, r: number, b: number): void {
     const card = $(this.root, '#placeCard');
@@ -1733,15 +1733,16 @@ export class UI {
     const e = this.game.renderer.insets;
     const W = window.innerWidth;
     const H = window.innerHeight;
-    let x = (l + r) / 2 - w / 2;
-    let y = t - h - 10;
-    if (y < e.t - 8) y = b + 10;
-    if (y + h > H - e.b + 8) {
-      y = (t + b) / 2 - h / 2;
-      x = r + 10 + w <= W - e.r + 8 ? r + 10 : l - w - 10;
-    }
-    card.style.left = `${Math.round(Math.max(8, Math.min(W - w - 8, x)))}px`;
-    card.style.top = `${Math.round(Math.max(8, Math.min(H - h - 8, y)))}px`;
+    const mx = (l + r) / 2 - w / 2;
+    const my = (t + b) / 2 - h / 2;
+    const spots = [[mx, t - h - 10], [mx, b + 10], [r + 10, my], [l - w - 10, my]].map(([x, y]) => [
+      Math.round(Math.max(8, Math.min(W - w - 8, x))), Math.round(Math.max(8, Math.min(H - h - 8, y))),
+    ]);
+    const clear = ([x, y]: number[]) => x + w <= l || x >= r || y + h <= t || y >= b;
+    const free = ([x, y]: number[]) => x >= e.l - 8 && y >= e.t - 8 && x + w <= W - e.r + 8 && y + h <= H - e.b + 8;
+    const [x, y] = spots.find((s) => clear(s) && free(s)) ?? spots.find(clear) ?? spots[0];
+    card.style.left = `${x}px`;
+    card.style.top = `${y}px`;
   }
 
   /** A lasting notice for an unexpected error, with the message to report. */

@@ -2630,6 +2630,27 @@ try {
     await page.tap('#placeBuild');
     s = await state();
     assert.deepEqual([s.funds, s.fire, s.card], [start.funds - 1000, 2, ''], 'Build builds it');
+    // At a corner of the map, brought in as far as it goes, the footprint shows as soon as the finger lifts and the card
+    // stays off it.
+    const corner = await page.evaluate(() => {
+      const r = window.__terraville.renderer;
+      r.cam.zoom = 24;
+      r.cam.x = -1e6;
+      r.cam.y = -1e6;
+      r.clampCamera();
+      return r.tileToScreen(2.5, 2.5);
+    });
+    await page.evaluate(() => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok))));
+    await page.touchscreen.tap(corner.x, corner.y);
+    const off = await page.evaluate(() => {
+      const r = window.__terraville.renderer;
+      const card = document.querySelector('#placeCard').getBoundingClientRect();
+      const a = r.tileToScreen(1, 1);
+      const b = r.tileToScreen(4, 4);
+      return { shown: r.preview?.rects.map((q) => [q.x, q.y]), clear: card.right <= a.x || card.left >= b.x || card.bottom <= a.y || card.top >= b.y };
+    });
+    assert.deepEqual(off, { shown: [[1, 1]], clear: true }, 'at the corner');
+    await page.evaluate(([x, y]) => { const r = window.__terraville.renderer; r.cam.zoom = 16; r.centerOn(x, y); }, [spot.cx, spot.cy]);
     // Picking another tool takes it back, and so do moving the map and pinching.
     await tap(spot.cx, spot.cy + 7);
     await page.tap('[data-tool="police"]');

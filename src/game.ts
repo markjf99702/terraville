@@ -1303,6 +1303,11 @@ export class Game {
     this.placeCard();
   }
 
+  /** Whether a building is waiting for its second tap. */
+  get proposing(): boolean {
+    return this.proposal !== null;
+  }
+
   /** Whether tile (x, y) is on the building waiting for its second tap. */
   private onProposal(x: number, y: number): boolean {
     const p = this.proposal;
