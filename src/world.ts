@@ -247,6 +247,20 @@ export class World {
   }
 
   /**
+   * Whether a lot has a road along one of its sides (a corner touching diagonally doesn't count), as growth asks: looked
+   * at now, where the simulation's own verdict waits for the month's end.
+   */
+  touchesRoad(b: { x: number; y: number; size: number }): boolean {
+    const s = b.size;
+    for (let d = 0; d < s; d++) {
+      for (const [x, y] of [[b.x + d, b.y - 1], [b.x + d, b.y + s], [b.x - 1, b.y + d], [b.x + s, b.y + d]]) {
+        if (this.inBounds(x, y) && this.net[y * this.w + x] & ROAD) return true;
+      }
+    }
+    return false;
+  }
+
+  /**
    * Largest height step from this tile to a 4-neighbour on dry land. The drop into water is no ground anyone builds
    * on, so a flat beach reads flat, however deep the sea beside it.
    */

@@ -1,6 +1,6 @@
 // Everything in the DOM: top bar, toolbox, panels, dialogs, title screen.
 import {
-  BUILDINGS, DIFFICULTIES, DISASTER_POP, Difficulty, Kind, MAP_SIZES, ROAD, SEP, ToolDef, UPGRADE_LV, article, cityClass, dateLabel,
+  BUILDINGS, DIFFICULTIES, DISASTER_POP, Difficulty, Kind, MAP_SIZES, SEP, ToolDef, UPGRADE_LV, article, cityClass, dateLabel,
   isZone, nextUpgrade,
 } from '../defs';
 import { DISASTER_NAMES, DisasterKind } from '../disasters';
@@ -56,17 +56,6 @@ function difficultyNote(d: Difficulty): string {
   ].filter(Boolean);
   const text = parts.length ? parts.join(SEP) : 'the standard game';
   return text[0].toUpperCase() + text.slice(1);
-}
-
-/** Whether a zone has a road along one of its sides (a corner touching diagonally doesn't count), as growth asks. */
-function touchesRoad(w: World, b: { x: number; y: number; size: number }): boolean {
-  const s = b.size;
-  for (let d = 0; d < s; d++) {
-    for (const [x, y] of [[b.x + d, b.y - 1], [b.x + d, b.y + s], [b.x - 1, b.y + d], [b.x + s, b.y + d]]) {
-      if (w.inBounds(x, y) && w.net[y * w.w + x] & ROAD) return true;
-    }
-  }
-  return false;
 }
 
 /** A phone or tablet with no mouse: key letters and mouse moves mean nothing there (the style sheet asks the same). */
@@ -1409,7 +1398,7 @@ export class UI {
       if (!isZone(b.kind)) continue;
       zones++;
       // Worked out here rather than taken from the simulation, which looks only as the clock runs.
-      if (touchesRoad(w, b)) roaded++;
+      if (w.touchesRoad(b)) roaded++;
       if (b.powered) powered++;
       if (b.level > 0) grown = true;
     }

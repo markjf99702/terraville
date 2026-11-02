@@ -11,6 +11,7 @@ import { makeRng } from '../src/rng';
 import { SCENARIOS, buildScenario, goalRowText, goalState, openScenario, scenarioMonth, scenarioNews, successLine } from '../src/scenarios';
 import { Game } from '../src/game';
 import { chartAxis, spreadLabels, tickLabel } from '../src/ui/charts';
+import { cutOff } from '../src/render/renderer';
 
 let passed = 0;
 async function test(name: string, fn: () => void | Promise<void>) {
@@ -527,6 +528,31 @@ await test('Inspect tells a lot with no road to the other side of town from one 
   assert.deepEqual(at('Commuters cannot reach work'), [[home.x + 1, home.y + 1]]);
   assert.deepEqual(at('1 zone has no road access and cannot develop.'), [[lonely.x + 1, lonely.y + 1]]);
 }));
+
+await test('a road laid beside a lot takes its road sign away at once, though the commute waits for the month end', () => {
+  const w = flat(60, 30);
+  applyLine(w, ROAD, planLine(w, ROAD, linePath(2, 5, 40, 5)));
+  w.place('res', 2, 2);
+  w.place('com', 20, 2);
+  const lonely = w.place('res', 10, 10); // no road
+  const sim = new Sim(w);
+  sim.computeTraffic();
+  assert.deepEqual([lonely.road, cutOff(w, lonely)], [false, true]);
+  // A stub of road along its bottom, with the clock stopped: the simulation hasn't looked again, the sign has.
+  applyLine(w, ROAD, planLine(w, ROAD, linePath(10, 13, 12, 13)));
+  assert.deepEqual([lonely.road, cutOff(w, lonely)], [false, false]);
+  // At the month end the simulation sees the stub leads nowhere: no commute, so the sign is back.
+  sim.computeTraffic();
+  assert.deepEqual([lonely.road, lonely.trip, cutOff(w, lonely)], [true, false, true]);
+  // Joined to the town, it can commute.
+  applyLine(w, ROAD, planLine(w, ROAD, linePath(13, 13, 13, 6)));
+  sim.computeTraffic();
+  assert.deepEqual([lonely.trip, cutOff(w, lonely)], [true, false]);
+  // Its roads bulldozed: the sign shows before the simulation has looked.
+  for (let x = 10; x <= 13; x++) w.clearNet(x, 13);
+  for (let y = 6; y <= 12; y++) w.clearNet(13, y);
+  assert.deepEqual([lonely.road, cutOff(w, lonely)], [true, true]);
+});
 
 await test('with shops in demand, the advisor says why an empty shop lot cannot open before it asks for more land', () => {
   const w = flat(40, 30);

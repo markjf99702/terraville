@@ -4,7 +4,7 @@
 // every frame on top.
 import { ROAD, isZone } from '../defs';
 import type { Sim } from '../sim';
-import type { World } from '../world';
+import type { Building, World } from '../world';
 import { lessMotion } from '../motion';
 import { hash3 } from '../rng';
 import { TerrainField, paintTerrain } from './terrainPaint';
@@ -737,10 +737,10 @@ export class Renderer {
     if (!lessMotion() && this.time % 1.2 > 0.75) return;
     for (const b of this.world.buildings.values()) {
       if (!isZone(b.kind)) continue;
-      const dark = !b.powered;
-      const cut = !b.road || !b.trip;
-      if (!dark && !cut) continue;
       if (b.x > x1 || b.y > y1 || b.x + b.size < x0 || b.y + b.size < y0) continue;
+      const dark = !b.powered;
+      const cut = cutOff(this.world, b);
+      if (!dark && !cut) continue;
       const both = dark && cut;
       if (dark) bolt(ctx, b.x + (both ? 1 : 1.5), b.y + 1.5, 0.42);
       if (cut) roadSign(ctx, b.x + (both ? 2 : 1.5), b.y + 1.5, 0.42);
@@ -923,6 +923,15 @@ function flame(ctx: CanvasRenderingContext2D, x: number, y: number, s: number): 
   ctx.quadraticCurveTo(x + s * 0.5, y, x, y + s * 0.3);
   ctx.quadraticCurveTo(x - s * 0.5, y, x, y - s * 0.9);
   ctx.fill();
+}
+
+/**
+ * Whether a zone gets the road sign: no road along a side, looked at now (as the checklist does) so that a road just
+ * laid takes the sign away at once, even with the clock stopped; or a road the simulation has seen too, but no commute
+ * along it. The commute is judged only at a month's end, so until then a new road earns the benefit of the doubt.
+ */
+export function cutOff(world: World, b: Building): boolean {
+  return !world.touchesRoad(b) || (b.road && !b.trip);
 }
 
 function bolt(ctx: CanvasRenderingContext2D, x: number, y: number, r: number): void {
