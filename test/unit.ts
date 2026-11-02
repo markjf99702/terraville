@@ -1198,6 +1198,47 @@ await test('challenge cities open as dense as their land value holds, so they do
   }
 });
 
+await test("Aftershock's opening quakes strike under zones, and neither they nor its fires touch the power plants", () => {
+  const random = Math.random;
+  const aftershock = SCENARIOS.find((x) => x.id === 'aftershock')!;
+  const plants = (w: World) => [...w.buildings.values()].filter((b) => BUILDINGS[b.kind].capacity);
+  try {
+    // On seed 2 a quake brought the nuclear plant down, and it melted down before the intro opened; on seeds 18 and
+    // 30 an opening fire was lit on it, and on 21 on the coal plant, and each burnt down within weeks.
+    for (const seed of [1, 2, 3, 18, 21, 30]) {
+      Math.random = makeRng(seed);
+      const w = buildScenario(aftershock, 120, 100);
+      const sim = new Sim(w);
+      openScenario(sim);
+      const before = plants(w).map((b) => b.kind).sort();
+      const zoneAt = new Set<number>();
+      for (const b of w.buildings.values()) if (b.kind === 'res' || b.kind === 'com' || b.kind === 'ind') zoneAt.add((b.y + 1) * w.w + b.x + 1);
+      const quakes: number[] = [];
+      const said: string[] = [];
+      sim.on((e) => {
+        if (e.type === 'disaster' && e.kind === 'earthquake') quakes.push(Math.round(e.y) * w.w + Math.round(e.x));
+        if (e.type === 'message') said.push(e.message.text);
+      });
+      aftershock.start!(sim);
+      assert.equal(quakes.length, 3);
+      assert.ok(quakes.every((i) => zoneAt.has(i)), `seed ${seed}: a quake struck away from the zones`);
+      assert.deepEqual(plants(w).map((b) => b.kind).sort(), before, `seed ${seed}: the opening wrecked a power plant`);
+      assert.ok(plants(w).every((b) => !w.fire[b.y * w.w + b.x]), `seed ${seed}: the opening set a power plant alight`);
+      assert.ok(!said.some((t) => /meltdown/i.test(t)), `seed ${seed}: a meltdown at the opening`);
+    }
+  } finally {
+    Math.random = random;
+  }
+  // A quake set off from the Disasters menu, or at random, can still bring a plant down.
+  const w = flat(40, 30);
+  w.place('coal', 18, 13);
+  const sim = new Sim(w);
+  seeded(1, () => {
+    for (let k = 0; k < 12 && w.buildings.size; k++) sim.disasters.trigger('earthquake');
+  });
+  assert.equal(w.buildings.size, 0, 'a plain quake never touched the coal plant');
+});
+
 await test('Gridlock and Smog Valley are not won by bulldozing every job before the deadline', () => {
   const sim = new Sim(flat());
   const goal = (id: string) => SCENARIOS.find((s) => s.id === id)!.check(sim);

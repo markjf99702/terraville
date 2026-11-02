@@ -1,5 +1,5 @@
 // Fires, floods, tornadoes, earthquakes, the monster, and meltdowns.
-import { DIFFICULTIES, DISASTER_POP, FIRE_WEEKS, RAIL, ROAD, article, buildingName, isZone } from './defs';
+import { BUILDINGS, DIFFICULTIES, DISASTER_POP, FIRE_WEEKS, RAIL, ROAD, article, buildingName, isZone } from './defs';
 import { type Sim, zoneTitle } from './sim';
 import type { Building, SavedRun } from './world';
 
@@ -81,13 +81,17 @@ export class Disasters {
     }
   }
 
-  /** Set off a disaster now, from the Disasters menu or a challenge's opening. */
-  trigger(kind: DisasterKind): void {
+  /**
+   * Set off a disaster now, from the Disasters menu or a challenge's opening. `sparePlants` is for a challenge's
+   * scripted opening: an earthquake strikes under a zone and leaves the power plants standing, and a fire starts
+   * anywhere but a plant, so a challenge isn't lost to its own opening before the first click.
+   */
+  trigger(kind: DisasterKind, o: { sparePlants?: boolean } = {}): void {
     switch (kind) {
-      case 'fire': return this.randomFire(true);
+      case 'fire': return this.randomFire(true, !!o.sparePlants);
       case 'flood': return this.startFlood();
       case 'tornado': return this.spawnRoamer('tornado');
-      case 'earthquake': return this.earthquake();
+      case 'earthquake': return this.earthquake(!!o.sparePlants);
       case 'monster': return this.spawnRoamer('monster');
       case 'meltdown': {
         const plants = [...this.world.buildings.values()].filter((b) => b.kind === 'nuclear');
@@ -106,11 +110,11 @@ export class Disasters {
    * A fire in a building. Left to chance, buildings far from fire stations are more likely to go up, and a city well
    * covered may get none; `forced` (set off from the menu) always starts one where there is something to burn.
    */
-  private randomFire(forced: boolean): void {
+  private randomFire(forced: boolean, sparePlants = false): void {
     const world = this.world;
     const cands: Building[] = [];
     for (const b of world.buildings.values()) {
-      if (b.kind === 'park') continue;
+      if (b.kind === 'park' || (sparePlants && BUILDINGS[b.kind].capacity)) continue;
       if (b.kind === 'res' || b.kind === 'com' || b.kind === 'ind' ? b.level > 0 : true) cands.push(b);
     }
     if (!cands.length) {
@@ -466,18 +470,20 @@ export class Disasters {
 
   // ---- earthquake ------------------------------------------------------
 
-  private earthquake(): void {
+  private earthquake(sparePlants = false): void {
     const world = this.world;
     let cx = Math.random() * world.w;
     let cy = Math.random() * world.h;
     const blds = [...world.buildings.values()];
-    if (blds.length) {
-      const b = blds[Math.floor(Math.random() * blds.length)];
+    const under = sparePlants ? blds.filter((b) => isZone(b.kind)) : blds;
+    if (under.length) {
+      const b = under[Math.floor(Math.random() * under.length)];
       cx = b.x + 1;
       cy = b.y + 1;
     }
     const R = 16;
     for (const b of blds) {
+      if (sparePlants && BUILDINGS[b.kind].capacity) continue;
       const d = Math.hypot(b.x + b.size / 2 - cx, b.y + b.size / 2 - cy);
       if (d > R) continue;
       const p = (1 - d / R) * 0.5;

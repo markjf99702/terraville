@@ -154,8 +154,10 @@ export const SCENARIOS: Scenario[] = [
       extras: ['stadium', 'airport', 'school', 'hospital'],
     },
     start: (sim) => {
-      for (let k = 0; k < 3; k++) sim.disasters.trigger('earthquake');
-      for (let k = 0; k < 4; k++) sim.disasters.trigger('fire');
+      // The quakes strike under the zones, and neither they nor the fires touch the power plants: a
+      // meltdown before the first click would be no fair start.
+      for (let k = 0; k < 3; k++) sim.disasters.trigger('earthquake', { sparePlants: true });
+      for (let k = 0; k < 4; k++) sim.disasters.trigger('fire', { sparePlants: true });
     },
     check: (sim) => {
       const r = sim.stats.residents;
