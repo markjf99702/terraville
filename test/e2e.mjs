@@ -1045,6 +1045,25 @@ try {
     await ctx.close();
   });
 
+  await test('the report says when nobody lives in the city yet, and each worry opens where to see it', async () => {
+    const ctx = await profile(DESK);
+    const { page, problems } = await open(ctx);
+    await found(page);
+    await page.click('#citySign');
+    assert.match(await page.textContent('.modal .body'), /Nobody lives here yet\. The report fills in once people move in\./);
+    assert.equal(await page.$$eval('.modal .worry, .modal .big', (e) => e.length), 0, 'no approval figure and no worries for nobody');
+    await page.click('.modal footer .btn');
+    await page.evaluate(() => { window.__terraville.startScenario('gridlock'); window.__terraville.ui.closeModal(); });
+    await page.click('#citySign');
+    await page.click('.worry[data-to="traffic"]');
+    assert.deepEqual(await page.evaluate(() => [window.__terraville.renderer.overlay, window.__terraville.ui.modalOpen]), ['traffic', false], 'Traffic opens the traffic layer');
+    await page.click('#citySign');
+    await page.click('.worry[data-to="budget"]');
+    assert.equal(await page.textContent('.modal h2'), 'Budget', 'Taxes opens the budget');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('on a phone, Inspect takes the bottom slot from the map layer card and the news log', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

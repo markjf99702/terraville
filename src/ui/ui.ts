@@ -73,6 +73,11 @@ function touchScreen(): boolean {
   return matchMedia('(hover: none) and (pointer: coarse)').matches;
 }
 
+/** Where each of the report's worries can be seen. Unemployment has no layer. */
+const WORRY_LAYERS: Record<string, Overlay | 'budget'> = {
+  crime: 'crime', pollution: 'pollution', housing: 'landValue', traffic: 'traffic', power: 'power', fire: 'fire', taxes: 'budget',
+};
+
 /** How the map works by touch, in Settings. */
 const TOUCH_HELP = `<h3 class="touch-h">Touch</h3>
   <dl class="kv touch-help">
@@ -1726,13 +1731,18 @@ export class UI {
     const sev = (v: number) => (v > 60 ? 'var(--critical)' : v > 35 ? 'var(--serious)' : v > 15 ? 'var(--warn)' : 'var(--good)');
     const word = (v: number) => (v > 60 ? 'Severe' : v > 35 ? 'Serious' : v > 15 ? 'Minor' : 'Fine');
     const approval = Math.round(s.approval);
+    // Nobody to approve or worry yet: say so rather than show 50% of no one and an empty list.
+    const empty = s.residents === 0;
     const body = el(`<div style="display:flex;flex-direction:column;gap:18px">
       <div class="cols">
-        <div>
+        ${empty ? `<div>
+          <h3>Mayor's approval</h3>
+          <p class="note" style="font-size:14px">Nobody lives here yet. The report fills in once people move in.</p>
+        </div>` : `<div>
           <h3>Mayor's approval</h3>
           <div style="display:flex;align-items:baseline;gap:10px"><span class="big">${approval}%</span><span class="note">${approval >= 70 ? 'People like how things are going.' : approval >= 45 ? 'Opinion is split.' : 'Residents are unhappy.'}</span></div>
           <div class="barrow" style="grid-template-columns:1fr;margin-top:10px"><div class="track"><i style="width:${approval}%;background:${approval >= 60 ? 'var(--good)' : approval >= 40 ? 'var(--warn)' : 'var(--critical)'}"></i></div></div>
-        </div>
+        </div>`}
         <div>
           <h3>City</h3>
           <dl class="kv">
@@ -1743,10 +1753,14 @@ export class UI {
           </dl>
         </div>
       </div>
-      <div>
+      ${empty ? '' : `<div>
         <h3>What people worry about</h3>
-        <div class="bars">${s.problems.map((p) => `<div class="barrow"><span>${p.label}</span><div class="track" role="img" aria-label="${p.label}: ${word(p.value)}"><i style="width:${Math.max(2, p.value)}%;background:${sev(p.value)}"></i></div><span class="v">${word(p.value)}</span></div>`).join('')}</div>
-      </div>
+        <div class="bars">${s.problems.map((p) => {
+          const to = WORRY_LAYERS[p.id];
+          const inner = `<span>${p.label}</span><div class="track" role="img" aria-label="${p.label}: ${word(p.value)}"><i style="width:${Math.max(2, p.value)}%;background:${sev(p.value)}"></i></div><span class="v">${word(p.value)}</span>`;
+          return to ? `<button class="barrow worry" data-to="${to}" title="${to === 'budget' ? 'Open the budget' : `Show the ${OVERLAYS.find((o) => o.id === to)!.name.toLowerCase()} layer`}">${inner}</button>` : `<div class="barrow">${inner}</div>`;
+        }).join('')}</div>
+      </div>`}
       <div class="cols">
         <dl class="kv">
           <dt>Commercial jobs</dt><dd>${s.comJobs.toLocaleString()}</dd>
@@ -1763,6 +1777,14 @@ export class UI {
         </dl>
       </div>
     </div>`);
+    // A worry opens where to see it: its map layer, or the budget for taxes.
+    body.addEventListener('click', (e) => {
+      const to = (e.target as HTMLElement).closest<HTMLElement>('.worry')?.dataset.to;
+      if (!to) return;
+      this.closeModal();
+      if (to === 'budget') this.openBudget();
+      else this.setOverlay(to as Overlay);
+    });
     this.openModal({ title: `${g.world.city.name} report`, sub: dateLabel(g.world.city.month), body, foot: [this.btn('Close', 'primary', () => this.closeModal())] });
   }
 
