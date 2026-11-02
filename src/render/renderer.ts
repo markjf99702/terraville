@@ -47,6 +47,13 @@ const HITCH_MS = 40;
 const PAINT_POWER = 1.8;
 /** The map has come to rest this long, in seconds, after the camera last moved. */
 const SETTLE_S = 0.25;
+/**
+ * Night lights are painted once for each patch, at this many pixels a tile (they are soft glows, and scale up well),
+ * and laid over the dark every frame: a big city has thousands of them in view.
+ */
+const LIGHT_LOD = 16;
+/** Canvas pixels the patches' night lights may hold between them. */
+const LIGHT_BUDGET = WEBKIT ? 2_000_000 : 6_000_000;
 
 interface Chunk {
   canvas: HTMLCanvasElement;
@@ -54,6 +61,13 @@ interface Chunk {
   dirty: boolean;
   used: number;
   contours: boolean;
+}
+
+/** A patch's street lamps and lit windows, painted together; no canvas when it has none. */
+interface Lights {
+  canvas: HTMLCanvasElement | null;
+  dirty: boolean;
+  used: number;
 }
 
 export type Overlay = 'none' | 'traffic' | 'pollution' | 'crime' | 'landValue' | 'density' | 'power' | 'police' | 'fire' | 'service' | 'slope';
@@ -145,6 +159,10 @@ export class Renderer {
   /** Where the camera was last frame, and when it last moved, to tell when the map has come to rest. */
   private lastCam = { x: 0, y: 0, zoom: 1 };
   private movedAt = -Infinity;
+  private lights = new Map<number, Lights>();
+  private lightPixels = 0;
+  /** The powered tiles as the night lights last saw them: a lot that loses power goes dark. */
+  private litPower: Uint8Array | null = null;
   private cw = 0;
   private ch = 0;
   private waterDirty = false;
@@ -196,6 +214,7 @@ export class Renderer {
     if (!this.vehicles) this.vehicles = new Vehicles(world);
     else this.vehicles.setWorld(world);
     this.releaseChunks();
+    this.releaseLights();
     this.emitters.clear();
     this.cw = Math.ceil(world.w / CS);
     this.ch = Math.ceil(world.h / CS);
@@ -223,6 +242,8 @@ export class Renderer {
           const c = this.chunks.get(this.key(cx, cy, L));
           if (c) c.dirty = true;
         }
+        const l = this.lights.get(this.key(cx, cy, LIGHT_LOD));
+        if (l) l.dirty = true;
       }
     }
     this.overlayDirty = true;
@@ -230,6 +251,7 @@ export class Renderer {
 
   invalidateAll(): void {
     for (const c of this.chunks.values()) c.dirty = true;
+    for (const l of this.lights.values()) l.dirty = true;
     this.overlayDirty = true;
   }
 
@@ -715,43 +737,158 @@ export class Renderer {
     const world = this.world;
     ctx.fillStyle = `rgba(10,16,46,${dark})`;
     ctx.fillRect(0, 0, world.w, world.h);
+    this.checkLitPower();
     ctx.globalCompositeOperation = 'lighter';
-    const a = Math.min(1, dark * 1.7);
-    // Street lamps on every other road tile.
-    ctx.globalAlpha = a * 0.55;
-    for (let y = y0; y <= y1; y++) {
-      for (let x = x0; x <= x1; x++) {
-        const i = y * world.w + x;
-        if (!(world.net[i] & ROAD) || (x + y) % 2) continue;
-        ctx.drawImage(this.glow, x + 0.05, y + 0.05, 0.9, 0.9);
-      }
-    }
-    // Lit windows and doors, where each building's drawing puts them; a park's lamp, and any building whose drawing
-    // marks none, at spots of its own. A power plant shows none: its beacons and its smoke say it runs.
-    ctx.globalAlpha = a * 0.8;
-    for (const b of world.buildings.values()) {
-      if (b.x > x1 || b.y > y1 || b.x + b.size < x0 || b.y + b.size < y0) continue;
-      if (world.city.founded && !b.powered && b.kind !== 'park') continue;
-      if (BUILDINGS[b.kind].capacity) continue;
-      let lit = false;
-      if (b.kind !== 'park') {
-        for (const e of this.emittersFor(b.id)) {
-          if (e.kind !== 'light') continue;
-          ctx.drawImage(this.glow, e.x - e.size, e.y - e.size, e.size * 2, e.size * 2);
-          lit = true;
+    ctx.globalAlpha = Math.min(1, dark * 1.7);
+    // Each patch's lights as painted, the ones nearest the middle painted again first when they change; past this
+    // frame's share of time, a patch shows its lights from before until the next frame.
+    const cx0 = Math.floor(x0 / CS);
+    const cy0 = Math.floor(y0 / CS);
+    const cx1 = Math.floor(x1 / CS);
+    const cy1 = Math.floor(y1 / CS);
+    const start = performance.now();
+    let painted = false;
+    for (let cy = cy0; cy <= cy1; cy++) {
+      for (let cx = cx0; cx <= cx1; cx++) {
+        let l = this.lights.get(this.key(cx, cy, LIGHT_LOD));
+        if (!l || (l.dirty && (!painted || performance.now() - start < PAINT_MS / 2))) {
+          l = this.paintLights(cx, cy);
+          painted = true;
         }
-      }
-      if (lit) continue;
-      const lights = b.kind === 'park' ? 1 : isZone(b.kind) ? b.level * 2 : b.size * 2;
-      for (let k = 0; k < lights; k++) {
-        const lx = b.x + 0.25 + hash3(b.id, k, 1) * (b.size - 0.5);
-        const ly = b.y + 0.25 + hash3(b.id, k, 2) * (b.size - 0.5);
-        const r = b.kind === 'park' ? 0.5 : 0.22 + hash3(b.id, k, 3) * 0.2;
-        ctx.drawImage(this.glow, lx - r, ly - r, r * 2, r * 2);
+        l.used = this.time;
+        if (l.canvas) ctx.drawImage(l.canvas, cx * CS, cy * CS, CS, CS);
       }
     }
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
+    this.evictLights();
+  }
+
+  /**
+   * Paint a patch's night lights, at full strength (the dark sets how strongly they show): street lamps on every other
+   * road tile; lit windows and doors, where each building's drawing puts them; a park's lamp, and any building whose
+   * drawing marks none, at spots of its own. A power plant shows none: its beacons and its smoke say it runs. A lot
+   * without power stays dark. A glow near the patch's edge is painted in each patch it reaches.
+   */
+  private paintLights(cx: number, cy: number): Lights {
+    const k = this.key(cx, cy, LIGHT_LOD);
+    let l = this.lights.get(k);
+    if (!l) {
+      l = { canvas: null, dirty: false, used: this.time };
+      this.lights.set(k, l);
+    }
+    l.dirty = false;
+    const world = this.world;
+    const tx0 = cx * CS;
+    const ty0 = cy * CS;
+    const tx1 = Math.min(world.w, tx0 + CS);
+    const ty1 = Math.min(world.h, ty0 + CS);
+    const lamps: number[] = [];
+    for (let y = ty0; y < ty1; y++) {
+      for (let x = tx0; x < tx1; x++) if (world.net[y * world.w + x] & ROAD && !((x + y) % 2)) lamps.push(x, y);
+    }
+    // Buildings on the patch or a tile beyond it, whose glows may reach in.
+    const ids = new Set<number>();
+    for (let y = Math.max(0, ty0 - 1); y < Math.min(world.h, ty1 + 1); y++) {
+      for (let x = Math.max(0, tx0 - 1); x < Math.min(world.w, tx1 + 1); x++) {
+        const id = world.occ[y * world.w + x];
+        if (id) ids.add(id);
+      }
+    }
+    const spots: number[] = [];
+    for (const id of ids) {
+      const b = world.buildings.get(id);
+      if (!b || (world.city.founded && !b.powered && b.kind !== 'park') || BUILDINGS[b.kind].capacity) continue;
+      let lit = false;
+      if (b.kind !== 'park') {
+        for (const e of this.emittersFor(b.id)) {
+          if (e.kind !== 'light') continue;
+          spots.push(e.x, e.y, e.size);
+          lit = true;
+        }
+      }
+      if (lit) continue;
+      const n = b.kind === 'park' ? 1 : isZone(b.kind) ? b.level * 2 : b.size * 2;
+      for (let j = 0; j < n; j++) {
+        spots.push(b.x + 0.25 + hash3(b.id, j, 1) * (b.size - 0.5), b.y + 0.25 + hash3(b.id, j, 2) * (b.size - 0.5), b.kind === 'park' ? 0.5 : 0.22 + hash3(b.id, j, 3) * 0.2);
+      }
+    }
+    if (!lamps.length && !spots.length) {
+      this.dropLights(l);
+      return l;
+    }
+    if (!l.canvas) {
+      l.canvas = document.createElement('canvas');
+      l.canvas.width = l.canvas.height = CS * LIGHT_LOD;
+      this.lightPixels += CS * LIGHT_LOD * CS * LIGHT_LOD;
+    }
+    const g = l.canvas.getContext('2d');
+    if (!g) {
+      this.dropLights(l);
+      return l;
+    }
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, l.canvas.width, l.canvas.height);
+    g.setTransform(LIGHT_LOD, 0, 0, LIGHT_LOD, -tx0 * LIGHT_LOD, -ty0 * LIGHT_LOD);
+    g.globalCompositeOperation = 'lighter';
+    g.globalAlpha = 0.55;
+    for (let j = 0; j < lamps.length; j += 2) g.drawImage(this.glow, lamps[j] + 0.05, lamps[j + 1] + 0.05, 0.9, 0.9);
+    g.globalAlpha = 0.8;
+    for (let j = 0; j < spots.length; j += 3) {
+      const r = spots[j + 2];
+      g.drawImage(this.glow, spots[j] - r, spots[j + 1] - r, r * 2, r * 2);
+    }
+    return l;
+  }
+
+  /** Lots whose power came or went since the lights were painted: their patches are painted again. */
+  private checkLitPower(): void {
+    const p = this.world.powered;
+    const was = this.litPower;
+    if (!was || was.length !== p.length) {
+      this.litPower = p.slice();
+      for (const l of this.lights.values()) l.dirty = true;
+      return;
+    }
+    const w = this.world.w;
+    for (let i = 0; i < p.length; i++) {
+      if (p[i] === was[i]) continue;
+      was[i] = p[i];
+      // A building's glow reaches a little past its lot.
+      const x = i % w;
+      const y = (i / w) | 0;
+      for (let cy = Math.floor((y - 1) / CS); cy <= Math.floor((y + 1) / CS); cy++) {
+        for (let cx = Math.floor((x - 1) / CS); cx <= Math.floor((x + 1) / CS); cx++) {
+          const l = this.lights.get(this.key(cx, cy, LIGHT_LOD));
+          if (l) l.dirty = true;
+        }
+      }
+    }
+  }
+
+  private dropLights(l: Lights): void {
+    if (!l.canvas) return;
+    this.lightPixels -= l.canvas.width * l.canvas.height;
+    l.canvas.width = l.canvas.height = 0;
+    l.canvas = null;
+  }
+
+  private releaseLights(): void {
+    for (const l of this.lights.values()) this.dropLights(l);
+    this.lights.clear();
+    this.lightPixels = 0;
+    this.litPower = null;
+  }
+
+  /** The lights of patches longest out of view go first, past LIGHT_BUDGET. */
+  private evictLights(): void {
+    if (this.lightPixels <= LIGHT_BUDGET) return;
+    const list = [...this.lights.entries()].sort((a, b) => a[1].used - b[1].used);
+    for (const [k, l] of list) {
+      if (this.lightPixels <= LIGHT_BUDGET * 0.8) break;
+      this.dropLights(l);
+      this.lights.delete(k);
+    }
   }
 
   private emittersFor(id: number): Emitter[] {
@@ -777,7 +914,7 @@ export class Renderer {
       const active = !founded || b.powered || b.kind === 'wind' || b.kind === 'coal' || b.kind === 'nuclear';
       const seed = (b.seed % 1000) / 1000;
       for (const e of list) {
-        if (e.kind === 'light') continue; // drawn by night (see drawNight)
+        if (e.kind === 'light') continue; // drawn by night (see paintLights)
         if (e.kind === 'rotor') {
           const a = (this.time * (active ? 2.6 : 0.4) + seed * 6) % (Math.PI * 2);
           ctx.strokeStyle = '#F4F6F7';

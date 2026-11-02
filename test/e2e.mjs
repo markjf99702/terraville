@@ -1456,6 +1456,76 @@ try {
     await ctx.close();
   });
 
+  await test('night lights are painted once a patch, not every frame, and a lot that loses power goes dark', async () => {
+    const ctx = await profile(DESK);
+    const { page, problems } = await open(ctx);
+    await found(page);
+    // Every glow drawn, on the map or into a patch's lights.
+    await page.evaluate(() => {
+      const r = window.__terraville.renderer;
+      window.glows = 0;
+      const draw = CanvasRenderingContext2D.prototype.drawImage;
+      CanvasRenderingContext2D.prototype.drawImage = function (img, ...rest) {
+        if (img === r.glow) window.glows++;
+        return draw.call(this, img, ...rest);
+      };
+    });
+    // A block of lit homes and offices on a road grid, powered by a plant beside them, at midnight with the clock stopped.
+    const lot = await page.evaluate(() => {
+      const g = window.__terraville;
+      const w = g.world;
+      const cx = Math.floor(w.w / 2);
+      const cy = Math.floor(w.h / 2);
+      for (let y = cy - 12; y < cy + 12; y++) for (let x = cx - 12; x < cx + 16; x++) {
+        const i = y * w.w + x;
+        if (w.occ[i]) w.remove(w.occ[i]);
+        w.water[i] = 0; w.height[i] = 6; w.trees[i] = 0; w.net[i] = 0; w.rubble[i] = 0;
+      }
+      w.dirtyAll(true);
+      for (let y = cy - 12; y < cy + 12; y++) for (let x = cx - 12; x < cx + 12; x++) if ((x - cx) % 4 === 0 || (y - cy) % 4 === 0) w.setNet(1 | 4, x, y);
+      let home;
+      for (let y = cy - 11; y + 3 < cy + 12; y += 4) for (let x = cx - 11; x + 3 < cx + 12; x += 4) {
+        const b = w.place((x + y) % 8 ? 'res' : 'com', x, y);
+        w.setLevel(b, 4);
+        home ??= b;
+      }
+      const plant = w.place('nuclear', cx + 12, cy - 2);
+      g.sim.powerDirty = true;
+      g.setSpeed(0);
+      g.renderer.simTime = g.renderer.dayLength / 2;
+      g.renderer.cam.zoom = 20;
+      g.renderer.centerOn(cx, cy);
+      window.plant = plant;
+      return { x: home.x, y: home.y, size: home.size };
+    });
+    await page.waitForTimeout(1000);
+    const frames = () => page.evaluate(() => new Promise((ok) => { let n = 0; const f = () => (++n < 30 ? requestAnimationFrame(f) : ok()); requestAnimationFrame(f); }));
+    const lit = () => page.evaluate(({ x, y, size }) => {
+      const r = window.__terraville.renderer;
+      const a = r.tileToScreen(x, y);
+      const d = r.canvas.getContext('2d').getImageData(Math.round(a.x * r.dpr), Math.round(a.y * r.dpr), Math.round(size * r.cam.zoom * r.dpr), Math.round(size * r.cam.zoom * r.dpr)).data;
+      let most = 0;
+      for (let i = 0; i < d.length; i += 4) most = Math.max(most, d[i] + d[i + 1] + d[i + 2]);
+      return most;
+    }, lot);
+    assert.ok(await page.evaluate(() => window.glows > 100), 'the lights were painted');
+    const before = await lit();
+    await page.evaluate(() => { window.glows = 0; });
+    await frames();
+    assert.equal(await page.evaluate(() => window.glows), 0, 'nothing changed over 30 frames, and no glow was drawn again');
+    // The plant goes: the homes go dark, and only their patches are painted again.
+    await page.evaluate(() => {
+      const g = window.__terraville;
+      g.world.remove(window.plant.id);
+      g.sim.powerDirty = true;
+    });
+    await frames();
+    const after = await lit();
+    assert.ok(after < before - 50, `the home's brightest window went dark: ${before} before, ${after} after`);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('an Android phone draws street level at 32 px a tile at most, as an iPhone does', async () => {
     const android = 'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
     for (const [opts, most] of [[{ ...PHONE, userAgent: android }, 32], [DESK, 64]]) {
