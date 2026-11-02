@@ -125,6 +125,12 @@ export class Sim {
   private distRes: Float32Array;
   private heap: MinHeap;
   private hubFields: Float32Array[] = [];
+  /** The job centres as the last traffic pass found them, each with the distance field in hubFields at its index. */
+  private hubs: Hub[] = [];
+  private cand: { k: number; w: number; start: number }[] = [];
+  /** Whether the last traffic pass found any jobs, and any homes, for a commute to reach. */
+  private anyJobs = false;
+  private anyRes = false;
   /** Residents at the last month end: the report's "Last month" and approval's growth term count from here. */
   lastPop = 0;
   /** Kinds held at a landmark limit: no lot of that kind grows until the landmark is built. */
@@ -489,11 +495,11 @@ export class Sim {
   }
 
   /**
-   * Follow a distance field downhill from tile i, adding vol to every road tile driven along, and to `ride` for every
-   * tile of track ridden along, from where the trip boards the train to where it gets off. A train passing through a
-   * level crossing adds no cars to it, and commuters who board or leave the train on a crossing don't either.
+   * Follow a distance field downhill from tile i, as a trip goes: `step` hears of each tile it passes, whether it drives
+   * along it, and whether it rides a train along it, from where it boards to where it gets off. A train passing through
+   * a level crossing puts no cars on it, and commuters who board or leave the train on a crossing don't either.
    */
-  private trace(field: Float32Array, i: number, vol: number, flow: Float32Array, ride: Float32Array): void {
+  private walk(field: Float32Array, i: number, step: (i: number, car: boolean, train: boolean) => void): void {
     const { w, h } = this.world;
     const net = this.world.net;
     let steps = 0;
@@ -511,13 +517,53 @@ export class Sim {
       if (y > 0 && field[i - w] < nd) { nd = field[i - w]; nxt = i - w; }
       if (y < h - 1 && field[i + w] < nd) { nd = field[i + w]; nxt = i + w; }
       const onRail = nxt >= 0 && !!(net[i] & RAIL) && !!(net[nxt] & RAIL);
-      if (net[i] & ROAD && !(byRail && onRail)) flow[i] += vol;
-      if (onRail || aboard) ride[i] += vol;
+      step(i, !!(net[i] & ROAD) && !(byRail && onRail), onRail || aboard);
       byRail = aboard = onRail;
       i = nxt;
     }
-    if (i >= 0 && net[i] & ROAD && !byRail) flow[i] += vol;
-    if (i >= 0 && aboard) ride[i] += vol;
+    if (i >= 0) step(i, !!(net[i] & ROAD) && !byRail, aboard);
+  }
+
+  /** Add a trip's volume to every road tile it drives along (`flow`), and every tile of track it rides along (`ride`). */
+  private trace(field: Float32Array, i: number, vol: number, flow: Float32Array, ride: Float32Array): void {
+    this.walk(field, i, (j, car, train) => {
+      if (car) flow[j] += vol;
+      if (train) ride[j] += vol;
+    });
+  }
+
+  /**
+   * The trips a zone's people make, as the traffic pass traces them: the distance field each follows, the tile it
+   * starts from, its volume, and the job centre it goes to (-1 for the nearest homes or jobs). Homes send their
+   * commuters to up to three job centres, weighted by jobs and distance; shops and factories send deliveries and
+   * customers on short hops to the nearest homes. `best` is the zone's tile nearest a destination.
+   */
+  private trips(b: Building, ring: number[], best: number, out: (field: Float32Array, start: number, vol: number, hub: number) => void): void {
+    if (b.kind !== 'res') {
+      out(this.distRes, best, b.pop / 30, -1);
+      return;
+    }
+    const vol = b.pop / 7;
+    const hubs = this.hubs;
+    const cand = this.cand;
+    cand.length = 0;
+    for (let k = 0; k < hubs.length; k++) {
+      const f = this.hubFields[k];
+      let s = -1;
+      let d = Infinity;
+      for (const i of ring) if (f[i] < d) { d = f[i]; s = i; }
+      if (d > MAX_TRIP * 1.4) continue;
+      cand.push({ k, w: hubs[k].jobs / ((d + 6) * (d + 6)), start: s });
+    }
+    if (!cand.length) {
+      out(this.distJob, best, vol, -1);
+      return;
+    }
+    cand.sort((a, c) => c.w - a.w);
+    const n = Math.min(3, cand.length);
+    let tw = 0;
+    for (let k = 0; k < n; k++) tw += cand[k].w;
+    for (let k = 0; k < n; k++) out(this.hubFields[cand[k].k], cand[k].start, (vol * cand[k].w) / tw, cand[k].k);
   }
 
   /**
@@ -555,17 +601,22 @@ export class Sim {
 
     // Job centres: the biggest employers, with nearby ones folded in.
     jobZones.sort((a, b) => b.pop - a.pop);
-    const hubs: { b: Building; jobs: number }[] = [];
+    const hubs: Hub[] = [];
     for (const b of jobZones) {
-      let near: { b: Building; jobs: number } | null = null;
+      let near: Hub | null = null;
       let nd = Infinity;
       for (const hb of hubs) {
         const d = Math.abs(hb.b.x - b.x) + Math.abs(hb.b.y - b.y);
         if (d < nd) { nd = d; near = hb; }
       }
-      if (near && (nd < 9 || hubs.length >= MAX_HUBS)) near.jobs += b.pop;
-      else hubs.push({ b, jobs: b.pop });
+      if (near && (nd < 9 || hubs.length >= MAX_HUBS)) {
+        near.jobs += b.pop;
+        near.lots.push(b);
+      } else hubs.push({ b, jobs: b.pop, lots: [b] });
     }
+    this.hubs = hubs;
+    this.anyJobs = anyJobs;
+    this.anyRes = anyRes;
     for (let k = 0; k < hubs.length; k++) {
       if (!this.hubFields[k] || this.hubFields[k].length !== world.n) this.hubFields[k] = new Float32Array(world.n);
       this.perimeter(hubs[k].b, ring);
@@ -575,7 +626,7 @@ export class Sim {
     const flow = new Float32Array(world.n);
     const ride = new Float32Array(world.n);
     const net = world.net;
-    const cand: { k: number; w: number; start: number }[] = [];
+    const trace = (field: Float32Array, start: number, vol: number) => this.trace(field, start, vol, flow, ride);
     for (const b of world.buildings.values()) {
       if (!isZone(b.kind)) continue;
       this.perimeter(b, ring);
@@ -602,30 +653,7 @@ export class Sim {
       }
       b.trip = bestD <= MAX_TRIP;
       if (!b.trip || b.pop <= 0) continue;
-      if (b.kind !== 'res') {
-        // Deliveries and customers: short hops to the nearest homes.
-        this.trace(field, best, b.pop / 30, flow, ride);
-        continue;
-      }
-      const vol = b.pop / 7;
-      cand.length = 0;
-      for (let k = 0; k < hubs.length; k++) {
-        const f = this.hubFields[k];
-        let s = -1;
-        let d = Infinity;
-        for (const i of ring) if (f[i] < d) { d = f[i]; s = i; }
-        if (d > MAX_TRIP * 1.4) continue;
-        cand.push({ k, w: hubs[k].jobs / ((d + 6) * (d + 6)), start: s });
-      }
-      if (!cand.length) {
-        this.trace(field, best, vol, flow, ride);
-        continue;
-      }
-      cand.sort((a, c) => c.w - a.w);
-      const n = Math.min(3, cand.length);
-      let tw = 0;
-      for (let k = 0; k < n; k++) tw += cand[k].w;
-      for (let k = 0; k < n; k++) this.trace(this.hubFields[cand[k].k], cand[k].start, (vol * cand[k].w) / tw, flow, ride);
+      this.trips(b, ring, best, trace);
     }
     // Riders are eased in as the traffic is, and a city opened from a save counts them afresh: they are not saved.
     const riders = this.riders;
@@ -1272,6 +1300,94 @@ export class Sim {
     push(h.expense, spending(b));
   }
 
+  /**
+   * Who drives, or rides a train, along the tile at (x, y): every zone's trips traced again as the last traffic pass
+   * traced them, keeping those that pass here. Worked out only when asked, so the monthly pass costs no more for it.
+   * Null for a tile with no road or track.
+   */
+  passing(x: number, y: number): Passing | null {
+    const world = this.world;
+    const at = y * world.w + x;
+    if (!(world.net[at] & (ROAD | RAIL))) return null;
+    const out: Passing = { drive: 0, ride: 0, driveDeliveries: 0, rideDeliveries: 0, from: '', to: '', toWhat: '', deliveryFrom: '', deliveryWhat: '', homes: [], jobs: [] };
+    const ring: number[] = [];
+    // People from each home and each shop or factory whose trips pass here, and to each job centre.
+    const homes = new Map<Building, number>();
+    const senders = new Map<Building, number>();
+    const toHub = new Map<number, number>();
+    for (const b of world.buildings.values()) {
+      if (!isZone(b.kind) || !b.trip || b.pop <= 0) continue;
+      const home = b.kind === 'res';
+      if (!(home ? this.anyJobs : this.anyRes)) continue;
+      this.perimeter(b, ring);
+      if (!ring.length) continue;
+      const field = home ? this.distJob : this.distRes;
+      let best = -1;
+      let bestD = Infinity;
+      for (const i of ring) if (field[i] < bestD) { bestD = field[i]; best = i; }
+      this.trips(b, ring, best, (f, start, vol, hub) => {
+        let car = false;
+        let train = false;
+        this.walk(f, start, (j, c, t) => {
+          if (j !== at) return;
+          car ||= c;
+          train ||= t;
+        });
+        if (!car && !train) return;
+        const people = vol * PEOPLE_PER_VOL;
+        if (home) {
+          if (car) out.drive += people;
+          if (train) out.ride += people;
+          homes.set(b, (homes.get(b) ?? 0) + people);
+          if (hub >= 0) toHub.set(hub, (toHub.get(hub) ?? 0) + people);
+        } else {
+          if (car) out.driveDeliveries += people;
+          if (train) out.rideDeliveries += people;
+          senders.set(b, (senders.get(b) ?? 0) + people);
+        }
+      });
+    }
+    /** Which way from here the middle of some places lies, weighting each by its people. */
+    const towards = (places: Iterable<[Building, number]>): string => {
+      let cx = 0;
+      let cy = 0;
+      let sum = 0;
+      for (const [b, p] of places) {
+        cx += (b.x + b.size / 2) * p;
+        cy += (b.y + b.size / 2) * p;
+        sum += p;
+      }
+      return sum > 0 ? compass(cx / sum - x - 0.5, cy / sum - y - 0.5) : '';
+    };
+    out.from = towards(homes);
+    out.to = towards([...toHub].map(([k, p]) => [this.hubs[k].b, p] as [Building, number]));
+    const jobs = new Set<Building>(senders.keys());
+    let com = 0;
+    let all = 0;
+    for (const [k, p] of toHub) {
+      const hub = this.hubs[k];
+      let c = 0;
+      for (const lot of hub.lots) {
+        jobs.add(lot);
+        if (lot.kind === 'com') c += lot.pop;
+      }
+      com += (c / hub.jobs) * p;
+      all += p;
+    }
+    out.toWhat = jobsWord(com, all, 'jobs');
+    let sentCom = 0;
+    let sent = 0;
+    for (const [b, p] of senders) {
+      if (b.kind === 'com') sentCom += p;
+      sent += p;
+    }
+    out.deliveryFrom = towards(senders);
+    out.deliveryWhat = jobsWord(sentCom, sent, 'shops and factories');
+    out.homes = [...homes.keys()].map((b) => b.id);
+    out.jobs = [...jobs].map((b) => b.id);
+    return out;
+  }
+
   /** Human-readable description of a tile for the inspect tool: what a building is for, figures, and a note. */
   describe(x: number, y: number): { title: string; does?: string; rows: [string, string][]; note?: string } {
     const world = this.world;
@@ -1389,6 +1505,78 @@ export class Sim {
   dateLabel(): string {
     return dateLabel(this.world.city.month);
   }
+}
+
+/** A job centre: the biggest employer in a district, with the jobs of the lots folded into it. */
+interface Hub {
+  b: Building;
+  jobs: number;
+  lots: Building[];
+}
+
+/** Who passes along a tile of road or track, worked out when asked (see Sim.passing). */
+export interface Passing {
+  /** Commuters a month who drive along the tile, and who ride a train along it. */
+  drive: number;
+  ride: number;
+  /** Deliveries and customers a month from shops and factories, by road and by train. */
+  driveDeliveries: number;
+  rideDeliveries: number;
+  /** Where the commuters come from and go to, as words ('to the north-west', 'nearby'), and what they go to. */
+  from: string;
+  to: string;
+  toWhat: string;
+  /** Where the deliveries come from, and what from. */
+  deliveryFrom: string;
+  deliveryWhat: string;
+  /** The homes, and the shops and factories, whose trips pass along the tile, by building id. */
+  homes: number[];
+  jobs: number[];
+}
+
+/** A count of people as the Inspect card says it: 'a few', '40', '1,200', '12,000'. */
+function about(n: number): string {
+  if (n < 10) return 'a few';
+  const step = n < 100 ? 10 : n < 10000 ? 100 : 1000;
+  return num(Math.round(n / step) * step);
+}
+
+/** What a set of job lots is, by the jobs in it: shops and offices, factories, or both. */
+function jobsWord(com: number, all: number, both: string): string {
+  return com >= all * 0.67 ? 'shops and offices' : com <= all * 0.33 ? 'factories' : both;
+}
+
+/**
+ * Who passes along a tile, as the Inspect card says it: 'About 1,200 commuters a month drive through here, from the
+ * homes to the north-west to the factories to the east.' `road` and `rail` say what the tile carries.
+ */
+export function passingSentence(p: Passing, road: boolean, rail: boolean): string {
+  const people = p.drive + p.ride;
+  const goods = p.driveDeliveries + p.rideDeliveries;
+  if (people < 1 && goods < 1) return road && rail ? 'Nobody drives or rides along here.' : rail ? 'Nobody rides along here.' : 'Nobody drives along here.';
+  const how = (d: number, r: number) =>
+    d >= 1 && r >= 1 ? `drive across here, and about ${about(r)} ride through` : r >= 1 ? 'ride through here' : 'drive through here';
+  const count = (d: number, r: number) => (d >= 1 && r >= 1 ? about(d) : about(d + r));
+  let text = '';
+  if (people >= 1) {
+    const to = p.to ? `the ${p.toWhat} ${p.to}` : 'work';
+    text = `About ${count(p.drive, p.ride)} commuters a month ${how(p.drive, p.ride)}, from the homes ${p.from} to ${to}.`;
+    if (goods >= 1) text += ` Deliveries from the ${p.deliveryWhat} ${p.deliveryFrom} add about ${about(goods)}.`;
+  } else {
+    text = `About ${count(p.driveDeliveries, p.rideDeliveries)} deliveries a month ${how(p.driveDeliveries, p.rideDeliveries)}, from the ${p.deliveryWhat} ${p.deliveryFrom} to the homes nearest them.`;
+  }
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** People a trip's volume stands for: a home sends a seventh of its residents, and half of them work. */
+const PEOPLE_PER_VOL = 3.5;
+
+/** Which way (dx, dy) points, as a compass word, or 'nearby' for anywhere within a few tiles. */
+export function compass(dx: number, dy: number): string {
+  if (Math.hypot(dx, dy) < 5) return 'nearby';
+  const a = (Math.atan2(-dy, dx) * 180) / Math.PI;
+  const names = ['east', 'north-east', 'north', 'north-west', 'west', 'south-west', 'south', 'south-east'];
+  return `to the ${names[((Math.round(a / 45) % 8) + 8) % 8]}`;
 }
 
 export interface Growth {

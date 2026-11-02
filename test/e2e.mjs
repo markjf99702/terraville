@@ -2471,6 +2471,67 @@ try {
     await ctx.close();
   });
 
+  await test('on a phone, Inspect on a road or track says who passes along it, and a switch shows their homes and work on the map', async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await found(page);
+    // Homes in the west, shops in the east, a road to the station and a line of track between.
+    const ids = await page.evaluate(() => {
+      const g = window.__terraville;
+      const w = g.world;
+      for (let i = 0; i < w.n; i++) {
+        if (w.occ[i]) w.remove(w.occ[i]);
+        w.water[i] = 0;
+        w.height[i] = 6;
+        w.trees[i] = 0;
+        w.net[i] = 0;
+      }
+      const y = 20;
+      const home = w.place('res', 10, y - 3);
+      const shops = w.place('com', 48, y - 3);
+      w.setLevel(home, 8);
+      w.setLevel(shops, 3);
+      for (let x = 10; x <= 12; x++) w.net[y * w.w + x] = 1;
+      for (let x = 13; x <= 47; x++) w.net[y * w.w + x] = 2;
+      for (let x = 48; x <= 50; x++) w.net[y * w.w + x] = 1;
+      w.dirtyAll(true);
+      g.setSpeed(0);
+      g.sim.computeTraffic(false);
+      g.renderer.cam.zoom = 9;
+      g.renderer.centerOn(30, y);
+      g.ui.inspect(12, y);
+      return { home: home.id, shops: shops.id };
+    });
+    assert.equal(await page.textContent('#inspect .who'), 'About 1,100 commuters a month drive through here, from the homes nearby to the shops and offices to the east. Deliveries from the shops and offices to the east add about 50.');
+    await page.evaluate(() => window.__terraville.ui.inspect(30, 20));
+    assert.equal(await page.textContent('#inspect .who'), 'About 1,100 commuters a month ride through here, from the homes to the west to the shops and offices to the east. Deliveries from the shops and offices to the east add about 50.');
+    assert.match(await page.textContent('#inspect dl'), /RidersBusy/);
+    assert.equal(await page.isVisible('#inspect .who-key'), false);
+    await page.tap('#inWho');
+    assert.equal(await page.getAttribute('#inWho', 'aria-pressed'), 'true');
+    assert.equal(await page.textContent('#inWho'), 'Show who rides here');
+    assert.equal(await page.isVisible('#inspect .who-key'), true);
+    const traced = () => page.evaluate(() => {
+      const t = window.__terraville.renderer.trace;
+      return t && { homes: [...t.homes], jobs: [...t.jobs] };
+    });
+    assert.deepEqual(await traced(), { homes: [ids.home], jobs: [ids.shops] });
+    // The card is drawn again each month, and the homes and work stay shown.
+    await page.evaluate(() => window.__terraville.ui.onMonth());
+    assert.equal(await page.getAttribute('#inWho', 'aria-pressed'), 'true');
+    assert.deepEqual(await traced(), { homes: [ids.home], jobs: [ids.shops] });
+    // Another tile, or the card closed, puts them away.
+    await page.evaluate(() => window.__terraville.ui.inspect(12, 20));
+    assert.equal(await traced(), null);
+    assert.equal(await page.getAttribute('#inWho', 'aria-pressed'), 'false');
+    await page.tap('#inWho');
+    assert.deepEqual(await traced(), { homes: [ids.home], jobs: [ids.shops] });
+    await page.tap('#inspect .close');
+    assert.equal(await traced(), null);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('a touch screen gets touch help: no key letters, no right-click in the tips, and a Touch list in Settings', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

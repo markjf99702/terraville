@@ -486,6 +486,14 @@ input[type="range"] { width: 100%; accent-color: var(--sign-hi); margin: 0; touc
 /* On a touch screen, Bulldoze under what the card says; on a phone, where the card is the screen's width, in its title
    row by the close button, so the card is no taller. */
 #inspect .clear { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+/* On a road or track: who passes along it, and the switch that shows them on the map. */
+#inspect .who { margin: 10px 0 0; padding-top: 9px; border-top: 1px solid var(--line); font-size: 13px; line-height: 1.4; }
+#inspect #inWho { margin-top: 8px; }
+#inspect #inWho[aria-pressed="true"] { border-color: var(--caution); background: rgba(242, 193, 78, 0.12); color: var(--text); }
+#inspect .who-key { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 7px 0 0; font-size: 12px; }
+#inspect .who-key[hidden] { display: none; }
+#inspect .who-key .swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; margin-left: 4px; }
+#inspect .who-key .swatch:first-child { margin-left: 0; }
 
 /* ---- editor panel -------------------------------------------------------- */
 #editorPanel {

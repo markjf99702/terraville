@@ -147,7 +147,7 @@ function sections(): Section[] {
           <li><b>Mixed zoning</b> shortens commutes. A pocket of commercial lots inside a residential district keeps many trips off the main roads.</li>
           <li><b>Parallel roads</b> share the load. One long arterial carrying everything will jam.</li>
         </ul>
-        ${tip('Turn on the Traffic layer to see which roads are jammed before you build anything to fix them. It shades the track by its riders too, in blue: a line nobody rides stays faint. Inspect on a tile of track says how full its trains are, and busy lines run more trains, and longer ones.')}`,
+        ${tip('Turn on the Traffic layer to see which roads are jammed before you build anything to fix them. It shades the track by its riders too, in blue: a line nobody rides stays faint, and busy lines run more trains, and longer ones. Inspect on a road or a tile of track says how many commuters pass along it, from where to where, and can show their homes and work on the map.')}`,
     },
     {
       id: 'money',

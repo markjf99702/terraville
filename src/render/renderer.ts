@@ -8,6 +8,7 @@ import type { Building, World } from '../world';
 import { lessMotion } from '../motion';
 import { hash3 } from '../rng';
 import { TerrainField, paintTerrain } from './terrainPaint';
+import { ZONE_MAP_COLORS } from './color';
 import { CAR_COLORS, DC, Emitter, buildingEmitters, drawBuilding, drawNet, drawRadiation, drawRubble, drawTrees } from './sprites';
 import { Vehicles } from './vehicles';
 
@@ -149,6 +150,8 @@ export class Renderer {
   hover: { x: number; y: number } | null = null;
   /** What the Inspect card describes: a building's footprint, or one tile. The pointer's hover never moves it. */
   selected: { x: number; y: number; size: number } | null = null;
+  /** The homes, and the shops and factories, whose trips pass along the selected road or track, tinted: by building id. */
+  trace: { homes: Set<number>; jobs: Set<number> } | null = null;
   /** Whether the simulation clock is running (freezes traffic when paused). */
   running = false;
   /** Seconds, always ticking (water, blinking). */
@@ -218,6 +221,7 @@ export class Renderer {
     this.world = world;
     this.sim = sim;
     this.selected = null;
+    this.trace = null;
     this.flight = null;
     this.held = { ...NO_INSETS };
     this.field = new TerrainField(world);
@@ -707,6 +711,7 @@ export class Renderer {
       const { fire, flood, n } = this.world;
       for (let i = 0; i < n; i++) if (fire[i] || flood[i]) this.hazards.push(i);
     }
+    if (this.trace) this.drawTrace(ctx);
     if (this.hazards.length) this.drawHazards(ctx, vx0, vy0, vx1, vy1);
     if (this.cam.zoom >= 7) this.drawEmitters(ctx, vx0, vy0, vx1, vy1);
     if (this.sim && this.world.city.founded) this.drawWarnings(ctx, vx0, vy0, vx1, vy1);
@@ -1147,6 +1152,36 @@ export class Renderer {
    * The tile or building the Inspect card describes, in caution yellow over a dark edge (as the brush ring is drawn),
    * 2 px wide just outside its footprint so a finger's worth of neighbours can't be taken for it.
    */
+  /**
+   * Who drives or rides along the selected tile: the map dimmed (as a layer dims it), and their homes, shops and
+   * factories filled in their zone's colour and outlined.
+   */
+  private drawTrace(ctx: CanvasRenderingContext2D): void {
+    const t = this.trace!;
+    const world = this.world;
+    if (this.overlay === 'none') {
+      ctx.fillStyle = 'rgba(14,20,18,0.55)';
+      ctx.fillRect(0, 0, world.w, world.h);
+    }
+    const px = 1 / this.cam.zoom;
+    const paint = (ids: Set<number>) => {
+      for (const id of ids) {
+        const b = world.buildings.get(id);
+        if (!b) continue;
+        const c = ZONE_MAP_COLORS[b.kind as 'res' | 'com' | 'ind'] ?? '#f2c14e';
+        ctx.globalAlpha = 0.55;
+        ctx.fillStyle = c;
+        ctx.fillRect(b.x, b.y, b.size, b.size);
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = c;
+        ctx.lineWidth = 2 * px;
+        ctx.strokeRect(b.x + px, b.y + px, b.size - 2 * px, b.size - 2 * px);
+      }
+    };
+    paint(t.homes);
+    paint(t.jobs);
+  }
+
   private drawSelected(ctx: CanvasRenderingContext2D): void {
     const s = this.selected;
     if (!s) return;

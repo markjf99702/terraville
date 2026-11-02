@@ -1,7 +1,7 @@
 // Everything in the DOM: top bar, toolbox, panels, dialogs, title screen.
 import {
-  BUILDINGS, BULLDOZE_COST, DIFFICULTIES, DISASTER_POP, Difficulty, Kind, LANDMARK_LIMITS, MAP_SIZES, SEP, ToolDef, UPGRADE_LV, article,
-  cityClass, dateLabel, MONTHS, isZone, nextUpgrade, num,
+  BUILDINGS, BULLDOZE_COST, DIFFICULTIES, DISASTER_POP, Difficulty, Kind, LANDMARK_LIMITS, MAP_SIZES, RAIL, ROAD, SEP, ToolDef, UPGRADE_LV,
+  article, cityClass, dateLabel, MONTHS, isZone, nextUpgrade, num,
 } from '../defs';
 import { DISASTER_NAMES, DisasterKind } from '../disasters';
 import { Game, SPEED_NAMES, randomCityName } from '../game';
@@ -11,8 +11,8 @@ import { drawBuilding } from '../render/sprites';
 import { randomSeedName } from '../rng';
 import { DRIVE_HOME, DriveCopy } from '../drive';
 import { SaveFile, SlotMeta, challengeWins, decode, deleteSlot, encode, listSlots, loadSlot, storageAvailable } from '../save';
-import { spending } from '../sim';
-import type { Message } from '../sim';
+import { passingSentence, spending } from '../sim';
+import type { Message, Passing } from '../sim';
 import { STYLE_NAMES, TerrainParams, TerrainStyle, hasSea } from '../terrain';
 import { GoalRow, GoalState, SCENARIOS, Scenario, isCount, lastYear, successLine } from '../scenarios';
 import { World } from '../world';
@@ -262,6 +262,8 @@ export class UI {
   /** The tool button whose tooltip is up. */
   private tipOwner: HTMLElement | null = null;
   private inspectAt: { x: number; y: number } | null = null;
+  /** The road or track tile whose travellers are tinted on the map (see showWho). */
+  private whoAt: { x: number; y: number } | null = null;
   /** The layer the Inspect card showed (a station's reach, a plant's grid), and the one to put back when it closes. */
   private inspectLayer: { shown: Overlay; was: Overlay } | null = null;
   private modalClose: (() => void) | null = null;
@@ -1548,13 +1550,24 @@ export class UI {
         : BUILDINGS[b.kind].capacity ? 'power' : undefined;
     const showLayer = layer && this.game.renderer.overlay !== layer
       ? `<button class="btn small" id="inLayer" style="margin-top:10px">${layer === 'power' ? 'Show the power grid' : 'Show its reach'}</button>` : '';
+    // On a road or track: who drives or rides along it, and where they come from and go to, shown on the map on asking.
+    const net = this.game.world.net[y * this.game.world.w + x];
+    const pass = b ? null : sim.passing(x, y);
+    const road = !!(net & ROAD);
+    const rail = !!(net & RAIL);
+    if (!refresh || !pass || this.whoAt?.x !== x || this.whoAt?.y !== y) this.showWho(null);
+    if (pass && this.whoAt) this.showWho(pass, x, y);
+    const whoShown = !!this.whoAt;
+    const who = pass ? `<p class="who">${esc(passingSentence(pass, road, rail))}</p>${pass.homes.length + pass.jobs.length ? `
+      <button class="btn small" id="inWho" aria-pressed="${whoShown}">${road && rail ? 'Show who passes here' : rail ? 'Show who rides here' : 'Show who drives here'}</button>
+      <p class="note who-key"${whoShown ? '' : ' hidden'}><span class="swatch" style="background:var(--res)"></span>Their homes <span class="swatch" style="background:var(--com)"></span>Shops <span class="swatch" style="background:var(--ind)"></span>Factories</p>` : ''}` : '';
     // Figures stay in the card's mono, lined up on the right. Words are set as text, and a phrase longer than the
     // column holds runs under its label, the card's whole width, rather than wrapping into a ragged stack.
     const value = (v: string) => (FIGURE.test(v) ? '' : v.length > 18 ? ' class="text long"' : ' class="text"');
     // A button waiting for its second tap stays waiting when the card is drawn again for the same thing, as it is every
     // month: on Ultra a month passes in a quarter of a second, between one tap and the next.
     const sure = refresh ? { up: card.querySelector<HTMLElement>('#inUpgrade')?.dataset.sure, clear: card.querySelector<HTMLElement>('#inBulldoze')?.dataset.sure } : {};
-    card.innerHTML = `<button class="iconbtn close" aria-label="Close">${ICONS.close}</button><h3 id="inspectTitle">${esc(d.title)}</h3>${d.does ? `<p class="does">${esc(d.does)}.</p>` : ''}<dl>${d.rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd${value(v)}>${esc(v)}</dd>`).join('')}</dl>${showLayer}${d.note ? `<p class="note why">${esc(d.note)}</p>` : ''}${up ? `
+    card.innerHTML = `<button class="iconbtn close" aria-label="Close">${ICONS.close}</button><h3 id="inspectTitle">${esc(d.title)}</h3>${d.does ? `<p class="does">${esc(d.does)}.</p>` : ''}<dl>${d.rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd${value(v)}>${esc(v)}</dd>`).join('')}</dl>${who}${showLayer}${d.note ? `<p class="note why">${esc(d.note)}</p>` : ''}${up ? `
       <div class="upgrade"><p class="note">Upgrade to ${article(up.name)} <b>${esc(up.name.toLowerCase())}</b>: land value rises by <span class="num">${money(UPGRADE_LV * 40)}</span>/acre across the whole city, and upkeep by <span class="num">${money(up.upkeep)}</span>/mo.</p>
       <button class="btn small primary" id="inUpgrade">Upgrade for ${money(up.cost)}</button></div>` : burning ? `
       <div class="upgrade"><p class="note">It can be upgraded once the fire is out.</p></div>` : outdone ? `
@@ -1566,6 +1579,15 @@ export class UI {
         this.inspectLayer = { shown: layer, was: this.inspectLayer?.was ?? this.game.renderer.overlay };
         this.setOverlay(layer);
         this.inspect(x, y, true);
+      };
+    }
+    const wb = card.querySelector<HTMLButtonElement>('#inWho');
+    if (wb && pass) {
+      wb.onclick = () => {
+        this.showWho(this.whoAt ? null : pass, x, y);
+        wb.setAttribute('aria-pressed', String(!!this.whoAt));
+        $(card, '.who-key').hidden = !this.whoAt;
+        this.fitInspect();
       };
     }
     const ub = card.querySelector<HTMLButtonElement>('#inUpgrade');
@@ -1692,7 +1714,17 @@ export class UI {
     if (this.inspectAt) this.inspect(this.inspectAt.x, this.inspectAt.y, true);
   }
 
+  /**
+   * Tint the homes, shops and factories whose trips pass along the tile at (x, y) on the map, or (with null) stop. Kept
+   * up to date each month while the Inspect card shows that tile.
+   */
+  private showWho(pass: Passing | null, x = 0, y = 0): void {
+    this.whoAt = pass ? { x, y } : null;
+    this.game.renderer.trace = pass ? { homes: new Set(pass.homes), jobs: new Set(pass.jobs) } : null;
+  }
+
   hideInspect(): void {
+    this.showWho(null);
     $(this.root, '#inspect').hidden = true;
     this.root.classList.remove('inspecting');
     this.inspectAt = null;

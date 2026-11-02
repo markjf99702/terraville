@@ -1,7 +1,7 @@
 // Unit checks for the core rules. Run with: npm test
 import assert from 'node:assert/strict';
 import { World, encodeArray, decodeArray } from '../src/world';
-import { Sim, ridersWord, spending } from '../src/sim';
+import { Sim, compass, passingSentence, ridersWord, spending } from '../src/sim';
 import { generateTerrain, cleanTerrain, DEFAULT_TERRAIN, applyBrush } from '../src/terrain';
 import { linePath, planLine, applyLine, planZones, applyBuildings, planBulldoze, levelCost } from '../src/tools';
 import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST, UPGRADE_LV, Kind, BUILDINGS, article, buildingName, cityClass, isZone, num, upkeepOf } from '../src/defs';
@@ -524,6 +524,38 @@ await test('riders are counted on the track they ride, from where they board to 
   const back = await reopen(sim);
   assert.equal(back.riders[5 * w.w + 12], before);
   assert.deepEqual([0, 1, 59, 60, 169, 170, 255].map(ridersWord), ['None', 'Light', 'Light', 'Busy', 'Busy', 'Packed', 'Packed']);
+});
+
+await test('Inspect on a road or track says who drives or rides along it, from where to where, worked out only when asked', () => {
+  const w = flat(60, 30);
+  const home = w.place('res', 2, 2);
+  const shops = w.place('com', 40, 2);
+  w.setLevel(shops, 3);
+  w.setLevel(home, 8);
+  applyLine(w, ROAD, planLine(w, ROAD, linePath(2, 5, 4, 5)));
+  applyLine(w, RAIL, planLine(w, RAIL, linePath(5, 5, 39, 5)));
+  applyLine(w, RAIL, planLine(w, RAIL, linePath(20, 6, 20, 20)));
+  applyLine(w, ROAD, planLine(w, ROAD, linePath(40, 5, 42, 5)));
+  const sim = new Sim(w);
+  sim.computeTraffic(false);
+  const traffic = w.traffic.slice();
+  const riders = sim.riders.slice();
+  const say = (x: number, y: number) => {
+    const p = sim.passing(x, y)!;
+    return { p, text: passingSentence(p, !!(w.net[y * w.w + x] & ROAD), !!(w.net[y * w.w + x] & RAIL)) };
+  };
+  // 2,200 residents, 1,100 of them commuting, every one by train to the shops; the shops' deliveries ride it back.
+  const track = say(12, 5);
+  assert.equal(track.text, 'About 1,100 commuters a month ride through here, from the homes to the west to the shops and offices to the east. Deliveries from the shops and offices to the east add about 50.');
+  assert.deepEqual([track.p.homes, track.p.jobs], [[home.id], [shops.id]]);
+  // The road to the station: they drive along it from their own doorstep, and the deliveries to it.
+  const road = say(4, 5);
+  assert.equal(road.text, 'About 1,100 commuters a month drive through here, from the homes nearby to the shops and offices to the east. Deliveries from the shops and offices to the east add about 50.');
+  assert.equal(say(20, 12).text, 'Nobody rides along here.');
+  assert.equal(sim.passing(30, 20), null, 'open land');
+  // Asking changes nothing the city keeps.
+  assert.deepEqual([w.traffic, sim.riders], [traffic, riders]);
+  assert.deepEqual([compass(0, -9), compass(-6, 6), compass(3, 2), compass(20, 1)], ['to the north', 'to the south-west', 'nearby', 'to the east']);
 });
 
 await test('more trains, and longer ones, run where more people ride, and a spur nobody rides sees few', () => {

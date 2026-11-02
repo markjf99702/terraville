@@ -47,7 +47,7 @@ The Challenges list marks each one you have won in this browser, with the year y
 - Smooth zoom from the whole map down to street level, with detail that adapts to the zoom.
 - Animated traffic on busy roads, trains, departing planes, boats, smoke and wind turbines.
 - A day and night cycle: streetlights and lit windows after dark.
-- Commuters spread across the city's job centres, so traffic piles up on the arterials into downtown.
+- Commuters spread across the city's job centres, so traffic piles up on the arterials into downtown. Inspect on a road or track says who passes along it, from where to where, and can tint their homes and work on the map.
 - Drag to zone many lots at once, with live cost and a reason when something can't be built.
 - Every city keeps its own save, updated every 90 seconds, at each year's end and whenever you leave the page. Snapshots and city codes (the whole map compressed into text you can paste on another device) are there too.
 - Optional Google Drive sync, so you can carry on with a city on another device. See below.
