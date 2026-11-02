@@ -3585,7 +3585,21 @@ try {
     const name = await page.evaluate(() => window.__terraville.world.city.name);
     assert.equal(await page.textContent('#inspect h3'), `A gift for ${name}`);
     assert.match(await page.textContent('#inspect'), /given it a mayor’s house\. It is free: place it from the civic tools, where it is marked Gift\./);
+    // Town reached in a year's last month: the paper comes out too, and waits for the gift's card to be closed.
+    await page.evaluate(() => window.__terraville.ui.paper(window.__terraville.sim.paper('')));
+    assert.equal(await page.textContent('#inspect h3'), `A gift for ${name}`);
+    await page.tap('#inspect .close');
+    assert.equal(await page.textContent('#inspect h3'), `${name} is now a town`);
+    await page.tap('#inspect .close');
+    assert.equal(await page.isHidden('#inspect'), true);
+    // Acted on, the gift's card lets a waiting paper go.
+    await page.evaluate(() => {
+      const u = window.__terraville.ui;
+      u.gift('mayor');
+      u.paper(window.__terraville.sim.paper(''));
+    });
     await page.tap('#inspect .news-btns button:has-text("Place it")');
+    assert.equal(await page.isHidden('#inspect'), true);
     assert.equal(await page.evaluate(() => window.__terraville.toolId), 'mayor');
     assert.equal(await page.textContent('[data-tool="mayor"] .gift'), 'Gift');
     const tool = await page.locator('[data-tool="mayor"]').boundingBox();

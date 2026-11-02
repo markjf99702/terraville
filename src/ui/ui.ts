@@ -1746,7 +1746,6 @@ export class UI {
    */
   hideInspect(closed = false): void {
     this.showWho(null);
-    const wasNews = this.newsShown;
     this.newsShown = false;
     const card = $(this.root, '#inspect');
     card.className = 'panel';
@@ -1759,7 +1758,7 @@ export class UI {
     this.inspectLayer = null;
     if (l && this.game.renderer.overlay === l.shown) this.setOverlay(l.was);
     const next = this.newsWaiting;
-    if (!wasNews && closed && next && this.game.mode === 'city') next();
+    if (closed && next && this.game.mode === 'city') next();
   }
 
   // ---- news cards ----------------------------------------------------------------------
@@ -1767,7 +1766,7 @@ export class UI {
   /**
    * A card of news in the Inspect card's place, so it sits where that card does on every screen and leaves the clock
    * running: the title, the body, and buttons that close it as they act. While the Inspect card is open it waits for it
-   * to be closed; news already showing is replaced.
+   * to be closed; news already showing is replaced, but for a gift's card, which the year's paper waits behind.
    */
   private showNews(title: string, body: string, buttons: { label: string; primary?: boolean; act: () => void }[] = [], cls = '', head = ''): void {
     const card = $(this.root, '#inspect');
@@ -1786,6 +1785,8 @@ export class UI {
     const row = card.querySelector('.news-btns');
     for (const b of buttons) {
       row?.appendChild(this.btn(b.label, `small${b.primary ? ' primary' : ''}`, () => {
+        // Acting on it, the player is busy: a paper waiting behind it is let go.
+        this.newsWaiting = null;
         this.hideInspect();
         b.act();
       }));
@@ -1882,6 +1883,11 @@ export class UI {
    */
   paper(p: Paper): void {
     if (this.game.mode !== 'city') return;
+    // A gift's card, come the same month, isn't put away for the paper: the paper waits for it to be closed by hand.
+    if (this.newsShown && $(this.root, '#inspect').classList.contains('gift')) {
+      this.newsWaiting = () => this.paper(p);
+      return;
+    }
     const change = p.change > 0 ? `, up ${num(p.change)}` : p.change < 0 ? `, down ${num(-p.change)}` : '';
     const worry = p.worry && worryWord(p.worry.value) !== 'Fine' ? `${p.worry.label}, ${worryWord(p.worry.value).toLowerCase()}` : 'Nothing much';
     const facts = `<dl class="paper-facts">
