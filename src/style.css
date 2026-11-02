@@ -499,6 +499,9 @@ input[type="range"] { width: 100%; accent-color: var(--sign-hi); margin: 0; }
 .btn.danger { background: transparent; border-color: var(--critical); color: var(--critical-ink); }
 .btn.small { height: 30px; padding: 0 10px; font-size: 12.5px; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+/* A file input hidden inside a button-like label: the label shows the focus ring the input would. */
+.btn:has(> input[type=file]:focus-visible) { outline: 2px solid var(--caution); outline-offset: 2px; }
+@supports not selector(:has(*)) { label.btn:focus-within { outline: 2px solid var(--caution); outline-offset: 2px; } }
 
 /* ---- modals -------------------------------------------------------------- */
 #modalRoot { position: absolute; inset: 0; z-index: 80; display: grid; place-items: center; padding: 16px; background: rgba(6, 10, 8, 0.55); }

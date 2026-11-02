@@ -91,6 +91,12 @@ function again(): string {
   return matchMedia('(pointer: fine)').matches ? 'Click again' : 'Tap again';
 }
 
+/** Give a button a fuller name for a screen reader than its visible word, which the name starts with. */
+function named<T extends HTMLElement>(b: T, label: string): T {
+  b.setAttribute('aria-label', label);
+  return b;
+}
+
 /** How long ago a moment was, briefly. */
 export function ago(t: number): string {
   const s = Math.max(0, (Date.now() - t) / 1000);
@@ -1415,6 +1421,21 @@ export class UI {
     return b;
   }
 
+  /**
+   * A Delete button that acts only on a second press, as nothing brings back what it deletes. `what` names it for a
+   * screen reader ('Delete Willowmont'); `where` adds to the second press's wording, such as ' everywhere'.
+   */
+  private deleteBtn(what: string, act: () => void | Promise<void>, where = () => ''): HTMLButtonElement {
+    const b = this.btn('Delete', 'small danger', () => {
+      if (b.dataset.sure) return void act();
+      b.dataset.sure = '1';
+      const w = where();
+      b.textContent = `${again()} to delete${w}`;
+      b.setAttribute('aria-label', `${again()} to delete ${what}${w}`);
+    });
+    return named(b, `Delete ${what}`);
+  }
+
   // Founding ------------------------------------------------------------------------------
 
   openFound(fromQuick: boolean): void {
@@ -1829,7 +1850,7 @@ export class UI {
         <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">
           <button class="btn small primary" id="fOpen">Open code</button>
           <label class="btn small" style="position:relative;overflow:hidden">Open a text file<input type="file" id="fFile" accept=".txt,.tvc,text/plain" style="position:absolute;inset:0;opacity:0;cursor:pointer"></label>
-          <span class="note" id="fErr" style="color:var(--critical-ink)"></span>
+          <span class="note" id="fErr" role="alert" style="color:var(--critical-ink)"></span>
         </div>
       </div>
     </div>`);
@@ -1940,15 +1961,11 @@ export class UI {
           <div class="actions"></div>
           <span class="meta num">${dateLabel(date)} · pop ${pop.toLocaleString()}</span>
           <span class="meta" style="grid-column:1/-1">${where}</span></div>`);
-        const del = this.btn('Delete', 'small danger', async () => {
-          const everywhere = !!r.remote && drive.hasToken();
-          if (!del.dataset.sure) {
-            del.dataset.sure = '1';
-            del.textContent = everywhere ? `${again()} to delete everywhere` : `${again()} to delete`;
-            return;
-          }
+        const everywhere = () => !!r.remote && drive.hasToken();
+        const del = this.deleteBtn(name, async () => {
+          const all = everywhere();
           if (r.local) deleteSlot(r.local.id);
-          if (everywhere) {
+          if (all) {
             try {
               await drive.remove(city);
               copies = (copies ?? []).filter((c) => c.city !== city);
@@ -1957,9 +1974,9 @@ export class UI {
             }
           }
           renderCities();
-        });
+        }, () => (everywhere() ? ' everywhere' : ''));
         $(row, '.actions').append(
-          this.btn('Open', 'small primary', async () => {
+          named(this.btn('Open', 'small primary', async () => {
             if (!useRemote) return openLocal(r.local!.id, name);
             try {
               await g.openFromDrive(r.remote!);
@@ -1968,7 +1985,7 @@ export class UI {
             } catch (e) {
               this.toast(`Could not open it from Google Drive: ${(e as Error).message}`, 'warn');
             }
-          }),
+          }), `Open ${name}`),
           del,
         );
         box.appendChild(row);
@@ -1987,9 +2004,11 @@ export class UI {
         const row = el(`<div class="slot"><b>${esc(s.name)}</b>
           <div class="actions"></div>
           <span class="meta num">${s.mode === 'city' ? `${dateLabel(s.date)} · pop ${s.pop.toLocaleString()}` : 'Terrain'} · saved ${new Date(s.savedAt).toLocaleDateString()}</span></div>`);
+        // Said with the date, since one city can have several snapshots.
+        const what = s.mode === 'city' ? `the snapshot of ${s.name}, ${dateLabel(s.date)}` : `the terrain ${s.name}`;
         $(row, '.actions').append(
-          this.btn('Open', 'small primary', () => openLocal(s.id, s.name)),
-          this.btn('Delete', 'small danger', () => {
+          named(this.btn('Open', 'small primary', () => openLocal(s.id, s.name)), `Open ${what}`),
+          this.deleteBtn(what, () => {
             deleteSlot(s.id);
             renderOther();
           }),

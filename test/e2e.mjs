@@ -313,6 +313,36 @@ try {
     await ctx.close();
   });
 
+  await test('Save, open and share: a snapshot is deleted only on a second press, and every row button names its city', async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await found(page);
+    const name = await page.evaluate(() => window.__terraville.world.city.name);
+    await page.click('#topbar [data-act="menu"]');
+    await page.click('[role="menu"] button:has-text("Save, open and share")');
+    await page.click('#fSaveBtns button:has-text("Save now")');
+    await page.waitForSelector('#fCities .slot');
+    await page.click('#fSaveBtns button:has-text("Save a snapshot")');
+    await page.waitForSelector('#fOther .slot');
+    // Read out of a list of buttons, each one says whose it is.
+    const labels = await page.$$eval('#fCities .slot button, #fOther .slot button', (bs) => bs.map((b) => b.getAttribute('aria-label')));
+    assert.deepEqual(labels.slice(0, 2), [`Open ${name}`, `Delete ${name}`]);
+    assert.match(labels[2], /^Open the snapshot of .+, [A-Z][a-z]{2} \d{4}$/);
+    assert.ok(labels[2].startsWith(`Open the snapshot of ${name}, `));
+    assert.equal(labels[3], labels[2].replace('Open', 'Delete'));
+    assert.equal(labels.length, 4);
+    // A code that won't open is said out loud.
+    assert.equal(await page.getAttribute('#fErr', 'role'), 'alert');
+    const del = page.locator('#fOther .slot button.danger');
+    await del.click();
+    assert.equal(await page.locator('#fOther .slot').count(), 1, 'one press deleted the snapshot');
+    assert.equal(await del.textContent(), 'Tap again to delete');
+    await del.click();
+    assert.equal(await page.locator('#fOther .slot').count(), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('a city code saved as a text file opens again from it', async () => {
     const ctx = await profile({ ...DESK, acceptDownloads: true });
     const { page, problems } = await open(ctx);
