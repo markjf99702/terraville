@@ -890,6 +890,9 @@ export class Game {
    */
   private built: { html: string; until: number; tiles: Set<number>; shown: boolean } | null = null;
 
+  /** Where the pointer last was on the screen, for the tip that says what undo or redo did. */
+  private pointerScreen: { x: number; y: number } | null = null;
+
   /** The steepness layer was switched on by picking Level land, so switch it off after. */
   private autoSlope = false;
 
@@ -977,6 +980,7 @@ export class Game {
     const r = this.renderer;
     const inside = this.world.inBounds(tx, ty);
     r.hover = inside ? { x: tx, y: ty } : null;
+    this.pointerScreen = { x: sx, y: sy };
     if (this.mode === 'title') return;
     const t = this.tool();
     if (t.kind === 'brush') {
@@ -1273,14 +1277,18 @@ export class Game {
     return tiles;
   }
 
-  /** What the tip says once a plan is built: 'Zoned 11 lots · $1,100', 'Road · 9 tiles · $90', 'Cleared 4 · $4'. */
+  /**
+   * What the tip says once a plan is built, in other words than its preview's: 'Zoned 11 lots · $1,100', 'Road built ·
+   * 9 tiles · $90', 'Trees planted · 5 tiles · $15', 'Cleared 4 · $4'.
+   */
   private builtText(t: ToolDef, plan: Plan): string {
     const n = plan.count;
     const cost = `<span class="num">${fmtMoney(plan.cost)}</span>`;
     if (t.id === 'bulldoze') return `Cleared ${n}${SEP}${cost}`;
     if (t.kind === 'zone') return `Zoned ${n} lot${n > 1 ? 's' : ''}${SEP}${cost}`;
     if (t.kind === 'place') return `${BUILDINGS[t.building!].name} built${SEP}${cost}`;
-    return `${t.name}${SEP}${n} tile${n > 1 ? 's' : ''}${SEP}${cost}`;
+    const done = t.id === 'trees' ? 'Trees planted' : t.id === 'park' ? 'Parks built' : `${t.name} built`;
+    return `${done}${SEP}${n} tile${n > 1 ? 's' : ''}${SEP}${cost}`;
   }
 
   /** Dust where the bulldozer takes down buildings: one cloud each, eight at most. Empty lots raise none. */
@@ -1501,6 +1509,7 @@ export class Game {
     // A slider change still waiting to regenerate is the latest change: it goes ahead, and this undoes it.
     this.ui.flushRegen();
     this.sealUndo();
+    this.built = null;
     const e = this.undoStack.pop();
     if (!e) {
       this.ui.toast('Nothing to undo.');
@@ -1522,16 +1531,16 @@ export class Game {
     this.redoStack.push({ snap: back, cost: refund, month: e.month, upgrade: e.upgrade, after: this.afterOf(e.snap), terrain: this.swapTerrain(e) });
     if (e.upgrade) this.sim?.computeMaps();
     this.ui.syncUndo();
-    if (city) {
-      this.world.city.funds += refund;
-      if (e.cost >= 1 && !refund) this.ui.toast(`Undone. It cost ${fmtMoney(e.cost)}, which is only refunded within ${REFUND_MONTHS} months.`);
-    }
+    if (city) this.world.city.funds += refund;
+    const money = refund >= 1 ? `${fmtMoney(refund)} back` : e.cost >= 1 ? `no refund after ${REFUND_MONTHS} months` : '';
+    this.sayUndone('Undone', money, refund >= 1, e.snap);
     this.ui.onFunds();
     this.ui.refreshInspect();
   }
 
   redo(): void {
     this.ui.flushRegen();
+    this.built = null;
     const e = this.redoStack.pop();
     if (!e) return;
     if (this.mode === 'city' && this.burning(e.snap)) {
@@ -1551,8 +1560,34 @@ export class Game {
     if (e.upgrade) this.sim?.computeMaps();
     this.ui.syncUndo();
     if (this.mode === 'city') this.world.city.funds -= e.cost;
+    this.sayUndone('Redone', e.cost >= 1 ? fmtMoney(e.cost) : '', true, e.snap);
     this.ui.onFunds();
     this.ui.refreshInspect();
+  }
+
+  /**
+   * A soft click for undo and redo, and in a city what it did with the money, 'Undone · $80 back': at the pointer while
+   * a mouse is over the map, like the tip after a build, and otherwise (a key on a touch screen, the menu) in a toast.
+   */
+  private sayUndone(what: string, money: string, figure: boolean, s: WorldSnapshot | AreaSnapshot | World): void {
+    this.audio.play('click');
+    if (this.mode !== 'city') return;
+    const p = this.pointerScreen;
+    const hover = this.renderer.hover;
+    if (!p || !hover || this.ui.touchTips) {
+      this.ui.toast(money ? `${what} · ${money}` : what);
+      return;
+    }
+    // The tip stays for its moment while the pointer is on the spot put back, or still where it was.
+    const tiles = new Set<number>([hover.y * this.world.w + hover.x]);
+    if ('x0' in s) {
+      const bw = s.x1 - s.x0 + 1;
+      for (let y = s.y0; y <= s.y1; y++) for (let x = s.x0; x <= s.x1; x++) if (s.mask[(y - s.y0) * bw + x - s.x0]) tiles.add(y * this.world.w + x);
+    }
+    const html = money ? `${what}${SEP}${figure ? `<span class="num">${money}</span>` : money}` : what;
+    this.built = { html, until: performance.now() + 1200, tiles, shown: true };
+    this.renderer.preview = null;
+    this.ui.cursorTip(p.x, p.y, html);
   }
 
   /**

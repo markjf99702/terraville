@@ -1433,6 +1433,45 @@ try {
     await ctx.close();
   });
 
+  await test('undo and redo say at the pointer what they did with the money, and the tip of the undone build goes', async () => {
+    const ctx = await profile(DESK);
+    const { page, problems } = await open(ctx);
+    await found(page);
+    const p = await page.evaluate(() => {
+      const g = window.__terraville;
+      const w = g.world;
+      const r = g.renderer;
+      r.cam.zoom = 20;
+      w.city.funds = 50000;
+      for (let y = 12; y < w.h - 12; y++) for (let x = 12; x < w.w - 24; x++) {
+        let ok = true;
+        for (let dx = 0; dx < 8 && ok; dx++) {
+          const i = y * w.w + x + dx;
+          if (w.water[i] || w.occ[i] || w.net[i] || w.trees[i] || w.rubble[i] || w.slope(x + dx, y) > 3) ok = false;
+        }
+        if (!ok) continue;
+        r.centerOn(x + 4, y);
+        const at = (tx) => { const s = r.tileToScreen(tx + 0.5, y + 0.5); return [s.x, s.y]; };
+        return { a: at(x), b: at(x + 7) };
+      }
+    });
+    await page.click('[data-tool="road"]');
+    await page.mouse.move(...p.a);
+    await page.mouse.down();
+    await page.mouse.move(...p.b, { steps: 4 });
+    await page.mouse.up();
+    const tip = () => page.evaluate(() => { const t = document.querySelector('#cursorTip'); return t.hidden ? null : t.textContent; });
+    assert.equal(await tip(), 'Road built · 8 tiles · $80');
+    await page.keyboard.press('Control+z');
+    assert.equal(await tip(), 'Undone · $80 back');
+    await page.keyboard.press('Control+Shift+z');
+    assert.equal(await tip(), 'Redone · $80');
+    await page.waitForTimeout(1400);
+    assert.equal(await tip(), null, 'after a moment the tip goes');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('a new city opens paused, and says how to start the clock with a key or a tap', async () => {
     const ctx = await profile(DESK);
     const { page, problems } = await open(ctx);

@@ -1779,15 +1779,19 @@ await test('undo refunds only within three months of the action, however often i
   const funds = g.world.city.funds;
   g.undo();
   assert.equal(g.world.city.funds, funds, `refunded $${Math.round(g.world.city.funds - funds)}`);
-  assert.equal(g.toasts.at(-1), 'Undone. It cost $5,000, which is only refunded within 3 months.');
+  // The first undo past the three months said so; undone and redone since, it has cost nothing more.
+  assert.deepEqual(g.toasts.filter((t: string) => t.startsWith('Undone')).slice(0, 2), ['Undone · $5,000 back', 'Undone · no refund after 3 months']);
+  assert.equal(g.toasts.at(-1), 'Undone');
   // A quick change of mind is still refunded, and redo charges it again.
   drag(g, 'coal', 52, 30);
   weeks(g, 4);
   const f = g.world.city.funds;
   g.undo();
   assert.equal(g.world.city.funds, f + 3000);
+  assert.equal(g.toasts.at(-1), 'Undone · $3,000 back');
   g.redo();
   assert.equal(g.world.city.funds, f);
+  assert.equal(g.toasts.at(-1), 'Redone · $3,000');
   g.undo();
   assert.equal(g.world.city.funds, f + 3000);
 }));
