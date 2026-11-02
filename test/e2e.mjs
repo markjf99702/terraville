@@ -1394,6 +1394,68 @@ try {
     await ctx.close();
   });
 
+  await test('a patch that changes while the clock runs is painted within the frame, and sharpened once the clock stops', async () => {
+    const ctx = await profile(DESK);
+    const { page, problems } = await open(ctx);
+    await found(page);
+    // A slow phone: a patch takes about 50 ms longer to paint at 32 px a tile than it would here, 14 at 16 and 4 at 8.
+    await page.evaluate(() => {
+      const r = window.__terraville.renderer;
+      window.painted = [];
+      const draw = r.drawObjects.bind(r);
+      r.drawObjects = (ctx, x, y, L) => {
+        const t = performance.now();
+        while (performance.now() - t < 0.1 * L ** 1.8);
+        draw(ctx, x, y, L);
+      };
+      const paint = r.renderChunk.bind(r);
+      r.renderChunk = (cx, cy, L) => {
+        window.painted.push({ L, running: r.running });
+        return paint(cx, cy, L);
+      };
+      r.cam.zoom = 24;
+      r.centerOn(r.world.w / 2, r.world.h / 2);
+    });
+    // At rest with the clock stopped, everything in view is sharpened, one patch a frame.
+    const sharp = () => page.evaluate(() => {
+      const r = window.__terraville.renderer;
+      const seen = [];
+      const zd = r.cam.zoom * r.dpr;
+      const ox = r.canvas.width / 2 - r.cam.x * zd;
+      const oy = r.canvas.height / 2 - r.cam.y * zd;
+      for (let cy = Math.max(0, Math.floor(-oy / (16 * zd))); cy <= Math.min(Math.ceil(r.world.h / 16) - 1, Math.floor((r.canvas.height - oy) / (16 * zd))); cy++) {
+        for (let cx = Math.max(0, Math.floor(-ox / (16 * zd))); cx <= Math.min(Math.ceil(r.world.w / 16) - 1, Math.floor((r.canvas.width - ox) / (16 * zd))); cx++) {
+          const c = r.chunks.get((32 * 4096 + cy) * 4096 + cx);
+          seen.push(!!c && !c.dirty);
+        }
+      }
+      return seen.every(Boolean);
+    });
+    await page.waitForFunction(() => window.painted.some((p) => p.L === 32), null, { timeout: 10000 });
+    for (let i = 0; i < 40 && !(await sharp()); i++) await page.waitForTimeout(250);
+    assert.ok(await sharp(), 'the view was sharpened at rest');
+    // The clock runs and the city keeps changing everything in view: the changes show at once, painted blurrier.
+    await page.evaluate(() => {
+      const g = window.__terraville;
+      g.setSpeed(1);
+      window.painted = [];
+      window.churn = setInterval(() => g.world.dirty(0, 0, g.world.w - 1, g.world.h - 1), 150);
+    });
+    await page.waitForTimeout(2500);
+    const running = await page.evaluate(() => window.painted.filter((p) => p.running));
+    assert.ok(running.length > 10, `${running.length} patches painted while the clock ran`);
+    assert.ok(running.every((p) => p.L < 32), `while the clock ran, painted at ${[...new Set(running.map((p) => p.L))].join(', ')} px a tile`);
+    // Stopped, the view sharpens again.
+    await page.evaluate(() => {
+      clearInterval(window.churn);
+      window.__terraville.setSpeed(0);
+    });
+    for (let i = 0; i < 40 && !(await sharp()); i++) await page.waitForTimeout(250);
+    assert.ok(await sharp(), 'the view was sharpened once the clock stopped');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('an Android phone draws street level at 32 px a tile at most, as an iPhone does', async () => {
     const android = 'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
     for (const [opts, most] of [[{ ...PHONE, userAgent: android }, 32], [DESK, 64]]) {

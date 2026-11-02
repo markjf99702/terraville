@@ -31,6 +31,22 @@ const MAX_LOD = WEBKIT || ANDROID ? 32 : 64;
  * chunk takes about 8 ms to paint at 16 px a tile and 88 ms at 64.
  */
 const BRUSH_LOD = 16;
+/** A frame's share of time for painting patches that changed or came into view, in ms. */
+const PAINT_MS = 8;
+/**
+ * And one longer paint a frame may take this long, in ms, while the clock runs, the map moves or a brush is held. A
+ * patch takes about 1.5 ms to paint at 8 px a tile, 6 at 16, 22 at 32 and 80 at 64 on a laptop, and four or five times
+ * that on a slow phone: a sharper copy than that waits for the clock to stop and the map to come to rest, and a
+ * blurrier one shows meanwhile.
+ */
+const HITCH_MS = 40;
+/**
+ * A patch takes about this power of its detail to paint: 8 ms at 8 px a tile, 28 at 16, 100 at 32 and 330 at 64 on a
+ * slow phone.
+ */
+const PAINT_POWER = 1.8;
+/** The map has come to rest this long, in seconds, after the camera last moved. */
+const SETTLE_S = 0.25;
 
 interface Chunk {
   canvas: HTMLCanvasElement;
@@ -124,6 +140,11 @@ export class Renderer {
 
   private chunks = new Map<number, Chunk>();
   private pixels = 0;
+  /** How long patches have taken to paint lately, in ms per detail to the PAINT_POWER: see PAINT_MS. */
+  private paintRate = 0;
+  /** Where the camera was last frame, and when it last moved, to tell when the map has come to rest. */
+  private lastCam = { x: 0, y: 0, zoom: 1 };
+  private movedAt = -Infinity;
   private cw = 0;
   private ch = 0;
   private waterDirty = false;
@@ -373,6 +394,7 @@ export class Renderer {
   }
 
   private renderChunk(cx: number, cy: number, L: number): Chunk | null {
+    const t0 = performance.now();
     const k = this.key(cx, cy, L);
     let c = this.chunks.get(k);
     const size = CS * L;
@@ -406,7 +428,16 @@ export class Renderer {
     ctx.restore();
     c.dirty = false;
     c.contours = this.contours;
+    // Painting time grows as the detail to the power 1.8, on a laptop or a slow phone alike: one figure, kept up to
+    // date by every paint at any detail, says how fast this device is going.
+    const rate = (performance.now() - t0) / L ** PAINT_POWER;
+    this.paintRate = this.paintRate ? this.paintRate * 0.8 + rate * 0.2 : rate;
     return c;
+  }
+
+  /** How long a patch will take to paint at detail L, in ms, going by those painted so far. */
+  private paintEstimate(L: number): number {
+    return this.paintRate * L ** PAINT_POWER;
   }
 
   private drawObjects(ctx: CanvasRenderingContext2D, tx0: number, ty0: number, L: number): void {
@@ -501,8 +532,13 @@ export class Renderer {
     const cy0 = Math.max(0, Math.floor(-oy / (CS * zd)));
     const cx1 = Math.min(this.cw - 1, Math.floor((W - ox) / (CS * zd)));
     const cy1 = Math.min(this.ch - 1, Math.floor((H - oy) / (CS * zd)));
+    // The map comes to rest once the camera stops (the title screen's slow drift doesn't count as moving).
+    const cam = this.cam;
+    const last = this.lastCam;
+    if (Math.abs(cam.x - last.x) * cam.zoom > 40 * dt + 0.5 || Math.abs(cam.y - last.y) * cam.zoom > 40 * dt + 0.5 || Math.abs(Math.log(cam.zoom / last.zoom)) > 0.2 * dt + 0.001) this.movedAt = this.time;
+    this.lastCam = { x: cam.x, y: cam.y, zoom: cam.zoom };
+    const still = !this.running && !this.brushing && this.time - this.movedAt >= SETTLE_S;
     const start = performance.now();
-    const budget = 10;
     ctx.imageSmoothingEnabled = true;
     const todo: [number, number][] = [];
     for (let cy = cy0; cy <= cy1; cy++) for (let cx = cx0; cx <= cx1; cx++) todo.push([cx, cy]);
@@ -518,30 +554,51 @@ export class Renderer {
     const my = Math.round(oy);
     ctx.rect(mx, my, Math.round(ox + this.world.w * zd) - mx, Math.round(oy + this.world.h * zd) - my);
     ctx.clip();
+    // A patch that changed or came into view is painted as sharp as the frame's share of time allows (see PAINT_MS),
+    // or by the one longer paint each frame may take: with the clock stopped and the map at rest that one may be as
+    // long as it needs, and it sharpens the patches nearest the middle one a frame.
+    let long = false;
+    let painted = false;
     for (const [cx, cy] of todo) {
-      let c = this.chunks.get(this.key(cx, cy, wantL));
-      const stale = !c || c.dirty || c.contours !== this.contours;
-      const L = stale && this.brushing ? Math.min(wantL, BRUSH_LOD) : wantL;
-      if (L !== wantL) {
-        // Under a brush: the coarser copy, painted again if the brush has changed it since, as time allows.
-        const low = this.chunks.get(this.key(cx, cy, L));
-        if (low && !low.dirty && low.contours === this.contours) c = low;
-        else if (performance.now() - start < budget) c = this.renderChunk(cx, cy, L) ?? c;
-        else if (low) c = low;
-      } else if (stale && (performance.now() - start < budget || !c && wantL === 8)) {
-        c = this.renderChunk(cx, cy, wantL) ?? undefined;
-      } else if (stale) {
-        // Out of time for this one: a copy at another detail that shows the land as it is now (the one a brush left)
-        // rather than one from before.
-        for (const l of [...LODS].reverse()) {
-          const o = this.chunks.get(this.key(cx, cy, l));
-          if (o && !o.dirty && o.contours === this.contours) {
-            c = o;
-            break;
-          }
+      const fresh = (L: number): Chunk | undefined => {
+        const o = this.chunks.get(this.key(cx, cy, L));
+        return o && !o.dirty && o.contours === this.contours ? o : undefined;
+      };
+      let c = fresh(wantL);
+      if (!c) {
+        // Under a brush, a coarser copy only, sharpened once it lifts.
+        const cap = this.brushing ? Math.min(wantL, BRUSH_LOD) : wantL;
+        const floor = this.brushing ? cap : LODS[0];
+        let have: Chunk | undefined;
+        for (let k = LODS.length - 1; k >= 0 && !have; k--) have = fresh(LODS[k]);
+        const left = PAINT_MS - (performance.now() - start);
+        let L = 0;
+        let slow = false;
+        for (let k = LODS.indexOf(cap); k >= 0 && LODS[k] >= floor; k--) {
+          const ms = this.paintEstimate(LODS[k]);
+          if (ms <= left) L = LODS[k];
+          else if (!long && (still ? LODS[k] === cap : ms <= HITCH_MS)) {
+            L = LODS[k];
+            slow = true;
+          } else continue;
+          break;
+        }
+        // A copy that shows the land as it is now will do unless this one is sharper, or the right size for a copy
+        // that is sharper than needed.
+        const better = !have || L > have.L || (have.L > wantL && L === wantL);
+        if (L && better) {
+          c = this.renderChunk(cx, cy, L) ?? have;
+          long ||= slow;
+          painted = true;
+        } else if (have) c = have;
+        else if (!painted && !long) {
+          // Nothing at all fits the time left: the coarsest copy, so the frame gets something done.
+          c = this.renderChunk(cx, cy, floor) ?? undefined;
+          painted = true;
         }
       }
       if (!c) {
+        // A copy from before the change, until there is time to paint it again.
         for (const L of [...LODS].reverse()) {
           const alt = this.chunks.get(this.key(cx, cy, L));
           if (alt) {
