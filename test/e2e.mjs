@@ -689,6 +689,21 @@ try {
     await ctx.close();
   });
 
+  await test("on a phone the terrain editor's opening toast stays clear of the brushes it points to", async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await page.click('[data-act="editor"]');
+    await page.waitForFunction(() => window.__terraville.mode === 'editor');
+    assert.match(await page.textContent('#toast'), /Pick a brush below to shape the land\./);
+    const box = (s) => page.evaluate((s) => { const r = document.querySelector(s).getBoundingClientRect(); return { top: r.top, bottom: r.bottom }; }, s);
+    const toast = await box('#toast');
+    assert.ok(toast.bottom <= (await box('#editorPanel')).top, 'above the editor panel');
+    assert.ok(toast.bottom <= (await box('#toolbox')).top, 'off the brushes');
+    assert.ok((await box('.stat-strip, #topbar')).bottom <= toast.top, 'under the top bar');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test("on a phone the RCI meter's bars grow from its zero line and stay inside it", async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

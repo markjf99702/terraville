@@ -1293,7 +1293,9 @@ export class UI {
     t.style.left = '';
     t.style.maxWidth = '';
     if ($(this.root, '#topbar').hidden) return;
-    const cards = ['#guide', '#goal', '#editorPanel'].map((id) => $(this.root, id)).filter((c) => !c.hidden).map((c) => c.getBoundingClientRect());
+    // On a phone the editor's panel sits at the bottom, clear of the toast: going under it would cover the brushes.
+    const ids = this.narrow() ? ['#guide', '#goal'] : ['#guide', '#goal', '#editorPanel'];
+    const cards = ids.map((id) => $(this.root, id)).filter((c) => !c.hidden).map((c) => c.getBoundingClientRect());
     if (!cards.length) return;
     if (this.narrow()) {
       t.style.top = `${Math.round(Math.max(...cards.map((c) => c.bottom)) + 8)}px`;
