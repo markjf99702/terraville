@@ -664,6 +664,32 @@ try {
     await desk.close();
   });
 
+  await test('a warning toast looks like one, stays long enough to read, and goes when tapped; on a phone it clears the stats and the checklist', async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await found(page);
+    const shown = () => page.evaluate(() => !document.querySelector('#toast').classList.contains('hide'));
+    await page.evaluate(() => {
+      const w = window.__terraville.world;
+      const i = w.water.findIndex((v) => v);
+      window.__terraville.quickBulldoze((i % w.w) + 0.5, Math.floor(i / w.w) + 0.5, 10, 10);
+    });
+    assert.equal(await page.textContent('#toast'), 'Nothing to bulldoze there.');
+    assert.equal(await page.evaluate(() => document.querySelector('#toast').matches('.warn') && !!document.querySelector('#toast .caution')), true, 'a warning carries the caution diamond');
+    const box = (s) => page.evaluate((s) => { const r = document.querySelector(s).getBoundingClientRect(); return { top: r.top, bottom: r.bottom }; }, s);
+    assert.ok((await box('#toast')).top >= (await box('#guide')).bottom, 'under the checklist');
+    assert.ok((await box('.stat-strip')).bottom <= (await box('#toast')).top, 'clear of the stats');
+    // Twenty words take about five seconds to read: still up after four.
+    await page.evaluate(() => window.__terraville.ui.toast('Drag to move the map, scroll or pinch to zoom. Pick a brush below to shape the land.'));
+    assert.equal(await page.evaluate(() => document.querySelector('#toast').matches('.warn')), false);
+    await page.waitForTimeout(4000);
+    assert.equal(await shown(), true, 'a long toast is still up after four seconds');
+    await page.tap('#toast');
+    assert.equal(await shown(), false, 'a tap puts it away');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('on a phone, Inspect takes the bottom slot from the map layer card and the news log', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

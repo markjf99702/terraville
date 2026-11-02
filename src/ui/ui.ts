@@ -125,6 +125,8 @@ export class UI {
   private filesRefresh: (() => void) | null = null;
   private statTimer = 0;
   private toastTimer = 0;
+  /** The mouse is on the toast, so it waits. */
+  private toastHover = false;
   /** Puts away a tool's tooltip shown by a touch. */
   private tipTimer = 0;
   /** The tool button whose tooltip is up. */
@@ -173,6 +175,10 @@ export class UI {
         if (ticker.offsetHeight) root.style.setProperty('--ticker-h', `${ticker.offsetHeight}px`);
       }).observe(ticker);
     }
+    const toast = $(root, '#toast');
+    toast.addEventListener('pointerenter', (e) => (this.toastHover = e.pointerType === 'mouse'));
+    toast.addEventListener('pointerleave', () => (this.toastHover = false));
+    toast.addEventListener('pointerdown', () => this.hideToast());
     $(root, '#pausedPill').onclick = () => {
       this.game.togglePause();
       this.game.audio.play('click');
@@ -391,13 +397,13 @@ export class UI {
     const d = this.game.drive;
     await d.flush();
     const st = d.status();
-    this.toast(st === 'ok' ? 'Saved to Google Drive.' : st === 'waiting' ? DRIVE_WAITING : st === 'error' ? `Saving to Google Drive failed: ${d.error}` : 'Saving to Google Drive…');
+    this.toast(st === 'ok' ? 'Saved to Google Drive.' : st === 'waiting' ? DRIVE_WAITING : st === 'error' ? `Saving to Google Drive failed: ${d.error}` : 'Saving to Google Drive…', st === 'error' ? 'warn' : 'info');
   }
 
   /** Connect or sign in to Google Drive, or say why it can't yet. */
   private connectDrive(): void {
     const d = this.game.drive;
-    if (!d.connect()) this.toast(d.loadFailed ? 'Google sign-in could not load. Check the connection.' : 'Google sign-in is still loading. Try again in a moment.');
+    if (!d.connect()) this.toast(d.loadFailed ? 'Google sign-in could not load. Check the connection.' : 'Google sign-in is still loading. Try again in a moment.', d.loadFailed ? 'warn' : 'info');
   }
 
   /** The top-bar cloud: shown once Drive is connected, loud only when it needs a tap. */
@@ -517,9 +523,9 @@ export class UI {
       this.statTimer = 0.25;
       this.updateStats();
     }
-    if (this.toastTimer > 0) {
+    if (this.toastTimer > 0 && !this.toastHover) {
       this.toastTimer -= dt;
-      if (this.toastTimer <= 0) $(this.root, '#toast').classList.add('hide');
+      if (this.toastTimer <= 0) this.hideToast();
     }
     this.syncPausedPill();
     this.guideTimer -= dt;
@@ -1172,11 +1178,49 @@ export class UI {
       : 'Saving failed. This browser is blocking storage.';
   }
 
-  toast(text: string, _kind: 'info' | 'warn' = 'info'): void {
+  /**
+   * A short notice at the top of the map. A warning carries the caution diamond. It stays long enough to read, at about
+   * 238 words a minute (Brysbaert 2019, Journal of Memory and Language 109, 104047) plus a moment to notice it: 2.8 to
+   * 7 seconds. It waits while the pointer is on it, and a tap or click puts it away.
+   */
+  toast(text: string, kind: 'info' | 'warn' = 'info'): void {
     const t = $(this.root, '#toast');
-    t.textContent = text;
+    t.innerHTML = `${kind === 'warn' ? '<span class="caution" aria-hidden="true"></span>' : ''}<span>${esc(text)}</span>`;
+    t.classList.toggle('warn', kind === 'warn');
     t.classList.remove('hide');
-    this.toastTimer = 2.8;
+    const words = text.trim().split(/\s+/).length;
+    this.toastTimer = Math.min(7, Math.max(2.8, 1.6 + 0.26 * words));
+    this.placeToast(t);
+  }
+
+  /**
+   * Keep the toast off the checklist and the goal card: on a phone it goes under whichever is up (it is already under
+   * the stats), and in a wider window one that would run into the card moves left of it, between it and the tools.
+   */
+  private placeToast(t: HTMLElement): void {
+    t.style.top = '';
+    t.style.left = '';
+    t.style.maxWidth = '';
+    if ($(this.root, '#topbar').hidden) return;
+    const cards = ['#guide', '#goal'].map((id) => $(this.root, id)).filter((c) => !c.hidden).map((c) => c.getBoundingClientRect());
+    if (!cards.length) return;
+    if (this.narrow()) {
+      t.style.top = `${Math.round(Math.max(...cards.map((c) => c.bottom)) + 8)}px`;
+      return;
+    }
+    const r = t.getBoundingClientRect();
+    const card = cards.find((c) => c.left < r.right && r.left < c.right && c.top < r.bottom && r.top < c.bottom);
+    if (!card) return;
+    const from = $(this.root, '#toolbox').getBoundingClientRect().right + 8;
+    const room = card.left - 8 - from;
+    t.style.maxWidth = `${Math.round(room)}px`;
+    t.style.left = `${Math.round(from + room / 2)}px`;
+  }
+
+  private hideToast(): void {
+    this.toastTimer = 0;
+    this.toastHover = false;
+    $(this.root, '#toast').classList.add('hide');
   }
 
   // ---- modals -------------------------------------------------------------------------
@@ -1533,7 +1577,7 @@ export class UI {
         if (sim.repayLoan(10000)) {
           render();
           this.updateStats();
-        } else this.toast('Not enough money to repay that.');
+        } else this.toast('Not enough money to repay that.', 'warn');
       });
       repay.disabled = city.loan <= 0;
       btns.append(borrow, repay);

@@ -718,12 +718,19 @@ kbd { font: 600 11.5px var(--mono); padding: 1px 6px; border: 1px solid var(--li
   top: calc(var(--top) + 84px);
   transform: translateX(-50%);
   z-index: 90;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: max-content;
+  max-width: min(480px, calc(100vw - 32px));
   padding: 10px 16px;
   font-weight: 700;
-  pointer-events: none;
   transition: opacity 0.25s;
 }
-#toast.hide { opacity: 0; }
+#toast.hide { opacity: 0; pointer-events: none; }
+/* A warning: the caution border and diamond, as the ticker marks its warnings. */
+#toast.warn { border-color: var(--caution); }
+#toast .caution { width: 10px; height: 10px; }
 
 /* ---- paused badge -------------------------------------------------------- */
 #pausedPill {
@@ -867,6 +874,7 @@ footer.jd-foot { display: block; margin: 0; padding: 4px 0 0; border: 0; font-si
   #topbar [data-act="menu"].attn { position: relative; }
   #topbar [data-act="menu"].attn::after { content: ''; position: absolute; top: 5px; right: 4px; width: 7px; height: 7px; border-radius: 50%; background: var(--caution); }
   #pausedPill { display: none; }
+  #toast { top: calc(var(--top) + 116px); } /* under the stats, which it would otherwise cover */
   #minimapCard { display: none; }
   #minimapCard.show { display: flex; right: 8px; bottom: calc(var(--bottom) + 90px + var(--ticker-h, 38px)); width: 180px; }
   #minimapCard.show #minimap { height: 120px; }

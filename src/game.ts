@@ -821,7 +821,7 @@ export class Game {
     if (!this.world.inBounds(tx, ty)) return;
     const plan = planBulldoze(this.world, [[tx, ty]]);
     if (!plan.count) {
-      this.ui.toast(plan.reason === 'On fire' ? 'That is on fire. Bulldoze a gap around it to stop it spreading.' : 'Nothing to bulldoze there.');
+      this.ui.toast(plan.reason === 'On fire' ? 'That is on fire. Bulldoze a gap around it to stop it spreading.' : 'Nothing to bulldoze there.', 'warn');
       return;
     }
     this.toolOnce = 'bulldoze';
