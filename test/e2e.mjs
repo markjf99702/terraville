@@ -2159,6 +2159,8 @@ try {
       g.renderer.cam.zoom = 40;
       g.renderer.centerOn(at[0] + 1.5, at[1] + 1.5);
     });
+    // The map is drawn blurrier while it moves and sharpened once it is at rest: the shots start after that.
+    await page.waitForTimeout(1000);
     const shots = [];
     for (let k = 0; k < 6; k++) {
       shots.push((await page.screenshot({ clip: { x: 620, y: 380, width: 40, height: 40 } })).toString('base64'));
