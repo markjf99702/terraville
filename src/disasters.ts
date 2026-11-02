@@ -154,17 +154,17 @@ export class Disasters {
    * anywhere but a plant, so a challenge isn't lost to its own opening before the first click. `quiet` leaves the
    * news to the opening, which says it in one line; the dice fall as they would anyway.
    */
-  trigger(kind: DisasterKind, o: { sparePlants?: boolean; quiet?: boolean } = {}): void {
+  trigger(kind: DisasterKind, o: { sparePlants?: boolean; quiet?: boolean; reach?: number } = {}): void {
     const was = this.quiet;
     this.quiet = was || !!o.quiet;
     try {
-      this.setOff(kind, !!o.sparePlants);
+      this.setOff(kind, !!o.sparePlants, o.reach);
     } finally {
       this.quiet = was;
     }
   }
 
-  private setOff(kind: DisasterKind, sparePlants: boolean): void {
+  private setOff(kind: DisasterKind, sparePlants: boolean, reach?: number): void {
     switch (kind) {
       case 'fire': return this.randomFire(true, sparePlants);
       case 'flood': return this.startFlood();
@@ -177,7 +177,7 @@ export class Disasters {
           this.say('nomelt', 'There is no nuclear plant to melt down.', 'info', undefined, 0);
           return;
         }
-        this.meltdown(plants[Math.floor(Math.random() * plants.length)]);
+        this.meltdown(plants[Math.floor(Math.random() * plants.length)], reach);
       }
     }
   }
@@ -465,24 +465,29 @@ export class Disasters {
     this.say('lost' + b.id, text, lastPlant || (landmark && !others) ? 'alert' : 'warn', { x: b.x + c, y: b.y + c }, 0);
   }
 
-  private meltdown(b: Building): void {
+  /**
+   * A nuclear plant melts down: it is gone, the ground within `reach` tiles is radioactive in patches for 12 to 21
+   * years, thinning out with distance, and fires break out within 5. Fallout's opening reaches further than the 7 of
+   * any other.
+   */
+  private meltdown(b: Building, reach = 7): void {
     const world = this.world;
     const cx = b.x + 2;
     const cy = b.y + 2;
     if (world.buildings.has(b.id)) this.destroy(b, 'meltdown');
-    for (let dy = -7; dy <= 7; dy++) {
-      for (let dx = -7; dx <= 7; dx++) {
+    for (let dy = -reach; dy <= reach; dy++) {
+      for (let dx = -reach; dx <= reach; dx++) {
         const x = cx + dx;
         const y = cy + dy;
         if (!world.inBounds(x, y)) continue;
         const d = Math.hypot(dx, dy);
         const i = y * world.w + x;
         if (world.water[i]) continue;
-        if (d < 7 && Math.random() < 0.55 - d * 0.05) world.rad[i] = 12 + Math.floor(Math.random() * 10);
+        if (d < reach && Math.random() < 0.55 - (d / reach) * 0.35) world.rad[i] = 12 + Math.floor(Math.random() * 10);
         if (d < 5 && Math.random() < 0.2) this.ignite(x, y);
       }
     }
-    world.dirty(cx - 8, cy - 8, cx + 8, cy + 8);
+    world.dirty(cx - reach - 1, cy - reach - 1, cx + reach + 1, cy + reach + 1);
     this.shake = Math.max(this.shake, 1.2);
     this.say('meltdown', 'Nuclear meltdown! The area around the plant is contaminated for years.', 'alert', { x: cx, y: cy }, 0);
     this.sim.emit({ type: 'disaster', kind: 'meltdown', x: cx, y: cy });

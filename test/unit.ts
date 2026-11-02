@@ -1540,6 +1540,39 @@ await test('Crime Wave opens with no police and crime its people’s top worry, 
   assert.equal(s.advise!(sim), null);
 }));
 
+await test('Fallout opens with its downtown reactor melted down: one line says so, the ground is radioactive up to 12 tiles out, and the city is dark', () => seeded(2, () => {
+  const s = SCENARIOS.find((x) => x.id === 'melt')!;
+  const w = buildScenario(s, 120, 100);
+  const sim = new Sim(w);
+  openScenario(sim);
+  const plant = [...w.buildings.values()].find((b) => b.kind === 'nuclear')!;
+  const cx = plant.x + 2, cy = plant.y + 2;
+  let mx = 0, my = 0, n = 0;
+  for (const b of w.buildings.values()) if (b.kind === 'res' || b.kind === 'com' || b.kind === 'ind') { mx += b.x + 1; my += b.y + 1; n++; }
+  assert.ok(Math.hypot(cx - mx / n, cy - my / n) < 8, 'the reactor stands downtown');
+  const said: { text: string; kind: string; x?: number; y?: number }[] = [];
+  sim.on((e) => {
+    if (e.type === 'message') said.push(e.message);
+  });
+  s.start!(sim);
+  assert.deepEqual(said.map((m) => [m.text, m.kind, m.x, m.y]), [['The downtown reactor has melted down. The ground round it is radioactive for years, and every zone is dark until another plant is built.', 'alert', cx, cy]]);
+  assert.equal([...w.buildings.values()].filter((b) => b.kind === 'nuclear').length, 0);
+  const far: number[] = [];
+  for (let i = 0; i < w.n; i++) if (w.rad[i]) far.push(Math.hypot((i % w.w) - cx, ((i / w.w) | 0) - cy));
+  assert.ok(far.length >= 100 && Math.max(...far) < 12, `${far.length} radioactive tiles, the farthest ${Math.max(...far).toFixed(1)} tiles out`);
+  assert.ok(far.filter((d) => d >= 7).length >= 20, 'it reaches past the 7 tiles of an ordinary meltdown');
+  sim.computePower();
+  assert.equal(sim.stats.powerSupply, 0);
+  // The advisor waits for the power before it talks about the radioactive ground.
+  assert.equal(s.advise!(sim), null);
+  // Any other meltdown keeps to 7 tiles.
+  const town = flat(40, 30);
+  town.place('nuclear', 18, 13);
+  new Sim(town).disasters.trigger('meltdown');
+  for (let i = 0; i < town.n; i++) if (town.rad[i]) assert.ok(Math.hypot((i % 40) - 20, ((i / 40) | 0) - 15) < 7);
+  assert.ok(town.rad.some((r) => r > 0));
+}));
+
 await test("Aftershock's opening quakes strike under zones, and neither they nor its fires touch the power plants", () => {
   const random = Math.random;
   const aftershock = SCENARIOS.find((x) => x.id === 'aftershock')!;
@@ -1691,6 +1724,7 @@ await test('each challenge lists its conditions as rows, ticked when met, withou
   assert.deepEqual(rows('monster'), [['Approval 58% · over 60%', false], ['Residents 17,544 / 18,000', false]]);
   assert.deepEqual(rows('tide'), [['Residents 17,544 / 20,000', false], ['City score 512 · over 500', true]]);
   assert.deepEqual(rows('crime'), [['Crime index 0 · under 5', true], ['Residents 17,544 / 22,000', false]]);
+  assert.deepEqual(rows('melt'), [['Residents 17,544 / 34,000', false], ['City score 512 · over 500', true]]);
   // The goal is met when every row is, and the bar and the one-line status are as they were.
   assert.deepEqual([goal('gridlock').met, goal('gridlock').progress], [false, 0.5]);
   assert.equal(goal('gridlock').status, 'Traffic 25 (goal under 28) · 17,544 of 20,000 residents · 14,960 of 10,000 jobs');
@@ -1713,6 +1747,7 @@ await test('a goal judged at the deadline says when; Smog Valley counts only the
   assert.equal(judged('smog'), 'Judged at the end of 1975');
   assert.equal(judged('tide'), 'Judged at the end of 2056');
   assert.equal(judged('crime'), 'Judged at the end of 1981');
+  assert.equal(judged('melt'), 'Judged at the end of 2014');
   assert.equal(judged('boomtown'), undefined, 'Boomtown is won the month it gets there');
   assert.equal(judged('aftershock'), undefined);
   const end = (1968 - 1900 + 8) * 12;

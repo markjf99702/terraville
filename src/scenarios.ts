@@ -74,8 +74,11 @@ interface CityPlan {
   /** Density level from 0 (centre) to 1 (edge). */
   level: (kind: Kind, d: number, rng: Rng) => number;
   plants: Kind[];
-  /** The plants stand among the homes, each in the corner of a block, rather than outside the grid. */
-  plantsAmongHomes?: boolean;
+  /**
+   * The plants stand among the homes, each in the corner of a block, rather than outside the grid: where they have the
+   * most homes round them, or with 'downtown', as near the middle of the city as they fit.
+   */
+  plantsAmongHomes?: boolean | 'downtown';
   police: number;
   fire: number;
   rail?: boolean;
@@ -391,6 +394,49 @@ export const SCENARIOS: Scenario[] = [
       return c >= 5 ? `Crime index ${c}: the goal is under 5. A police station cuts crime within about 18 tiles, and higher land value cuts it too.` : null;
     },
   },
+  {
+    id: 'melt',
+    name: 'Fallout',
+    year: 2010,
+    years: 5,
+    funds: 20000,
+    blurb: 'The downtown reactor has just melted down. The ground round it will be radioactive for years, and the whole city is dark. Get the power back on, and rebuild the city round the damage.',
+    goal: 'After 5 years, have at least 34,000 residents and a city score over 500.',
+    win: 'The lights are on, and the city has a new heart.',
+    lose: 'The city is still living in the reactor’s shadow.',
+    kind: 'hold',
+    terrain: { seed: 'fallout-5', style: 'coast', hills: 25, water: 30, rivers: 0, forest: 30 },
+    city: {
+      radius: 6,
+      mix: (d, rng) => (d < 1.5 ? 'com' : d > 4.8 && rng() < 0.35 ? 'ind' : rng() < 0.1 ? 'com' : 'res'),
+      level: (k, d, rng) => (k === 'com' ? (d < 1 ? 5 : 4) : k === 'res' ? Math.max(4, Math.round(7.5 - d * 0.6 + rng() - 0.5)) : 3),
+      plants: ['nuclear'],
+      plantsAmongHomes: 'downtown',
+      police: 3,
+      fire: 3,
+      extras: ['stadium', 'seaport', 'hospital', 'school'],
+    },
+    // The meltdown reaches 12 tiles, not the 7 of any other, and one line says it: the reactor, the ground and the dark.
+    start: (sim) => {
+      const plant = [...sim.world.buildings.values()].find((b) => b.kind === 'nuclear');
+      sim.disasters.trigger('meltdown', { quiet: true, reach: 12 });
+      if (plant) sim.say('meltdown', 'The downtown reactor has melted down. The ground round it is radioactive for years, and every zone is dark until another plant is built.', 'alert', { x: plant.x + 2, y: plant.y + 2 }, 0);
+    },
+    check: (sim) => {
+      const r = sim.stats.residents;
+      const sc = sim.stats.score;
+      return {
+        progress: Math.min(1, r / 34000) * Math.min(1, sc / 501),
+        status: `${num(r)} of 34,000 residents · score ${sc} (goal over 500)`,
+        met: r >= 34000 && sc > 500,
+        rows: [atLeast('Residents', r, 34000), { label: 'City score', value: String(sc), goal: 'over 500', met: sc > 500 }],
+      };
+    },
+    // Once the power is back, what the radioactive ground means, while the city is short of the goal.
+    advise: (sim) => (sim.stats.residents < 34000 && sim.stats.powerSupply > 0 && sim.stats.powerSupply >= sim.stats.powerDemand
+      ? 'Homes and shops on radioactive ground empty out, and nothing can be built there for years: build the city’s new heart on clean ground.'
+      : null),
+  },
 ];
 
 /**
@@ -677,13 +723,15 @@ function layCity(world: World, plan: CityPlan, rng: Rng): void {
   });
   if (plan.plantsAmongHomes) {
     // Each plant takes a block's housing and the street stubs beside it, so its smoke falls where people live: where
-    // it has the most homes round it, with the city's own blocks on all sides and the plants apart.
+    // it has the most homes round it (or, downtown, where it is nearest the middle), with the city's own blocks on all
+    // sides and the plants apart.
+    const downtown = plan.plantsAmongHomes === 'downtown';
     const placed: { x: number; y: number }[] = [];
     for (const kind of plan.plants) {
       const size = BUILDINGS[kind].size;
       let pick: { id: number; x: number; y: number; homes: number } | undefined;
       for (const b of world.buildings.values()) {
-        if (b.kind !== 'res') continue;
+        if (b.kind !== 'res' && !(downtown && b.kind === 'com')) continue;
         const c = (b.x - 1 - ox) / stride;
         const r = (b.y - 1 - oy) / stride;
         if (!Number.isInteger(c) || !Number.isInteger(r) || !inCity(c + 1, r) || !inCity(c, r + 1) || !inCity(c + 1, r + 1)) continue;
@@ -692,7 +740,8 @@ function layCity(world: World, plan: CityPlan, rng: Rng): void {
         for (let dy = 0; dy < size; dy++) for (let dx = 0; dx < size; dx++) if (world.water[(b.y + dy) * world.w + b.x + dx]) wet = true;
         if (wet) continue;
         let homes = 0;
-        for (const o of world.buildings.values()) if (o.kind === 'res' && o !== b && Math.max(Math.abs(o.x + 1 - (b.x + size / 2)), Math.abs(o.y + 1 - (b.y + size / 2))) <= 7) homes += o.level;
+        if (downtown) homes = -Math.hypot(b.x + size / 2 - (ox + span / 2), b.y + size / 2 - (oy + span / 2));
+        else for (const o of world.buildings.values()) if (o.kind === 'res' && o !== b && Math.max(Math.abs(o.x + 1 - (b.x + size / 2)), Math.abs(o.y + 1 - (b.y + size / 2))) <= 7) homes += o.level;
         if (!pick || homes > pick.homes) pick = { id: b.id, x: b.x, y: b.y, homes };
       }
       if (!pick) break;
