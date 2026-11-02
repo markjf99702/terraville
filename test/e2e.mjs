@@ -1485,6 +1485,32 @@ try {
     await ctx.close();
   });
 
+  await test('in a short window, such as a laptop at 200% zoom, the Inspect card stops below the checklist and scrolls', async () => {
+    const measure = async (opts) => {
+      const ctx = await profile(opts);
+      const { page, problems } = await open(ctx);
+      await found(page);
+      const r = await page.evaluate(() => {
+        const g = window.__terraville;
+        const w = g.world;
+        let at = null;
+        for (let y = 10; y < w.h - 10 && !at; y++) for (let x = 10; x < w.w - 10 && !at; x++) if (w.canPlace('res', x, y).ok) at = [x, y];
+        w.place('res', at[0], at[1]);
+        g.ui.inspect(at[0] + 1, at[1] + 1);
+        const card = document.querySelector('#inspect');
+        return { guide: document.querySelector('#guide').getBoundingClientRect().bottom, top: card.getBoundingClientRect().top, scrolls: card.scrollHeight > card.clientHeight, capped: !!card.style.maxHeight };
+      });
+      assert.deepEqual(problems, []);
+      await ctx.close();
+      return r;
+    };
+    const zoomed = await measure({ viewport: { width: 640, height: 400 }, deviceScaleFactor: 2 });
+    assert.ok(zoomed.top >= zoomed.guide, `the card (top ${zoomed.top}) covers the checklist (bottom ${zoomed.guide})`);
+    assert.equal(zoomed.scrolls, true, 'what does not fit scrolls');
+    const phone = await measure(PHONE);
+    assert.equal(phone.capped, false, 'a phone held upright is as it was');
+  });
+
   await test('on a phone, Inspect takes the bottom slot from the map layer card and the news log', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

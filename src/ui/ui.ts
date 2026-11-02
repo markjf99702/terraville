@@ -204,7 +204,10 @@ export class UI {
       if (this.dropdownEl.contains(t) || this.dropdownBtn?.contains(t)) return;
       this.closeDropdown();
     });
-    window.addEventListener('resize', () => this.closeDropdown());
+    window.addEventListener('resize', () => {
+      this.closeDropdown();
+      this.fitInspect();
+    });
     watchFocus();
     document.addEventListener('keydown', (e) => {
       if (!this.modalOpen) return;
@@ -1195,6 +1198,24 @@ export class UI {
     }
     this.inspectAt = { x, y };
     if (!refresh) this.game.renderer.hover = { x, y };
+    this.fitInspect();
+  }
+
+  /**
+   * In a short phone-shaped window (a laptop window at 200% zoom is 640x400), the card would grow up over the folded
+   * checklist or the goal and the top bar: there it stops below them and scrolls.
+   */
+  private fitInspect(): void {
+    const card = $(this.root, '#inspect');
+    card.style.maxHeight = card.style.overflowY = '';
+    if (card.hidden || !this.narrow() || window.innerHeight > 560) return;
+    let top = $(this.root, '#topbar').getBoundingClientRect().bottom;
+    for (const id of ['#guide', '#goal']) {
+      const c = $(this.root, id);
+      if (!c.hidden) top = Math.max(top, c.getBoundingClientRect().bottom);
+    }
+    card.style.maxHeight = `${Math.max(80, card.getBoundingClientRect().bottom - top - 8)}px`;
+    card.style.overflowY = 'auto';
   }
 
   /** Draw the open Inspect card again for what is on its tile now, after undo or redo say. */
