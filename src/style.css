@@ -962,6 +962,8 @@ footer.jd-foot { display: block; margin: 0; padding: 4px 0 0; border: 0; font-si
   #guide { top: max(calc(var(--top) + 66px), calc(var(--bar-bottom) + 5px)) !important; max-height: calc(100% - var(--top) - var(--bottom) - 68px); overflow-y: auto; }
   #goal { top: calc(max(calc(var(--top) + 66px), calc(var(--bar-bottom) + 5px)) + var(--stack, 0px)) !important; max-height: calc(100% - var(--top) - var(--bottom) - 68px - var(--stack, 0px)); overflow-y: auto; }
   #toast, #pausedPill { top: max(calc(var(--top) + 66px), calc(var(--bar-bottom) + 5px)); }
+  /* The paused badge sits in the middle of the map between the tools and the cards on the right, clear of both. */
+  #pausedPill { left: calc((var(--left) + 114px + 100% - var(--right) - 280px) / 2); }
   #ticker { bottom: calc(var(--bottom) + 8px); right: calc(var(--right) + 222px); }
   #minimapCard { bottom: calc(var(--bottom) + 8px); width: 200px; padding: 6px; gap: 5px; }
   #minimap { height: 96px; }

@@ -2198,6 +2198,9 @@ try {
     const se = await profile({ viewport: { width: 667, height: 375 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
     const { page: t, problems: inT } = await open(se);
     await found(t);
+    // The new city opens paused: its badge sits on the map between the tools and the checklist, clear of both.
+    const [pill, list, kit] = await t.evaluate(() => ['#pausedPill', '#guide', '#toolbox'].map((q) => document.querySelector(q).getBoundingClientRect().toJSON()));
+    assert.ok(pill.width && pill.left >= kit.right && pill.right <= list.left, `the paused badge (${Math.round(pill.left)} to ${Math.round(pill.right)}) keeps clear of the tools and the checklist (from ${Math.round(list.left)})`);
     await t.reload();
     await titleUp(t);
     const choices = await t.evaluate(() => [...document.querySelectorAll('.title-actions .btn')].map((b) => {
