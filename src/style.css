@@ -55,6 +55,9 @@
   /* A phone on its side has its notch at one end: the panels keep clear of it. */
   --left: env(safe-area-inset-left, 0px);
   --right: env(safe-area-inset-right, 0px);
+  /* The top bar's bottom edge, from the top of the screen, measured by the page as the bar wraps or grows. The panels
+     under it keep their usual place unless the bar reaches past it (max()); on a phone they sit just under it. */
+  --bar-bottom: calc(var(--top) + 68px);
 }
 
 * { box-sizing: border-box; }
@@ -247,7 +250,7 @@ button.sign:hover { background: var(--sign-hi); box-shadow: inset 0 0 0 2px var(
 #toolbox {
   position: absolute;
   left: calc(var(--left) + 10px);
-  top: calc(var(--top) + 74px);
+  top: max(calc(var(--top) + 74px), calc(var(--bar-bottom) + 3px));
   bottom: calc(var(--bottom) + 64px);
   width: 104px;
   padding: 8px;
@@ -447,7 +450,7 @@ input[type="range"] { width: 100%; accent-color: var(--sign-hi); margin: 0; }
 #editorPanel {
   position: absolute;
   right: calc(var(--right) + 10px);
-  top: calc(var(--top) + 74px);
+  top: max(calc(var(--top) + 74px), calc(var(--bar-bottom) + 3px));
   width: 250px;
   max-height: calc(100% - var(--top) - var(--bottom) - 330px);
   overflow-y: auto;
@@ -794,7 +797,7 @@ kbd { font: 600 11.5px var(--mono); padding: 1px 6px; border: 1px solid var(--li
 #toast {
   position: absolute;
   left: 50%;
-  top: calc(var(--top) + 84px);
+  top: max(calc(var(--top) + 84px), calc(var(--bar-bottom) + 13px));
   transform: translateX(-50%);
   z-index: 90;
   display: flex;
@@ -815,7 +818,7 @@ kbd { font: 600 11.5px var(--mono); padding: 1px 6px; border: 1px solid var(--li
 #pausedPill {
   position: absolute;
   left: 50%;
-  top: calc(var(--top) + 84px);
+  top: max(calc(var(--top) + 84px), calc(var(--bar-bottom) + 13px));
   transform: translateX(-50%);
   z-index: 20;
   display: flex;
@@ -911,11 +914,11 @@ footer.jd-foot { display: block; margin: 0; padding: 4px 0 0; border: 0; font-si
 @media (min-width: 821px) and (max-width: 1040px) {
   .stat-strip { order: 3; flex: 1 1 100%; justify-content: space-between; }
   .menu { margin-left: auto; }
-  #toolbox { top: calc(var(--top) + 130px); }
-  #guide { top: calc(var(--top) + 130px) !important; }
-  #goal { top: calc(var(--top) + 130px + var(--stack, 0px)) !important; }
+  #toolbox { top: max(calc(var(--top) + 130px), calc(var(--bar-bottom) + 6px)); }
+  #guide { top: max(calc(var(--top) + 130px), calc(var(--bar-bottom) + 6px)) !important; }
+  #goal { top: calc(max(calc(var(--top) + 130px), calc(var(--bar-bottom) + 6px)) + var(--stack, 0px)) !important; }
   #inspect { max-height: calc(100% - var(--top) - var(--bottom) - 150px - var(--ticker-h, 44px)); }
-  #toast, #pausedPill { top: calc(var(--top) + 140px); }
+  #toast, #pausedPill { top: max(calc(var(--top) + 140px), calc(var(--bar-bottom) + 16px)); }
 }
 
 /* ---- a phone on its side, or any short window: one row of top bar, everything else along the edges ---- */
@@ -936,17 +939,17 @@ footer.jd-foot { display: block; margin: 0; padding: 4px 0 0; border: 0; font-si
   .menu { padding: 3px; flex: 0 0 auto; }
   .menu button { padding: 0 6px; height: 32px; }
   .menu-sep, .menu .hide-sm { display: none; } /* as on a phone: Redo moves to the menu, and the sign opens the report */
-  #toolbox { top: calc(var(--top) + 66px); bottom: calc(var(--bottom) + 8px); }
-  #guide { top: calc(var(--top) + 66px) !important; max-height: calc(100% - var(--top) - var(--bottom) - 68px); overflow-y: auto; }
-  #goal { top: calc(var(--top) + 66px + var(--stack, 0px)) !important; max-height: calc(100% - var(--top) - var(--bottom) - 68px - var(--stack, 0px)); overflow-y: auto; }
-  #toast, #pausedPill { top: calc(var(--top) + 66px); }
+  #toolbox { top: max(calc(var(--top) + 66px), calc(var(--bar-bottom) + 5px)); bottom: calc(var(--bottom) + 8px); }
+  #guide { top: max(calc(var(--top) + 66px), calc(var(--bar-bottom) + 5px)) !important; max-height: calc(100% - var(--top) - var(--bottom) - 68px); overflow-y: auto; }
+  #goal { top: calc(max(calc(var(--top) + 66px), calc(var(--bar-bottom) + 5px)) + var(--stack, 0px)) !important; max-height: calc(100% - var(--top) - var(--bottom) - 68px - var(--stack, 0px)); overflow-y: auto; }
+  #toast, #pausedPill { top: max(calc(var(--top) + 66px), calc(var(--bar-bottom) + 5px)); }
   #ticker { bottom: calc(var(--bottom) + 8px); right: calc(var(--right) + 222px); }
   #minimapCard { bottom: calc(var(--bottom) + 8px); width: 200px; padding: 6px; gap: 5px; }
   #minimap { height: 96px; }
   #log { bottom: calc(var(--bottom) + 16px + var(--ticker-h, 44px)); max-height: calc(100% - var(--top) - 76px - var(--ticker-h, 44px)); }
   #inspect { right: calc(var(--right) + 222px); bottom: calc(var(--bottom) + 16px + var(--ticker-h, 44px)); max-height: calc(100% - var(--top) - var(--bottom) - 84px - var(--ticker-h, 44px)); }
   /* The editor's panel takes the right side, full height; the map layer card, when it shows, sits beside it. */
-  #editorPanel { top: calc(var(--top) + 66px); max-height: calc(100% - var(--top) - var(--bottom) - 68px); }
+  #editorPanel { top: max(calc(var(--top) + 66px), calc(var(--bar-bottom) + 5px)); max-height: calc(100% - var(--top) - var(--bottom) - 68px); }
   [data-mode="editor"] #minimapCard:not(.show) { display: none; }
   [data-mode="editor"] #minimapCard.show { right: calc(var(--right) + 270px); }
 }
@@ -954,24 +957,31 @@ footer.jd-foot { display: block; margin: 0; padding: 4px 0 0; border: 0; font-si
 /* ---- phones and small windows ------------------------------------------- */
 @media (max-width: 820px) {
   #topbar { gap: 6px; left: 8px; right: 8px; top: calc(var(--top) + 8px); }
-  .sign { max-width: 52vw; flex: 0 1 auto; padding: 4px 10px 3px; }
+  /* The sign and the menu share the first row, the sign giving way (its lines end in an ellipsis) so the row never
+     wraps; the stats and the speed buttons have the second row to themselves. */
+  .sign { flex: 1 1 0; min-width: 0; max-width: max-content; padding: 4px 10px 3px; }
   .sign b { font-size: 14.5px; }
+  .sign small { overflow: hidden; text-overflow: ellipsis; }
   .stat-strip { order: 3; flex: 1 1 100%; justify-content: space-between; padding: 0 2px; }
-  .stat { padding: 3px 7px; }
-  .stat .label { font-size: 9px; }
+  .stat { padding: 3px 5px; }
+  .stat .label { font-size: 10.5px; letter-spacing: 0.06em; }
   .stat .value { font-size: 12.5px; }
   .stat .delta { font-size: 10px; }
-  .rci { padding: 3px 7px; grid-template-columns: repeat(3, 9px); column-gap: 4px; }
+  .rci { padding: 3px 6px; grid-template-columns: repeat(3, 9px); column-gap: 4px; }
   .rci .bar { height: 30px; }
-  .speed { padding: 3px 2px; gap: 0; }
-  .speed button { width: 29px; height: 32px; }
+  .rci .lab { font-size: 10.5px; }
+  /* Finger-sized: the speed buttons fill the strip's height, and the top-bar buttons match it. */
+  .speed { padding: 3px 2px; gap: 2px; }
+  .speed button { width: 29px; height: 44px; }
   .speed svg { width: 16px; height: 16px; }
   .menu .label, .menu .hide-sm { display: none; }
   .menu { margin-left: auto; flex: 0 0 auto; padding: 3px; }
-  .menu button { padding: 0 6px; height: 32px; }
+  .menu button { justify-content: center; min-width: 34px; padding: 0 7px; height: 44px; }
+  /* The editor's bar has no stats: its sign keeps its words, and Found a city goes to a second row. */
+  [data-mode="editor"] .sign { flex: 0 1 auto; max-width: 52vw; }
   .menu-sep { display: none; }
-  #guide, #goal { left: 8px !important; right: 8px !important; width: auto !important; top: calc(var(--top) + 112px) !important; font-size: 12.5px; }
-  #goal { top: calc(var(--top) + 112px + var(--stack, 0px)) !important; }
+  #guide, #goal { left: 8px !important; right: 8px !important; width: auto !important; top: calc(var(--bar-bottom) + 6px) !important; font-size: 12.5px; }
+  #goal { top: calc(var(--bar-bottom) + 6px + var(--stack, 0px)) !important; }
   #toolbox {
     top: auto;
     left: 8px;
@@ -996,7 +1006,7 @@ footer.jd-foot { display: block; margin: 0; padding: 4px 0 0; border: 0; font-si
   #topbar [data-act="menu"].attn { position: relative; }
   #topbar [data-act="menu"].attn::after { content: ''; position: absolute; top: 5px; right: 4px; width: 7px; height: 7px; border-radius: 50%; background: var(--caution); }
   #pausedPill { display: none; }
-  #toast { top: calc(var(--top) + 116px); } /* under the stats, which it would otherwise cover */
+  #toast { top: calc(var(--bar-bottom) + 6px); } /* under the stats, which it would otherwise cover */
   #minimapCard { display: none; }
   #minimapCard.show { display: flex; right: 8px; bottom: calc(var(--bottom) + 90px + var(--ticker-h, 38px)); width: 180px; }
   #minimapCard.show #minimap { height: 120px; }
@@ -1025,6 +1035,20 @@ footer.jd-foot { display: block; margin: 0; padding: 4px 0 0; border: 0; font-si
   .choice, .disaster-grid { grid-template-columns: 1fr 1fr; }
   #title { background: rgba(8, 12, 10, 0.78); }
   .title-inner { margin-left: 0; }
+}
+/* The smallest phones: the menu's buttons close up and the sign's lines tighten, so the name keeps its room. */
+@media (max-width: 380px) {
+  .menu { gap: 0; }
+  .sign { padding: 4px 8px 3px; }
+  .sign small { letter-spacing: 0.08em; }
+}
+/* 320 px: the stats and the speed buttons close up too, so the strip still fits on one line. */
+@media (max-width: 340px) {
+  .stat { padding: 3px 4px; }
+  .stat .value { font-size: 12px; }
+  .rci { padding: 3px 5px; }
+  .speed { padding: 3px 1px; gap: 1px; }
+  .speed button { width: 25px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

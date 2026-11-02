@@ -221,6 +221,7 @@ export class UI {
     });
     window.addEventListener('resize', () => {
       this.closeDropdown();
+      this.syncBarBottom();
       this.redrawGoal();
       this.fitInspect();
       this.measureInsets();
@@ -378,6 +379,7 @@ export class UI {
    */
   measureInsets(): void {
     const e = { l: 0, t: 0, r: 0, b: 0 };
+    this.syncBarBottom();
     if (this.game.mode !== 'title') {
       const map = $(this.root, '#map').getBoundingClientRect();
       const boxes = (...ids: string[]) => ids.flatMap((id) => {
@@ -403,6 +405,12 @@ export class UI {
       [e.t, e.b] = side(e.t, e.b, map.height);
     }
     this.game.renderer.insets = e;
+  }
+
+  /** The cards under the top bar sit on its bottom edge (--bar-bottom in the style sheet), which moves as it wraps. */
+  private syncBarBottom(): void {
+    const bar = $(this.root, '#topbar');
+    if (!bar.hidden) this.root.style.setProperty('--bar-bottom', `${bar.getBoundingClientRect().bottom}px`);
   }
 
   private showChrome(): void {
@@ -1442,7 +1450,7 @@ export class UI {
     // Redrawn only when something changed, so a tap isn't lost to a redraw.
     if (box.dataset.html === html) return;
     box.dataset.html = html;
-    box.style.cssText = `position:absolute;right:calc(var(--right) + 10px);top:calc(var(--top) + 74px);width:270px;padding:${folded ? '0' : '12px 14px'};z-index:12`;
+    box.style.cssText = `position:absolute;right:calc(var(--right) + 10px);top:max(calc(var(--top) + 74px), calc(var(--bar-bottom) + 3px));width:270px;padding:${folded ? '0' : '12px 14px'};z-index:12`;
     box.innerHTML = html;
     const toggle = box.querySelector<HTMLElement>('.guide-next, button.guide-head');
     if (toggle) toggle.onclick = () => {
@@ -1892,7 +1900,7 @@ export class UI {
       <div class="barrow" style="grid-template-columns:1fr"><div class="track" role="img" aria-label="Progress ${Math.round(st.progress * 100)}%"><i style="width:${Math.max(2, st.progress * 100)}%;background:${col}"></i></div></div>
       ${st.note ? `<p class="goal-note">${esc(st.note)}</p>` : ''}`);
     box.classList.toggle('folded', folded);
-    box.style.cssText = 'position:absolute;right:calc(var(--right) + 10px);top:calc(var(--top) + 74px + var(--stack, 0px));width:270px;z-index:12';
+    box.style.cssText = 'position:absolute;right:calc(var(--right) + 10px);top:calc(max(calc(var(--top) + 74px), calc(var(--bar-bottom) + 3px)) + var(--stack, 0px));width:270px;z-index:12';
     this.stackCards();
     if (box.dataset.html === html) return;
     box.dataset.html = html;

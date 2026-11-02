@@ -1972,6 +1972,57 @@ try {
     await ctx.close();
   });
 
+  await test("on a phone the top bar keeps to two rows of finger-sized buttons, and the cards below it never cover the speed buttons", async () => {
+    // Speed buttons that something else covers: a tap on one would land on that instead.
+    const covered = (page) => page.evaluate(() => [...document.querySelectorAll('[data-speed]')].filter((b) => {
+      const r = b.getBoundingClientRect();
+      return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.closest('[data-speed]') !== b;
+    }).map((b) => b.getAttribute('aria-label')));
+    const bar = (page) => page.evaluate(() => {
+      const box = (e) => e.getBoundingClientRect();
+      const strip = document.querySelector('.stat-strip');
+      return {
+        sign: box(document.querySelector('#citySign')), menu: box(document.querySelector('#topbar .menu')), strip: box(strip),
+        stripFits: strip.scrollWidth <= strip.clientWidth && new Set([...strip.children].map((c) => Math.round(box(c).top))).size === 1,
+        speed: [...document.querySelectorAll('[data-speed]')].map((b) => box(b).height),
+        buttons: [...document.querySelectorAll('#topbar .menu button')].filter((b) => b.offsetWidth).map((b) => [box(b).width, box(b).height]),
+      };
+    });
+    // A challenge's city sign is long (a name and 'Pop 17,568 · City'): at 360 px, the width of many Android phones, it
+    // pushed the menu to a second row and the stats to a third, under the goal card, so Gridlock couldn't be paused.
+    for (const width of [320, 360, 390, 412]) {
+      const ctx = await profile({ ...PHONE, viewport: { width, height: width * 2 } });
+      const { page, problems } = await open(ctx);
+      for (const id of width === 360 ? ['boomtown', 'gridlock', 'smog', 'aftershock', 'monster'] : ['gridlock']) {
+        await page.evaluate((id) => window.__terraville.startScenario(id), id);
+        await page.click('.modal footer .btn.primary');
+        await page.waitForTimeout(100);
+        assert.deepEqual(await covered(page), [], `${width} px, ${id}: every speed button takes its own taps`);
+      }
+      const b = await bar(page);
+      assert.ok(b.menu.top === b.sign.top && b.strip.top >= b.menu.bottom, `${width} px: the sign and the menu share the first row, the stats the second`);
+      assert.ok(b.stripFits, `${width} px: the stats and the speed buttons fit one line`);
+      assert.ok(b.speed.every((h) => h >= 44), `${width} px: the speed buttons are 44 px tall`);
+      assert.ok(b.buttons.every(([w, h]) => w >= 34 && h >= 44), `${width} px: the top bar's buttons are at least 34 by 44 px`);
+      assert.deepEqual(problems, []);
+      await ctx.close();
+    }
+    // A metropolis, the longest sign, with the checklist asked for: it sits below the stats.
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await found(page);
+    await page.evaluate(() => { window.__terraville.sim.stats.residents = 123456; });
+    await page.click('#topbar [data-act="menu"]');
+    await page.click('[role="menu"] button:has-text("Show the starter checklist")');
+    await page.waitForFunction(() => document.querySelector('#signSub').textContent.includes('Metropolis'));
+    const strip = await page.evaluate(() => document.querySelector('.stat-strip').getBoundingClientRect().bottom);
+    const guide = await page.evaluate(() => document.querySelector('#guide').getBoundingClientRect().top);
+    assert.ok(guide >= strip, `the checklist (top ${guide}) sits below the stats (bottom ${strip})`);
+    assert.deepEqual(await covered(page), []);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('a phone on its side gets one row of top bar, room for the map, menus that scroll, and panels clear of the notch', async () => {
     const ctx = await profile({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
     const { page, problems } = await open(ctx);
