@@ -2034,6 +2034,183 @@ await test('a landmark on fire is not offered an upgrade, and cannot be sold one
   assert.ok(g.upgradeFor(stadium), 'offered again once the fire is out');
 }));
 
+/** Everything on a World a player can change, for comparing two moments. Heights are kept apart: see `sameMap`. */
+function mapOf(w: World) {
+  return {
+    height: w.height.slice(),
+    rest: JSON.stringify([[...w.water], [...w.trees], [...w.net], [...w.occ], [...w.rubble],
+      [...w.buildings.values()].sort((a, b) => a.id - b.id).map((b) => [b.id, b.kind, b.x, b.y, b.level, b.pop])]),
+  };
+}
+
+/** Whether two moments of a map match, heights to 0.1 mm as undo judges them (Level land undone can differ by less). */
+function sameMap(a: ReturnType<typeof mapOf>, b: ReturnType<typeof mapOf>): boolean {
+  return a.rest === b.rest && a.height.every((h, i) => Math.abs(h - b.height[i]) <= 1e-4);
+}
+
+/** What breaks the rules a World keeps, in words: empty when it is sound. */
+function broken(w: World, sim: Sim): string[] {
+  const errs: string[] = [];
+  for (const b of w.buildings.values()) {
+    for (let dy = 0; dy < b.size; dy++) for (let dx = 0; dx < b.size; dx++) {
+      if (w.occ[(b.y + dy) * w.w + b.x + dx] !== b.id) errs.push(`${b.kind} ${b.id} at ${b.x},${b.y}: tile ${b.x + dx},${b.y + dy} is not marked as it`);
+    }
+  }
+  for (let i = 0; i < w.n; i++) {
+    const at = `${i % w.w},${(i / w.w) | 0}`;
+    if (w.occ[i] && !w.buildings.has(w.occ[i])) errs.push(`${at} is marked as building ${w.occ[i]}, which is gone`);
+    if (w.net[i] & ~7) errs.push(`${at} has network bits ${w.net[i]}`);
+    if (!Number.isFinite(w.height[i])) errs.push(`${at} has no height`);
+    if (w.fire[i] && !w.occ[i] && !w.trees[i] && !w.rubble[i]) errs.push(`${at} burns on bare ground`);
+  }
+  for (const k of ['r', 'c', 'i'] as const) if (!(Math.abs(w.city.demand[k]) <= 1)) errs.push(`demand ${k} is ${w.city.demand[k]}`);
+  const st = sim.stats as any;
+  for (const k of Object.keys(st)) if (typeof st[k] === 'number' && !Number.isFinite(st[k])) errs.push(`stats.${k} is ${st[k]}`);
+  for (const [k, v] of Object.entries(st.lastBudget)) if (!Number.isFinite(v)) errs.push(`last month's ${k} is ${v}`);
+  if (!Number.isFinite(w.city.funds)) errs.push(`funds are ${w.city.funds}`);
+  return errs;
+}
+
+await test('random play keeps the World consistent', () => {
+  const ZONES = ['res', 'com', 'ind'];
+  const PLACES = ['police', 'fire', 'school', 'hospital', 'stadium', 'coal', 'nuclear', 'wind', 'solar', 'seaport', 'airport'];
+  const DISASTERS = ['fire', 'flood', 'tornado', 'earthquake', 'monster', 'meltdown'] as const;
+  for (const seed of [1, 2]) seeded(1000 + seed, () => {
+    // The game rolls Math.random; the player's choices come from a stream of their own.
+    const R = makeRng(7 + seed);
+    const ri = (a: number, b: number) => a + Math.floor(R() * (b - a + 1));
+    const W = 72, H = 60;
+    const world = generateTerrain({ ...DEFAULT_TERRAIN, seed: `fuzz-${seed}`, w: W, h: H, style: seed % 2 ? 'coast' : 'lakes' });
+    Object.assign(world.city, { founded: true, difficulty: seed % 2 ? 'easy' : 'medium', disasters: false, funds: 60000, name: 'Fuzz' });
+    const g = headless(world);
+    const sim: Sim = g.sim;
+    // A town on the driest, gentlest ground, so growth, power and disasters have something to work on.
+    let site = { x: W / 2, y: H / 2, score: -Infinity };
+    for (let y = 15; y < H - 15; y += 3) for (let x = 15; x < W - 15; x += 3) {
+      let sc = 0;
+      for (let dy = -14; dy <= 14; dy += 2) for (let dx = -14; dx <= 14; dx += 2) sc += world.water[(y + dy) * W + x + dx] ? -3 : world.slope(x + dx, y + dy) > 5 ? -1 : 1;
+      if (sc > site.score) site = { x, y, score: sc };
+    }
+    const { x: cx, y: cy } = site;
+    drag(g, 'coal', cx - 12, cy);
+    for (let k = -12; k <= 12; k += 4) {
+      drag(g, 'road', cx - 10, cy + k, cx + 14, cy + k);
+      drag(g, 'power', cx - 10, cy + k, cx + 14, cy + k);
+    }
+    for (let k = -10; k <= 14; k += 4) drag(g, 'road', cx + k, cy - 12, cx + k, cy + 12);
+    for (let k = 0; k < 30; k++) drag(g, ZONES[k % 3], cx - 8 + (k % 6) * 4, cy - 10 + Math.floor(k / 6) * 4);
+    weeks(g, 52);
+    world.city.disasters = true;
+    world.city.funds = 200000;
+    const px = () => Math.max(0, Math.min(W - 1, cx + ri(-24, 24)));
+    const py = () => Math.max(0, Math.min(H - 1, cy + ri(-24, 24)));
+    let ledger = 0;
+    sim.on((e) => { if (e.type === 'month') ledger += sim.stats.lastBudget.taxIncome - spending(sim.stats.lastBudget); });
+    for (let t = 0; t < 250; t++) {
+      const roll = R();
+      const fundsBefore = world.city.funds;
+      const before = mapOf(world);
+      const stack = g.undoStack.length;
+      const top = g.undoStack.at(-1);
+      let act = '';
+      let undoable = true;
+      const where = () => `seed ${seed}, step ${t} (${act})`;
+      if (roll < 0.3) {
+        act = 'weeks';
+        undoable = false;
+        ledger = 0;
+        weeks(g, ri(1, 8));
+        assert.ok(Math.abs(world.city.funds - fundsBefore - ledger) < 1e-6, `${where()}: funds moved ${world.city.funds - fundsBefore}, the budget ${ledger}`);
+      } else if (roll < 0.4) {
+        act = 'zone';
+        const x = px(), y = py();
+        drag(g, ZONES[ri(0, 2)], x, y, x + ri(-8, 8), y + ri(-8, 8));
+      } else if (roll < 0.52) {
+        act = ['road', 'rail', 'power'][ri(0, 2)];
+        const x = px(), y = py();
+        drag(g, act, x, y, x + ri(-20, 20), y + ri(-20, 20));
+      } else if (roll < 0.58) {
+        act = 'place';
+        drag(g, PLACES[ri(0, PLACES.length - 1)], px(), py());
+      } else if (roll < 0.62) {
+        act = 'park';
+        const x = px(), y = py();
+        drag(g, 'park', x, y, x + ri(-3, 3), y + ri(-3, 3));
+      } else if (roll < 0.66) {
+        act = 'trees';
+        const x = px(), y = py();
+        drag(g, 'trees', x, y, x + ri(-4, 4), y + ri(-4, 4));
+      } else if (roll < 0.72) {
+        act = 'bulldoze';
+        const x = px(), y = py();
+        drag(g, 'bulldoze', x, y, x + ri(-5, 5), y + ri(-5, 5));
+      } else if (roll < 0.76) {
+        act = 'level';
+        const x = px(), y = py(), frames = ri(3, 45);
+        g.setTool('level');
+        g.brush.radius = ri(1, 5);
+        g.pointerDown(x + 0.5, y + 0.5, 0, 0);
+        for (let k = 0; k < frames; k++) g.brushTick(1 / 30);
+        g.pointerUp(x + 0.5, y + 0.5, 0, 0);
+        g.sealUndo();
+      } else if (roll < 0.78) {
+        act = 'upgrade';
+        const ups = [...world.buildings.values()].filter((b) => g.upgradeFor(b));
+        if (ups.length) g.upgrade(ups[ri(0, ups.length - 1)]);
+      } else if (roll < 0.85) {
+        act = 'undo';
+        undoable = false;
+        g.undo();
+      } else if (roll < 0.89) {
+        act = 'redo';
+        undoable = false;
+        g.redo();
+      } else if (roll < 0.93) {
+        act = 'disaster';
+        undoable = false;
+        sim.disasters.trigger(DISASTERS[ri(0, 5)]);
+      } else if (roll < 0.97) {
+        act = 'save';
+        undoable = false;
+        const keep = (w: World) => JSON.stringify([mapOf(w).rest, [...w.height], [...w.fire], [...w.flood], [...w.rad], w.nextId, w.city]);
+        const run = sim.saveRun();
+        const back = World.deserialize(JSON.parse(JSON.stringify(world.serialize(run))));
+        assert.equal(keep(back), keep(world), `${where()}: the map, its buildings or the city came back different`);
+        const again = headless(back);
+        assert.equal(JSON.stringify(again.sim.saveRun()), JSON.stringify(run), `${where()}: the running simulation came back different`);
+        again.sim.dispose();
+      } else {
+        act = 'budget';
+        undoable = false;
+        world.city.tax = ri(0, 20);
+        world.city.funding.police = ri(0, 20) / 20;
+        world.city.funding.fire = ri(0, 20) / 20;
+        world.city.funding.transport = R() < 0.5 ? 1 : ri(0, 20) / 20;
+        if (R() < 0.5) sim.takeLoan(10000); else sim.repayLoan(10000);
+      }
+      const errs = broken(world, sim);
+      assert.deepEqual(errs.slice(0, 3), [], `${where()}`);
+      // An action undone at once puts back the map and the money; redone, it is the same again for the same price.
+      const pushed = g.undoStack.length > stack || g.undoStack.at(-1) !== top;
+      if (undoable && pushed) {
+        const after = mapOf(world);
+        const fundsAfter = world.city.funds;
+        g.undo();
+        // Unless the spot is on fire, when undo waits.
+        if (g.undoStack.at(-1) === top) {
+          assert.ok(sameMap(mapOf(world), before), `${where()}: undo did not put the map back`);
+          assert.ok(Math.abs(world.city.funds - fundsBefore) < 1e-6, `${where()}: undo gave back ${world.city.funds - fundsAfter} of ${fundsBefore - fundsAfter}`);
+          g.redo();
+          assert.ok(sameMap(mapOf(world), after), `${where()}: redo did not give back the same map`);
+          assert.ok(Math.abs(world.city.funds - fundsAfter) < 1e-6, `${where()}: redo charged ${fundsBefore - world.city.funds}, not ${fundsBefore - fundsAfter}`);
+          assert.deepEqual(broken(world, sim).slice(0, 3), [], `${where()}, undone and redone`);
+        }
+      }
+      if (world.city.funds < 20000) world.city.funds += 100000;
+    }
+  });
+});
+
 await test('the cost tip says what part of a price is bridges, and what part clears trees or rubble', () => {
   const w = flat(40, 30);
   for (let y = 0; y < w.h; y++) for (const x of [20, 21]) w.water[y * w.w + x] = 1;
