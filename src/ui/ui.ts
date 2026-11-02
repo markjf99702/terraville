@@ -1,6 +1,6 @@
 // Everything in the DOM: top bar, toolbox, panels, dialogs, title screen.
 import {
-  BUILDINGS, DIFFICULTIES, Difficulty, Kind, MAP_SIZES, ToolDef, UPGRADE_LV, buildingName, cityClass, dateLabel, isZone, nextUpgrade,
+  BUILDINGS, DIFFICULTIES, Difficulty, Kind, MAP_SIZES, ToolDef, UPGRADE_LV, cityClass, dateLabel, isZone, nextUpgrade,
 } from '../defs';
 import { DISASTER_NAMES, DisasterKind } from '../disasters';
 import { Game, SPEED_NAMES, randomCityName } from '../game';
@@ -895,6 +895,15 @@ export class UI {
 
   // ---- ticker, log, messages --------------------------------------------------------
 
+  /** A short glow on the city's sign, for a new size class. */
+  glowSign(): void {
+    const sign = this.root.querySelector<HTMLElement>('#citySign');
+    if (!sign) return;
+    sign.classList.remove('glow');
+    void sign.offsetWidth;
+    sign.classList.add('glow');
+  }
+
   onMessage(m: Message): void {
     this.lastMessage = m;
     this.renderTicker();
@@ -978,10 +987,7 @@ export class UI {
           ub.textContent = `Tap again to pay ${money(up.cost)}`;
           return;
         }
-        const was = buildingName(b).toLowerCase();
         if (!this.game.upgrade(b)) return;
-        const now = buildingName(b).toLowerCase();
-        this.toast(`The ${was} is now ${/^[aeiou]/.test(now) ? 'an' : 'a'} ${now}. Land value is up across the city.`);
         this.inspect(x, y, true);
       };
     }

@@ -75,7 +75,8 @@ export interface Stats {
 export type SimEvent =
   | { type: 'message'; message: Message }
   | { type: 'month' }
-  | { type: 'year' }
+  | { type: 'year'; surplus: boolean }
+  | { type: 'class'; text: string }
   | { type: 'grow'; b: Building }
   | { type: 'destroyed'; x: number; y: number }
   | { type: 'disaster'; kind: string; x: number; y: number };
@@ -261,7 +262,7 @@ export class Sim {
     const year = 1900 + Math.floor(world.city.month / 12) - 1;
     this.say('year', `${year} closes ${net >= 0 ? 'with a surplus of' : 'with a deficit of'} $${Math.abs(Math.round(net)).toLocaleString()}. Taxes brought in $${Math.round(yb.taxIncome).toLocaleString()}.`, net >= 0 ? 'good' : 'warn', undefined, 0);
     this.stats.yearBudget = emptyBudget();
-    this.emit({ type: 'year' });
+    this.emit({ type: 'year', surplus: net >= 0 });
   }
 
   // ---- power --------------------------------------------------------------
@@ -1040,7 +1041,10 @@ export class Sim {
     const idx = CITY_CLASSES.findIndex((c) => c.name === s.cityClass);
     if (idx > city.classReached) {
       city.classReached = idx;
-      this.say('class' + idx, `${city.name} has ${CITY_CLASSES[idx].min.toLocaleString()} residents and is now a ${CITY_CLASSES[idx].name.toLowerCase()}.`, 'good', undefined, 0);
+      // 'Passed': the city may have grown well beyond the line by the month's end.
+      const text = `${city.name} has passed ${CITY_CLASSES[idx].min.toLocaleString()} residents and is now a ${CITY_CLASSES[idx].name.toLowerCase()}.`;
+      this.say('class' + idx, text, 'good', undefined, 0);
+      this.emit({ type: 'class', text });
     }
   }
 

@@ -1140,6 +1140,35 @@ await test('undo refunds only within three months of the action, however often i
   assert.equal(g.world.city.funds, f + 3000);
 }));
 
+await test('passing a size class is news, a toast and a fanfare; an upgrade is news; only a surplus year ends with the coin', () => seeded(3, () => {
+  const w = flat(40, 30);
+  w.city.name = 'Mapleford';
+  const g = headless(w);
+  const played: string[] = [];
+  g.audio = { play: (s: string) => played.push(s) };
+  for (let k = 0; k < 7; k++) w.setLevel(w.place('res', 1 + (k % 4) * 9, 1 + Math.floor(k / 4) * 9), 8);
+  weeks(g, 4);
+  const passed = 'Mapleford has passed 10,000 residents and is now a city.';
+  assert.deepEqual(g.sim.messages.filter((m: any) => m.text.includes('is now a')).map((m: any) => [m.text, m.kind]), [[passed, 'good']]);
+  assert.deepEqual([g.toasts.filter((t: string) => t === passed).length, played.filter((s) => s === 'fanfare').length], [1, 1]);
+  // A landmark upgrade goes in the news, at the landmark, with one fanfare.
+  w.city.funds = 100000;
+  const stadium = w.place('stadium', 30, 20);
+  assert.equal(g.upgrade(stadium), true);
+  const up = g.sim.messages.at(-1);
+  assert.deepEqual([up.text, up.kind, up.x, up.y], ['The stadium is now a big-league stadium. Land value is up across the city.', 'good', 32, 22]);
+  assert.equal(played.filter((s) => s === 'fanfare').length, 2);
+  // The first year's taxes cover its costs; the second year's road upkeep has nothing to pay for it.
+  weeks(g, 44);
+  assert.match(g.sim.messages.at(-1).text, /^1900 closes with a surplus/);
+  assert.equal(played.filter((s) => s === 'coin').length, 1);
+  for (const b of [...w.buildings.values()]) w.remove(b.id);
+  for (let y = 0; y < 30; y += 2) for (let x = 0; x < 40; x++) w.setNet(ROAD, x, y);
+  weeks(g, 48);
+  assert.match(g.sim.messages.filter((m: any) => m.text.startsWith('1901')).at(-1).text, /^1901 closes with a deficit/);
+  assert.equal(played.filter((s) => s === 'coin').length, 1);
+}));
+
 await test('undo leaves alone what a disaster has wrecked since, and refunds nothing for it', () => seeded(42, () => {
   const g = town();
   const w = g.world;

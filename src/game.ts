@@ -2,7 +2,7 @@
 import { Audio } from './audio';
 import {
   BUILDINGS, CITY_CLASSES, CITY_TOOLS, DIFFICULTIES, Difficulty, EDITOR_TOOLS, GRADE_COST, Kind, MAP_SIZES, ToolDef, Upgrade, cityClass,
-  nextUpgrade,
+  buildingName, nextUpgrade,
 } from './defs';
 import { Minimap } from './render/minimap';
 import { Renderer, SLOPE_CLASSES } from './render/renderer';
@@ -471,7 +471,12 @@ export class Game {
         case 'message':
           this.ui.onMessage(e.message);
           if (e.message.kind === 'alert') this.audio.play('alert');
-          if (e.message.kind === 'good' && e.message.text.includes('is now a')) this.audio.play('fanfare');
+          break;
+        case 'class':
+          // A big moment: more than a line in the ticker.
+          this.audio.play('fanfare');
+          this.ui.toast(e.text);
+          this.ui.glowSign();
           break;
         case 'destroyed':
           this.renderer.vehicles.addDust(e.x, e.y);
@@ -483,7 +488,7 @@ export class Game {
           this.checkScenario();
           break;
         case 'year':
-          this.audio.play('coin');
+          if (e.surplus) this.audio.play('coin');
           if (this.settings.autosave) void this.autosave();
           break;
       }
@@ -1147,8 +1152,13 @@ export class Game {
     if (this.undoStack.length > 25) this.undoStack.shift();
     this.redoStack = [];
     city.funds -= up.cost;
+    const was = buildingName(b).toLowerCase();
     this.world.setLevel(b, b.level + 1);
     entry.after = this.world.areaSnapshot(area);
+    const now = buildingName(b).toLowerCase();
+    const text = `The ${was} is now ${/^[aeiou]/.test(now) ? 'an' : 'a'} ${now}. Land value is up across the city.`;
+    this.ui.toast(text);
+    this.sim?.say('upgrade', text, 'good', { x: b.x + b.size / 2, y: b.y + b.size / 2 }, 0);
     // Land value rises at once rather than at the month's end.
     this.sim?.computeMaps();
     this.renderer.refreshOverlay();
