@@ -2337,7 +2337,8 @@ export class UI {
           <dt>Zones (R/C/I)</dt><dd>${s.zones.res} / ${s.zones.com} / ${s.zones.ind}</dd>
         </dl>
         <dl class="kv">
-          <dt>Power</dt><dd>${linked.toLocaleString()} of ${s.powerSupply.toLocaleString()} MW${unlinked > 0 ? ` <span class="kv-words">(${unlinked.toLocaleString()} MW not connected)</span>` : ''}</dd>
+          <dt>Power</dt><dd>${linked.toLocaleString()} of ${s.powerSupply.toLocaleString()} MW</dd>
+          ${unlinked > 0 ? `<dt>Not connected</dt><dd>${unlinked.toLocaleString()} MW</dd>` : ''}
           <dt>Power grids</dt><dd>${s.powerGrids}${s.gridsShort ? `, <span style="color:var(--critical-ink)">${s.gridsShort} overloaded</span>` : ''}</dd>
           <dt>Unpowered zones</dt><dd>${s.unpowered}</dd>
           <dt>Average land value</dt><dd>${money(s.avgLandValue * 40)}/acre</dd>

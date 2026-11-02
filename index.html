@@ -358,7 +358,8 @@ ${e}\r
           <dt>Zones (R/C/I)</dt><dd>${i.zones.res} / ${i.zones.com} / ${i.zones.ind}</dd>
         </dl>
         <dl class="kv">
-          <dt>Power</dt><dd>${c.toLocaleString()} of ${i.powerSupply.toLocaleString()} MW${h>0?` <span class="kv-words">(${h.toLocaleString()} MW not connected)</span>`:""}</dd>
+          <dt>Power</dt><dd>${c.toLocaleString()} of ${i.powerSupply.toLocaleString()} MW</dd>
+          ${h>0?`<dt>Not connected</dt><dd>${h.toLocaleString()} MW</dd>`:""}
           <dt>Power grids</dt><dd>${i.powerGrids}${i.gridsShort?`, <span style="color:var(--critical-ink)">${i.gridsShort} overloaded</span>`:""}</dd>
           <dt>Unpowered zones</dt><dd>${i.unpowered}</dd>
           <dt>Average land value</dt><dd>${ye(i.avgLandValue*40)}/acre</dd>

@@ -2057,7 +2057,8 @@ try {
     await page.click('#citySign');
     assert.match(await page.textContent('.modal .body'), /Nobody lives here yet\. The report fills in once people move in\./);
     assert.equal(await page.$$eval('.modal .worry, .modal .big', (e) => e.length), 0, 'no approval figure and no worries for nobody');
-    assert.equal(await page.textContent('.modal .kv dt:text-is("Power") + dd'), '9 of 700 MW (9 MW not connected)');
+    assert.equal(await page.textContent('.modal .kv dt:text-is("Power") + dd'), '9 of 700 MW');
+    assert.equal(await page.textContent('.modal .kv dt:text-is("Not connected") + dd'), '9 MW');
     await page.click('.modal footer .btn');
     await page.evaluate(() => { window.__terraville.startScenario('gridlock'); window.__terraville.ui.closeModal(); });
     await page.click('#citySign');
