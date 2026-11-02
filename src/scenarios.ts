@@ -207,7 +207,6 @@ export function scenarioMonth(s: Scenario, sim: Sim): GoalState {
   return goalState(s, sim, now);
 }
 
-/** The goal as the tracker shows it: one that must hold is met once it has held long enough. */
 const NUMBER_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'];
 
 /** How a won challenge is announced: the year, and how far ahead of its deadline, at month index `month`. */
@@ -218,6 +217,7 @@ export function successLine(s: Scenario, month: number, end: number): string {
   return `${s.name} is a success in ${1900 + Math.floor(month / 12)}${early}.`;
 }
 
+/** The goal as the tracker shows it: one that must hold is met once it has held long enough. */
 export function goalState(s: Scenario, sim: Sim, now = s.check(sim)): GoalState {
   if (!s.holdMonths) return now;
   const need = s.holdMonths;

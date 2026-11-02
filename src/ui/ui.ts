@@ -1461,10 +1461,6 @@ export class UI {
     if (matchMedia('(hover: hover) and (pointer: fine)').matches) window.setTimeout(() => $<HTMLInputElement>(body, '#fName').select(), 30);
   }
 
-  /**
-   * Leave for the title screen, saving the city on the way. When this browser can't keep it (storage blocked, or the
-   * save failed), say so and offer a city code, or leaving anyway.
-   */
   /** Another tab opened this city, so this one has stopped. */
   cityTakenElsewhere(name: string): void {
     const body = el(`<p class="note" style="font-size:14px">${esc(name)} is open in another tab, so this tab has stopped to keep the two from saving over each other.</p>`);
@@ -1485,6 +1481,10 @@ export class UI {
     });
   }
 
+  /**
+   * Leave for the title screen, saving the city on the way. When this browser can't keep it (storage blocked, or the
+   * save failed), say so and offer a city code, or leaving anyway.
+   */
   private confirmQuit(failed = false): void {
     const g = this.game;
     const city = g.mode === 'city';
