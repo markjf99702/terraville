@@ -2,9 +2,9 @@
 import assert from 'node:assert/strict';
 import { World, encodeArray, decodeArray } from '../src/world';
 import { Sim, spending } from '../src/sim';
-import { generateTerrain, cleanTerrain, DEFAULT_TERRAIN } from '../src/terrain';
+import { generateTerrain, cleanTerrain, DEFAULT_TERRAIN, applyBrush } from '../src/terrain';
 import { linePath, planLine, applyLine, planZones, applyBuildings, planBulldoze, levelCost } from '../src/tools';
-import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST, UPGRADE_LV, Kind, BUILDINGS, article, buildingName, cityClass, num, upkeepOf } from '../src/defs';
+import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST, UPGRADE_LV, Kind, BUILDINGS, article, buildingName, cityClass, isZone, num, upkeepOf } from '../src/defs';
 import { DAMAGED_CODE, challengeWins, citySlot, encode, encodeNow, decode, listSlots, pushSaved, readCode, recordWin, saveCode, SlotMeta } from '../src/save';
 import { Drive, GisOAuth2 } from '../src/drive';
 import { makeRng } from '../src/rng';
@@ -1505,6 +1505,43 @@ await test("High Water's tides come each April and October, a quarter of a metre
   // April is month 3 of a year, October month 9.
   assert.deepEqual(tides, new Array(20).fill(0).map((_, n) => [n % 2 ? 9 : 3, 2 + n * 0.25]));
   assert.equal(tides.at(-1)![1], 6.75);
+}));
+
+await test('High Water’s sea front holds a bank of Level land once the road and the factory by the little bridge are gone, as the guide says, and not before', () => seeded(1, () => {
+  const s = SCENARIOS.find((x) => x.id === 'tide')!;
+  const w = buildScenario(s, 120, 100);
+  const sim = new Sim(w);
+  openScenario(sim);
+  const last = () => sim.disasters.tideReach(tideLine(19)).tiles;
+  let x0 = Infinity, x1 = -Infinity;
+  for (const b of w.buildings.values()) if (isZone(b.kind)) { x0 = Math.min(x0, b.x); x1 = Math.max(x1, b.x + 3); }
+  // Level land as the city has it (it leaves built tiles alone), pressed at 8 m and held over everything within two
+  // tiles of the sea, along the city's width and twelve tiles past it each side.
+  const bank = () => {
+    for (let i = 0; i < w.n; i++) {
+      const x = i % w.w, y = (i / w.w) | 0;
+      if (x < x0 - 12 || x > x1 + 12 || w.water[i]) continue;
+      let near = false;
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) if (w.inBounds(x + dx, y + dy) && w.water[(y + dy) * w.w + x + dx]) near = true;
+      if (near) applyBrush(w, 'level', x + 0.5, y + 0.5, { radius: 4, strength: 0.8, dt: 1, target: 8, protectBuilt: true });
+    }
+  };
+  bank();
+  // The ground under roads and buildings stays as it was, so the sea still gets in where it touches them.
+  const lost = sim.disasters.inReach(last());
+  assert.ok(lost.length >= 10, `${lost.length} buildings in the last tide's way`);
+  const wet = (i: number) => [i - 1, i + 1, i - w.w, i + w.w].some((j) => w.water[j]);
+  const gaps = last().filter((i) => (w.occ[i] || w.net[i]) && wet(i));
+  const built = [...new Set(gaps.filter((i) => w.occ[i]).map((i) => w.buildings.get(w.occ[i])!))];
+  assert.deepEqual(built.map((b) => b.kind), ['ind'], 'one factory stands at the water');
+  assert.equal(lost[0], built[0], 'and the forecast’s Go there goes to it');
+  assert.ok(gaps.every((i) => w.occ[i] || w.net[i] & ROAD), 'the rest is road');
+  assert.ok(gaps.some((i) => [i - 1, i + 1].some((j) => w.water[j] && w.net[j] & ROAD)), 'beside a little bridge');
+  // Bulldoze them, level again, and the bank keeps every tide out.
+  for (const b of built) w.remove(b.id);
+  for (const i of gaps) if (w.net[i]) w.clearNet(i % w.w, (i / w.w) | 0);
+  bank();
+  assert.equal(sim.disasters.inReach(last()).length, 0);
 }));
 
 await test('Crime Wave opens with no police and crime its people’s top worry, and a few police stations bring it under the line', () => seeded(3, () => {

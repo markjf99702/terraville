@@ -354,7 +354,7 @@ export const SCENARIOS: Scenario[] = [
       const sc = sim.world.city.scenario;
       const since = sc ? sim.world.city.month - (sc.end - 10 * 12) : 1;
       return since % 6 === 0 && sim.stats.residents < 20000 && tideAhead(sim, since / 6).length
-        ? 'Level land raises open ground to the height where you first press: start on high ground and drag along the shore. The water comes through any gap, a road included.'
+        ? 'Level land raises open ground to the height where you first press: start on high ground and drag along the shore. It leaves the ground under roads and buildings as it is, and the water comes through any gap, so bulldoze whatever stands where the bank goes.'
         : null;
     },
   },
