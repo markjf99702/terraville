@@ -2148,6 +2148,27 @@ await test("the year's paper leads with its biggest news, lists the rest, and sa
   assert.equal(grew.change, 900);
 });
 
+await test("a fire that spreads through a block is one fire in the year's paper, and doesn't crowd out the year's quake", () => {
+  const w = flat(60, 40);
+  w.city.name = 'Mapleford';
+  for (let y = 2; y < 30; y += 3) for (let x = 2; x < 50; x += 3) w.setLevel(w.place('res', x, y), 3);
+  const sim = new Sim(w);
+  w.city.year = sim.newYear();
+  w.city.year.disasters.push('earthquake');
+  let caught = 0;
+  sim.on((e) => { if (e.type === 'destroyed') caught++; });
+  seeded(7, () => {
+    sim.disasters.ignite(20, 14);
+    for (let k = 0; k < 40; k++) sim.disasters.week();
+  });
+  assert.ok(caught > 30, `the fire spread: ${caught} homes burned down`);
+  assert.equal(sim.messages.filter((m) => m.text.startsWith('Fire at')).length, 1, 'the news told one fire');
+  assert.deepEqual(w.city.year.disasters, ['earthquake', 'fire']);
+  w.city.month = 12;
+  const p = sim.paper('');
+  assert.deepEqual([p.headline, p.also], ['Earthquake shakes Mapleford', 'Also this year: a fire.']);
+});
+
 await test("the year's news is kept with a save, starts again each year, and the paper comes at the year's end", async () => {
   const g = seeded(3, () => town());
   const sim: Sim = g.sim;

@@ -242,8 +242,9 @@ export class Disasters {
         const covered = world.fireCov[(b.y + c) * world.w + b.x + c] > 0;
         const what = covered ? 'Firefighters are on the way.' : 'No fire station reaches it: bulldoze a gap around it to stop it spreading.';
         this.say('fire' + id, `Fire at ${firePlace(b)}. ${what}`, 'alert', { x: b.x + c, y: b.y + c }, 0);
+        // One fire, however many buildings it spreads to: the year's paper counts fires as the news tells them.
+        this.sim.emit({ type: 'disaster', kind: 'fire', x, y });
       }
-      this.sim.emit({ type: 'disaster', kind: 'fire', x, y });
       this.sim.powerDirty = true;
     } else if (world.trees[i]) {
       this.light(i, weeks, this.blazeFor(x, y, 1, { x, y }, from));
