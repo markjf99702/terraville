@@ -4,6 +4,12 @@ A city builder in the spirit of the 1989 original and its companion terrain edit
 
 Play it at [terraville.junkdrawer.works](https://terraville.junkdrawer.works/), or open `index.html` in any current browser. It is a single self-contained file: no server needed. At its own address it also installs as an app (from the browser's menu, or Share → Add to Home Screen on an iPhone) and works offline.
 
+<p align="center">
+  <img src="docs/phone-title.png" width="250" alt="The title screen on a phone: the green TERRAVILLE sign over a map, a line about the game, and buttons to start a new city, shape the land first, play a challenge, read the strategy guide or open a saved city.">
+  <img src="docs/phone-city.png" width="250" alt="The Gridlock challenge on a phone: blocks of houses, apartments, shops and factories on a road grid, the goal card with its traffic, residents and jobs targets, the date, funds and speed buttons at the top, and the tools along the bottom.">
+  <img src="docs/phone-editor.png" width="250" alt="The terrain editor on a phone: a wooded coastline with a lake, the Generate land panel open on its five landscapes, three map sizes and the Sea and Mountains sliders, and the brushes along the bottom with Raise picked.">
+</p>
+
 ## What's in it
 
 **Terrain editor**
@@ -97,6 +103,7 @@ npm test             # unit checks for terrain, power, traffic, saves, undo, dis
 npm run typecheck    # tsc --noEmit
 npm run bot -- 30    # a bot plays 30 years and prints a yearly summary
 npm run balance -- 30 # a tidy grid city simulated for 30 years, a line a year
+node tools/screenshots.mjs # og.png and docs/phone-*.png, from the built index.html
 ```
 
 Source lives in `src/`:
@@ -115,6 +122,6 @@ Source lives in `src/`:
 | `render/` | Chunk-cached canvas renderer, procedural sprites, terrain painter, vehicles, minimap |
 | `ui/` | Top bar, toolbox, dialogs and charts |
 
-Everything in the game is drawn in code. The lettering is Overpass and Overpass Mono, served from here so nothing loads from elsewhere: `fonts/` holds their latin letters under the SIL Open Font License (`fonts/OFL.txt`); the build puts them inside `index.html`, and `privacy.html` loads them from there. The only images are the app icons and the link preview: `icon.svg`, with `tools/icon-full-bleed.svg` for the edge-to-edge versions and `tools/icon-maskable.svg` for Android's, its art drawn smaller to keep inside the circle Android crops it to, and the `icon-*.png` sizes that `node tools/make-icons.mjs` renders from them for `manifest.webmanifest`; and `og.png`, the picture a shared link shows, a screenshot that nothing here remakes. `sw.js` keeps the offline copy and opens from it when the connection isn't answering. `FILES` in it is a fingerprint of the files it keeps: after a rebuild `npm test` says what to set it to, so a release never leaves the copy half old.
+Everything in the game is drawn in code. The lettering is Overpass and Overpass Mono, served from here so nothing loads from elsewhere: `fonts/` holds their latin letters under the SIL Open Font License (`fonts/OFL.txt`); the build puts them inside `index.html`, and `privacy.html` loads them from there. The only images are the app icons and the link preview: `icon.svg`, with `tools/icon-full-bleed.svg` for the edge-to-edge versions and `tools/icon-maskable.svg` for Android's, its art drawn smaller to keep inside the circle Android crops it to, and the `icon-*.png` sizes that `node tools/make-icons.mjs` renders from them for `manifest.webmanifest`; and `og.png`, the picture a shared link shows, which `node tools/screenshots.mjs` makes from the built page, with the phone pictures in `docs/` (it needs `npm install` first, for the encoder that saves them with a palette). `sw.js` keeps the offline copy and opens from it when the connection isn't answering. `FILES` in it is a fingerprint of the files it keeps: after a rebuild `npm test` says what to set it to, so a release never leaves the copy half old.
 
 `index.html` is the built game and is committed, so GitHub Pages can serve the repository root as is (`.nojekyll` skips the Jekyll step). Rebuild it with `npm run build` after changing anything in `src/`; `npm test` stops before the browser checks if `index.html` is older than `src/`.
