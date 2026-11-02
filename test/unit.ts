@@ -2171,7 +2171,11 @@ await test('a gap bulldozed beside a fire stays cleared: undo refuses it once th
   assert.equal(g.toasts.at(-1), 'That gap was a firebreak, so it stays cleared.');
   assert.equal(w.buildings.has(beside.id), false);
   assert.equal(w.city.funds, funds - paid + refund);
-  assert.equal(g.canRedo(), false);
+  // The firebreak stays as it is, so the lot undone after it can still be bulldozed again by redo.
+  assert.equal(g.canRedo(), true);
+  g.redo();
+  assert.equal(w.buildings.has(far.id), false);
+  assert.equal(w.city.funds, funds - paid);
   // Bulldozing undone with no fire near, then done again by redo beside a fire, is a firebreak too.
   drag(g, 'bulldoze', left.x + 1, left.y + 1);
   g.undo();

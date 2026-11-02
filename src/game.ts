@@ -1580,9 +1580,9 @@ export class Game {
       this.ui.toast('Nothing to undo.');
       return;
     }
-    // A firebreak did its work whether or not the fire is out: it goes from the list, as a wrecked spot does.
+    // A firebreak did its work whether or not the fire is out: it goes from the list. It stays as it is, so whatever
+    // was undone after it can still be redone.
     if (e.firebreak) {
-      this.redoStack = [];
       this.ui.syncUndo();
       this.ui.toast('That gap was a firebreak, so it stays cleared.', 'warn');
       return;
