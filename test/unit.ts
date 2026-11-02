@@ -116,6 +116,41 @@ await test('generated land has no specks: no islets under 6 tiles, no ponds of 1
   }
 });
 
+await test('the Lakes slider sets how many lakes there are, and Lake country has more at every step', () => {
+  const lakes = (style: 'coast' | 'lakes', amount: number) => {
+    let count = 0;
+    for (let k = 0; k < 3; k++) {
+      const world = generateTerrain({ ...DEFAULT_TERRAIN, style, seed: `probe-${k}-seed`, w: 120, h: 100, lakes: amount, rivers: 0 });
+      const seen = new Uint8Array(world.n);
+      for (let s = 0; s < world.n; s++) {
+        if (seen[s] || !world.water[s] || world.height[s] < 0) continue;
+        const stack = [s];
+        seen[s] = 1;
+        let size = 0;
+        while (stack.length) {
+          const i = stack.pop()!;
+          size++;
+          const x = i % world.w, y = (i / world.w) | 0;
+          for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            const j = (y + dy) * world.w + x + dx;
+            if (world.inBounds(x + dx, y + dy) && !seen[j] && world.water[j] && world.height[j] >= 0) {
+              seen[j] = 1;
+              stack.push(j);
+            }
+          }
+        }
+        if (size >= 6) count++;
+      }
+    }
+    return count / 3;
+  };
+  const coast = [10, 50, 100].map((v) => lakes('coast', v));
+  assert.ok(coast[0] <= 5 && coast[1] >= 6 && coast[2] >= 18, `coast lakes at 10, 50, 100: ${coast.join(', ')}`);
+  assert.ok(coast[0] < coast[1] && coast[1] < coast[2]);
+  const country = [10, 50].map((v) => lakes('lakes', v));
+  assert.ok(country[0] > coast[0] * 2 && country[1] > coast[1] * 2, `Lake country at 10 and 50: ${country.join(', ')}`);
+});
+
 await test('the challenges\' land is the land they were laid out on, whatever the generator has learned since', () => {
   // Checksums of the classic generator's land, taken before archipelagos had islands.
   const sum = (style: 'archipelago' | 'coast' | 'lakes', seed: string) => {

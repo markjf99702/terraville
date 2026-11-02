@@ -84,6 +84,18 @@ export function cleanTerrain(raw: unknown, base: TerrainParams): TerrainParams {
 const DIRS4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
 /**
+ * The Lakes slider: how deep a hollow has to be to hold a lake, from LAKE_DEEP metres at its first notch down to
+ * LAKE_SHALLOW at its top along a curve, and LAKE_COUNTRY times shallower in Lake country; and one basin dug for a lake
+ * at the top per LAKE_DIMPLES tiles (three times as many in Lake country). On ten Classic coast seeds, Rivers 0, the
+ * lakes of 6 tiles or more number about 3 at 10, 9 at 50 and 23 at 100; in Lake country 20, 34 and 41.
+ */
+const LAKE_DEEP = 8;
+const LAKE_SHALLOW = 0.4;
+const LAKE_CURVE = 1.3;
+const LAKE_COUNTRY = 2;
+const LAKE_DIMPLES = 800;
+
+/**
  * An archipelago: its outline rounds off from ARCH_IN to ARCH_OUT of the way out from the middle, sinking ARCH_DROP.
  * Its straits follow the zero lines of a noise of scale STRAIT_S tiles: the sea bed sinks from STRAIT_IN of the way
  * to a line (1 on it) by up to STRAIT_DROP. On 20 Classic seeds at the default settings these make 6 to 11 islands of
@@ -245,7 +257,7 @@ export function generateTerrain(p: TerrainParams): World {
   }
 
   // Lake basins: dimples that the priority flood below will fill with water.
-  const lakeCount = Math.round((p.lakes / 100) * (n / 2400) * (p.style === 'lakes' ? 3 : 1));
+  const lakeCount = Math.round((p.lakes / 100) * (n / (p.classic ? 2400 : LAKE_DIMPLES)) * (p.style === 'lakes' ? 3 : 1));
   for (let k = 0; k < lakeCount; k++) {
     const lx = Math.floor(rng() * w);
     const ly = Math.floor(rng() * h);
@@ -270,7 +282,7 @@ export function generateTerrain(p: TerrainParams): World {
 
   const { filled, down } = priorityFlood(world);
 
-  if (p.lakes > 0) fillLakes(world, filled, p.lakes / 100);
+  if (p.lakes > 0) fillLakes(world, filled, p.lakes / 100, !!p.classic, p.style === 'lakes');
 
   // Rivers from high springs down the flood-routed drainage.
   const springs = pickSprings(world, rng, p.rivers);
@@ -413,12 +425,15 @@ function tidy(world: World, river: Uint8Array): void {
  * up, but never beyond `cap` tiles, so wide flat hollows become a lake in the
  * middle of a meadow rather than an inland sea.
  */
-function fillLakes(world: World, filled: Float32Array, amount: number): void {
+function fillLakes(world: World, filled: Float32Array, amount: number, classic: boolean, country: boolean): void {
   const { w, n } = world;
   const hgt = world.height;
   const seen = new Uint8Array(n);
   const cap = Math.round(30 + amount * 260);
-  const minDepth = 1.2 - amount * 0.8;
+  // How deep a hollow has to be to hold a lake: the slider sets how many lakes there are, the shallow hollows filling
+  // only toward its top. (It once only grew the same lakes, its first notch making most of them.)
+  const minDepth = classic ? 1.2 - amount * 0.8
+    : (LAKE_SHALLOW + (LAKE_DEEP - LAKE_SHALLOW) * (1 - amount) ** LAKE_CURVE) / (country ? LAKE_COUNTRY : 1);
   for (let s = 0; s < n; s++) {
     if (seen[s] || world.water[s] || filled[s] - hgt[s] < 0.3) continue;
     // Collect the basin.
