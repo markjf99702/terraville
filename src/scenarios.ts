@@ -1,6 +1,6 @@
 // Challenges: a ready-made city in trouble, a goal, and a deadline.
 // A nod to the original's scenarios, with procedurally built cities.
-import { BUILDINGS, Kind, POWER, RAIL, ROAD, isZone, num, toIndex as idx } from './defs';
+import { BUILDINGS, Kind, LANDMARK_NEEDS, POWER, RAIL, ROAD, isZone, num, toIndex as idx } from './defs';
 import { Rng, makeRng, hashString } from './rng';
 import { Sim } from './sim';
 import { DEFAULT_TERRAIN, TerrainParams, generateTerrain } from './terrain';
@@ -214,14 +214,18 @@ export const SCENARIOS: Scenario[] = [
     },
     start: (sim) => {
       // The quakes strike under the zones, and neither they nor the fires touch the power plants: a
-      // meltdown before the first click would be no fair start. One line says it all, at the first quake.
+      // meltdown before the first click would be no fair start. One line says it all, at the first quake, naming any
+      // landmark the quakes brought down; lost stations and homes go unnamed, to keep it short.
+      const landmarks = [...sim.world.buildings.values()].filter((b) => b.kind in LANDMARK_NEEDS);
       let at: { x: number; y: number } | undefined;
       for (let k = 0; k < 3; k++) {
         sim.disasters.trigger('earthquake', { sparePlants: true, quiet: true });
         at ??= sim.disasters.lastQuake ?? undefined;
       }
+      const lost = landmarks.filter((b) => !sim.world.buildings.has(b.id)).map((b) => `the ${BUILDINGS[b.kind].name.toLowerCase()}`);
+      const fell = lost.length ? ` They brought down ${lost.slice(0, -1).join(', ')}${lost.length > 1 ? ' and ' : ''}${lost.at(-1)}.` : '';
       for (let k = 0; k < 4; k++) sim.disasters.trigger('fire', { sparePlants: true, quiet: true });
-      sim.say('quake', 'A major earthquake and two aftershocks have struck. Check for fires and broken roads.', 'alert', at, 0);
+      sim.say('quake', `A major earthquake and two aftershocks have struck.${fell} Check for fires and broken roads.`, 'alert', at, 0);
     },
     check: (sim) => {
       const r = sim.stats.residents;

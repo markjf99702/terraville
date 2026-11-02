@@ -1551,6 +1551,26 @@ await test("Aftershock opens with one line for its quakes and fires, and they fa
   }
 });
 
+await test("Aftershock's opening line names a landmark the quakes brought down, and leaves lost stations unnamed", () => {
+  const aftershock = SCENARIOS.find((x) => x.id === 'aftershock')!;
+  const opening = (seed: number) => seeded(seed, () => {
+    const w = buildScenario(aftershock, 120, 100);
+    const sim = new Sim(w);
+    openScenario(sim);
+    const had = new Map([...w.buildings.values()].map((b) => [b.id, b.kind]));
+    const from = sim.messages.length;
+    aftershock.start!(sim);
+    const lost = [...had].filter(([id]) => !w.buildings.has(id)).map(([, kind]) => kind).sort();
+    return { lost: lost.filter((k) => !['res', 'com', 'ind'].includes(k)), line: sim.messages.slice(from).map((m) => m.text) };
+  });
+  // The airport fell, and the only sign was the advisor a month later, on commerce stopped at 5,000 jobs.
+  assert.deepEqual(opening(43), { lost: ['airport'], line: ['A major earthquake and two aftershocks have struck. They brought down the airport. Check for fires and broken roads.'] });
+  // A fire station came down with the stadium: only the stadium is named.
+  assert.deepEqual(opening(31), { lost: ['fire', 'stadium'], line: ['A major earthquake and two aftershocks have struck. They brought down the stadium. Check for fires and broken roads.'] });
+  // Police stations alone: the line is as it was.
+  assert.deepEqual(opening(11), { lost: ['police'], line: ['A major earthquake and two aftershocks have struck. Check for fires and broken roads.'] });
+});
+
 await test('a fire is news once: spreading next door says nothing, and a fire across town says its own', () => seeded(9, () => {
   const w = flat(60, 40);
   const a = w.place('res', 5, 5), b = w.place('res', 8, 5), far = w.place('res', 40, 30);
