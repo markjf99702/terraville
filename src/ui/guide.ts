@@ -194,7 +194,7 @@ function sections(): Section[] {
       html: `
         <p>Random disasters start once a city passes ${num(DISASTER_POP)} residents, about when it needs its first fire station, and can be switched off from the Disasters menu. Harder difficulties bring them more often.</p>
         ${table(['Disaster', 'How to prepare'], [
-          ['Fire', 'The most common by far. Fire stations prevent fires and put them out. Buildings far from a station catch fire more often, and fire spreads through trees and touching buildings. Bulldoze a gap to stop it.'],
+          ['Fire', 'The most common by far. Fire stations prevent fires and put them out. Buildings far from a station catch fire more often, and fire spreads through trees and touching buildings. Bulldoze a gap to stop it: a gap cleared beside a fire is a firebreak, and undo can’t put it back.'],
           ['Flood', 'Starts on low shoreline and spreads over land a few metres above the water. Keep valuable buildings on higher ground.'],
           ['Tornado', 'Wanders near the town centre. You cannot stop it, so keep money in reserve to rebuild.'],
           ['Earthquake', 'Wrecks buildings and roads within about 16 tiles and starts fires. Good fire cover limits the damage.'],

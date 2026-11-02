@@ -46,10 +46,16 @@ interface UndoEntry {
   terrain?: TerrainParams;
   /** In the editor, the slider gesture that regenerated the map: its later regenerations join this step. */
   group?: string;
+  /** Bulldozing, kept on both stacks so that a redo of it is judged as the bulldozing was. */
+  bulldoze?: boolean;
+  /** Bulldozing done with a fire burning within FIREBREAK_TILES of it: a firebreak, which undo can't take back. */
+  firebreak?: boolean;
 }
 
 /** Undo refunds an action's cost for this many game months after it (always while paused). */
 const REFUND_MONTHS = 3;
+/** Bulldozing this close to a fire is a firebreak, and stays cleared. */
+const FIREBREAK_TILES = 3;
 
 /** Simulated weeks per real second at each speed. */
 export const SPEEDS = [0, 0.7, 1.8, 5, 14];
@@ -1250,6 +1256,7 @@ export class Game {
     const spot = this.footprint(t, plan);
     if (this.world.inBounds(tx, ty)) spot.add(ty * this.world.w + tx);
     this.pushUndo();
+    const entry = this.undoStack[this.undoStack.length - 1];
     if (t.kind === 'line') applyLine(this.world, t.net!, plan);
     else if (t.id === 'bulldoze') {
       this.raiseDust(plan);
@@ -1267,6 +1274,12 @@ export class Game {
       this.built = { html: this.builtText(t, plan), until: performance.now() + 1200, tiles: spot, shown: true };
     }
     this.sealUndo();
+    // A gap cleared beside a fire is what stops it spreading: undo would otherwise put the lots back, people and all,
+    // and refund it, once the fire is out.
+    if (t.id === 'bulldoze' && this.mode === 'city' && this.undoStack[this.undoStack.length - 1] === entry) {
+      entry.bulldoze = true;
+      entry.firebreak = this.nearFire(entry.snap);
+    }
     if (this.sim) this.sim.powerDirty = true;
     this.minimap.markDirty();
     if (opens && this.sim) {
@@ -1520,6 +1533,23 @@ export class Game {
     return false;
   }
 
+  /** Whether a fire burns within FIREBREAK_TILES of any tile of an area. */
+  private nearFire(s: WorldSnapshot | AreaSnapshot | World): boolean {
+    if (!('x0' in s) || s.n !== this.world.n) return false;
+    const { w, h, fire } = this.world;
+    const r = FIREBREAK_TILES;
+    const bw = s.x1 - s.x0 + 1;
+    for (let fy = Math.max(0, s.y0 - r); fy <= Math.min(h - 1, s.y1 + r); fy++) {
+      for (let fx = Math.max(0, s.x0 - r); fx <= Math.min(w - 1, s.x1 + r); fx++) {
+        if (!fire[fy * w + fx]) continue;
+        for (let y = Math.max(s.y0, fy - r); y <= Math.min(s.y1, fy + r); y++) {
+          for (let x = Math.max(s.x0, fx - r); x <= Math.min(s.x1, fx + r); x++) if (s.mask[(y - s.y0) * bw + x - s.x0]) return true;
+        }
+      }
+    }
+    return false;
+  }
+
   /** What an area holds now, after an undo or redo put it back, for the entry on the other stack. */
   private afterOf(s: WorldSnapshot | AreaSnapshot | World): AreaSnapshot | undefined {
     return 'x0' in s ? this.world.areaSnapshot(s) : undefined;
@@ -1550,6 +1580,13 @@ export class Game {
       this.ui.toast('Nothing to undo.');
       return;
     }
+    // A firebreak did its work whether or not the fire is out: it goes from the list, as a wrecked spot does.
+    if (e.firebreak) {
+      this.redoStack = [];
+      this.ui.syncUndo();
+      this.ui.toast('That gap was a firebreak, so it stays cleared.', 'warn');
+      return;
+    }
     // A fire goes out in time, so the entry stays, and so does the redo list.
     if (this.mode === 'city' && this.burning(e.snap)) {
       this.undoStack.push(e);
@@ -1563,7 +1600,7 @@ export class Game {
     const back = this.copyLike(e.snap);
     if (!this.restore(e.snap)) return;
     // Both stacks keep the month of the action itself, so undoing and redoing never restarts the refund clock.
-    this.redoStack.push({ snap: back, cost: refund, month: e.month, upgrade: e.upgrade, after: this.afterOf(e.snap), terrain: this.swapTerrain(e) });
+    this.redoStack.push({ snap: back, cost: refund, month: e.month, upgrade: e.upgrade, after: this.afterOf(e.snap), terrain: this.swapTerrain(e), bulldoze: e.bulldoze });
     if (e.upgrade) this.sim?.computeMaps();
     this.ui.syncUndo();
     if (city) this.world.city.funds += refund;
@@ -1591,7 +1628,11 @@ export class Game {
     }
     const back = this.copyLike(e.snap);
     if (!this.restore(e.snap)) return;
-    this.undoStack.push({ snap: back, cost: e.cost, month: e.month, upgrade: e.upgrade, after: this.afterOf(e.snap), terrain: this.swapTerrain(e) });
+    // Bulldozing redone beside a fire is a firebreak, as it would be done afresh.
+    this.undoStack.push({
+      snap: back, cost: e.cost, month: e.month, upgrade: e.upgrade, after: this.afterOf(e.snap), terrain: this.swapTerrain(e),
+      bulldoze: e.bulldoze, firebreak: e.bulldoze && this.nearFire(back),
+    });
     if (e.upgrade) this.sim?.computeMaps();
     this.ui.syncUndo();
     if (this.mode === 'city') this.world.city.funds -= e.cost;

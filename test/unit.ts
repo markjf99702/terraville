@@ -2112,6 +2112,47 @@ await test('undo and redo wait for a fire to go out, then leave no fire on bare 
   assert.equal(bare(), 0);
 }));
 
+await test('a gap bulldozed beside a fire stays cleared: undo refuses it once the fire is out, and other bulldozing undoes as before', () => seeded(42, () => {
+  const g = town();
+  const w = g.world;
+  const putOut = () => w.fire.fill(0);
+  // Four built lots in a row, a road between each: a fire in the second, so the first and third are 2 tiles from it
+  // and the fourth 6.
+  const row = (b: any) => [-4, 0, 4, 8].map((dx) => w.buildingAt(b.x + dx, b.y)).filter((x: any, k: number) => x && x.level > 0 && x.x === b.x + 4 * k - 4);
+  const lots = [...w.buildings.values()].map(row).find((r) => r.length === 4);
+  assert.ok(lots, 'four built lots in a row');
+  const [left, alight, beside, far] = lots;
+  g.sim.disasters.ignite(alight.x, alight.y);
+  const funds = w.city.funds;
+  drag(g, 'bulldoze', beside.x + 1, beside.y + 1);
+  drag(g, 'bulldoze', far.x + 1, far.y + 1);
+  assert.deepEqual([w.buildings.has(beside.id), w.buildings.has(far.id)], [false, false]);
+  const paid = funds - w.city.funds;
+  // The fire goes out inside the three months that would refund the bulldozing. The lot 6 tiles from it undoes as
+  // bulldozing always has, people, refund and all; the gap beside it stays cleared, and its cost stays spent.
+  putOut();
+  g.undo();
+  assert.equal(w.buildingAt(far.x + 1, far.y + 1)?.id, far.id);
+  const refund = w.city.funds - (funds - paid);
+  assert.ok(refund > 0 && refund < paid, `refunded ${refund} of ${paid}`);
+  g.undo();
+  assert.equal(g.toasts.at(-1), 'That gap was a firebreak, so it stays cleared.');
+  assert.equal(w.buildings.has(beside.id), false);
+  assert.equal(w.city.funds, funds - paid + refund);
+  assert.equal(g.canRedo(), false);
+  // Bulldozing undone with no fire near, then done again by redo beside a fire, is a firebreak too.
+  drag(g, 'bulldoze', left.x + 1, left.y + 1);
+  g.undo();
+  assert.equal(w.buildingAt(left.x + 1, left.y + 1)?.id, left.id);
+  g.sim.disasters.ignite(alight.x, alight.y);
+  g.redo();
+  assert.equal(w.buildings.has(left.id), false);
+  putOut();
+  g.undo();
+  assert.equal(g.toasts.at(-1), 'That gap was a firebreak, so it stays cleared.');
+  assert.equal(w.buildings.has(left.id), false);
+}));
+
 await test('a landmark on fire is not offered an upgrade, and cannot be sold one', () => seeded(42, () => {
   const g = town();
   const w = g.world;

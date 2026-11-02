@@ -29,7 +29,7 @@ Play it at [terraville.junkdrawer.works](https://terraville.junkdrawer.works/), 
 - Fires that spread, floods on low shores, tornadoes, earthquakes, a monster drawn to pollution, and nuclear meltdowns. Toggle random disasters or set one off yourself.
 - History charts (residents and jobs, funds, income and spending, crime, pollution and traffic, approval, power), a city report with approval, a score out of 1,000 and residents' top worries, and a news ticker that can jump to the scene.
 - Terraforming in the city: level hillsides for a price.
-- Undo and redo for the last 25 actions, even while the clock runs. Undo puts back only the area an action touched, so the rest of the city keeps growing. The cost is refunded if you undo within three game months.
+- Undo and redo for the last 25 actions, even while the clock runs. Undo puts back only the area an action touched, so the rest of the city keeps growing. The cost is refunded if you undo within three game months. A gap bulldozed beside a fire is a firebreak, and stays cleared.
 
 **Challenges**, after the original's scenarios, each a ready-made city with a goal and a deadline:
 - *Boomtown* (1900): grow an empty coast to 12,000 residents in 15 years.
