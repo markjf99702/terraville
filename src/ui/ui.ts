@@ -1547,7 +1547,6 @@ export class UI {
 
   // ---- starter checklist ------------------------------------------------------------
 
-  /** Redraw the checklist; `force` looks at it even while it is hidden, as when a city opens or the menu asks. */
   /** Whether the checklist has a place here: in a city, but not one a challenge hands over ready-made. */
   private checklistFits(): boolean {
     // Boomtown, an empty coast, has a use for it.
@@ -1555,6 +1554,7 @@ export class UI {
     return this.game.mode === 'city' && !(sc && SCENARIOS.find((x) => x.id === sc.id)?.city);
   }
 
+  /** Redraw the checklist; `force` looks at it even while it is hidden, as when a city opens or the menu asks. */
   private updateGuide(force: boolean): void {
     const g = this.game;
     const box = $(this.root, '#guide');
