@@ -745,6 +745,35 @@ try {
     await ctx.close();
   });
 
+  await test('the cost tip draws its middle dots and says why lots are blocked', async () => {
+    const ctx = await profile(DESK);
+    const { page, problems } = await open(ctx);
+    await found(page);
+    const tip = await page.evaluate(() => {
+      const g = window.__terraville;
+      const w = g.world;
+      for (let y = 10; y < w.h - 10; y++) for (let x = 10; x < w.w - 20; x++) {
+        let ok = true;
+        for (let dx = 0; dx < 12 && ok; dx++) for (let dy = 0; dy < 3 && ok; dy++) {
+          const i = (y + dy) * w.w + x + dx;
+          if (w.water[i] || w.occ[i] || w.net[i] || w.slope(x + dx, y + dy) > 1.5) ok = false;
+        }
+        if (!ok) continue;
+        w.place('police', x + 6, y);
+        g.setTool('res');
+        g.pointerDown(x + 0.5, y + 0.5, 100, 100);
+        g.pointerMove(x + 11.5, y + 0.5, 300, 100);
+        const t = document.querySelector('#cursorTip');
+        const loose = [...t.childNodes].some((n) => n.nodeType === 3 && n.textContent.includes('·'));
+        return { text: t.textContent, loose };
+      }
+    });
+    assert.equal(tip.loose, false, 'every dot is drawn, none typed into the text');
+    assert.match(tip.text, /^Residential · 2 zones · \$\d+ · 2 blocked: something is already here$/);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('on a phone, Inspect takes the bottom slot from the map layer card and the news log', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

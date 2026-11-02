@@ -1,8 +1,8 @@
 // Game controller: modes, the tool state machine, money, undo, the clock.
 import { Audio } from './audio';
 import {
-  BUILDINGS, CITY_CLASSES, CITY_TOOLS, DIFFICULTIES, Difficulty, EDITOR_TOOLS, GRADE_COST, Kind, MAP_SIZES, ToolDef, Upgrade, cityClass,
-  buildingName, nextUpgrade,
+  BUILDINGS, CITY_CLASSES, CITY_TOOLS, DIFFICULTIES, Difficulty, EDITOR_TOOLS, GRADE_COST, Kind, MAP_SIZES, SEP, ToolDef, Upgrade,
+  buildingName, cityClass, nextUpgrade,
 } from './defs';
 import { Minimap } from './render/minimap';
 import { Renderer, SLOPE_CLASSES } from './render/renderer';
@@ -920,13 +920,13 @@ export class Game {
       if (this.mode === 'editor' && inside) {
         this.ui.cursorTip(sx, sy, `<span class="num">${Math.round(this.world.height[ty * this.world.w + tx])} m</span>`);
       } else if (t.id === 'level' && inside) {
-        const spent = this.brushOn ? `Levelling <span class="num">${fmtMoney(this.brushSpent)}</span> · ` : '';
+        const spent = this.brushOn ? `Levelling <span class="num">${fmtMoney(this.brushSpent)}</span>${SEP}` : '';
         if (this.world.water[ty * this.world.w + tx]) {
           this.ui.cursorTip(sx, sy, `${spent}<b>Water</b>: Level land can't fill it in`, false);
         } else {
           const s = this.world.slope(tx, ty);
           const cls = SLOPE_CLASSES.find((c) => s <= c.max)!;
-          this.ui.cursorTip(sx, sy, `${spent || 'Hold to level · '}<b>${cls.label}</b> (<span class="num">${s.toFixed(1)} m</span>): ${cls.note}`, false);
+          this.ui.cursorTip(sx, sy, `${spent || `Hold to level${SEP}`}<b>${cls.label}</b> (<span class="num">${s.toFixed(1)} m</span>): ${cls.note}`, false);
         }
       }
       return;
@@ -994,13 +994,15 @@ export class Game {
         t.kind === 'zone' ? `${plan.count} zone${plan.count > 1 ? 's' : ''}` :
         t.id === 'bulldoze' ? `${plan.count} to clear` :
         t.kind === 'rect' ? `${plan.count} tile${plan.count > 1 ? 's' : ''}` : t.name;
-      html = `${t.kind === 'place' ? '' : t.name + ' · '}${what} · <span class="num">${fmtMoney(plan.cost)}</span>`;
-      if (plan.grading) html += ` · includes <span class="num">${fmtMoney(plan.grading)}</span> ${t.kind === 'line' ? 'to grade the slope' : 'to level the ground'}`;
+      html = `${t.kind === 'place' ? '' : t.name + SEP}${what}${SEP}<span class="num">${fmtMoney(plan.cost)}</span>`;
+      if (plan.grading) html += `${SEP}includes <span class="num">${fmtMoney(plan.grading)}</span> ${t.kind === 'line' ? 'to grade the slope' : 'to level the ground'}`;
       if (!this.affordable(plan)) {
-        html += ' · not enough money';
+        html += `${SEP}not enough money`;
         bad = true;
       } else if (plan.bad.length && plan.reason) {
-        html += ` · ${plan.bad.length} blocked`;
+        // Why, in the reason's words: '1 blocked: something is already here'.
+        const why = /^[A-Z][a-z]/.test(plan.reason) ? plan.reason[0].toLowerCase() + plan.reason.slice(1) : plan.reason;
+        html += `${SEP}${plan.bad.length} blocked: ${why}`;
       }
     }
     this.ui.cursorTip(sx, sy, html, bad);

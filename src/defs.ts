@@ -218,6 +218,12 @@ export function cityClass(pop: number): string {
   return name;
 }
 
+/**
+ * A middle dot between two pieces of text, for HTML: drawn by the style sheet (see .sep there), because Overpass's
+ * own dot has no width and sits against the next word.
+ */
+export const SEP = ' <span class="sep" aria-hidden="true">·</span> ';
+
 export const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 export const START_YEAR = 1900;
 

@@ -1,6 +1,7 @@
 // Everything in the DOM: top bar, toolbox, panels, dialogs, title screen.
 import {
-  BUILDINGS, DIFFICULTIES, DISASTER_POP, Difficulty, Kind, MAP_SIZES, ToolDef, UPGRADE_LV, cityClass, dateLabel, isZone, nextUpgrade,
+  BUILDINGS, DIFFICULTIES, DISASTER_POP, Difficulty, Kind, MAP_SIZES, SEP, ToolDef, UPGRADE_LV, cityClass, dateLabel, isZone,
+  nextUpgrade,
 } from '../defs';
 import { DISASTER_NAMES, DisasterKind } from '../disasters';
 import { Game, SPEED_NAMES, randomCityName } from '../game';
@@ -37,8 +38,6 @@ const JD_FOOT = `<footer class="jd-foot">
   <a href="https://terraville.junkdrawer.works/privacy.html">Privacy</a>
 </footer>`;
 
-/** A middle dot between two pieces of text, drawn by the style sheet (see .sep there). */
-const SEP = ' <span class="sep" aria-hidden="true">·</span> ';
 const DRIVE_WAITING = 'Waiting for a connection to save to Google Drive. The city is saved on this device.';
 /** Listing Drive found no connection: no fault, so said plainly. */
 const UNREACHABLE = 'Google Drive could not be reached, so only the cities on this device are listed.';
@@ -1823,10 +1822,10 @@ export class UI {
         const pop = show ? show.pop : r.local!.pop;
         const date = show ? show.date : r.local!.date;
         const where = !r.remote
-          ? `On this device${r.local!.id === 'auto' ? ' (autosave)' : ''} · saved ${ago(r.local!.savedAt)}`
+          ? `On this device${r.local!.id === 'auto' ? ' (autosave)' : ''}${SEP}saved ${ago(r.local!.savedAt)}`
           : useRemote
-            ? `${r.local ? 'Newer copy in Drive' : 'In Drive'}, from ${esc(r.remote.mine ? 'this device' : r.remote.label)} · saved ${ago(r.remote.saved)}`
-            : `On this device and in Drive · saved ${ago(r.local!.savedAt)}`;
+            ? `${r.local ? 'Newer copy in Drive' : 'In Drive'}, from ${esc(r.remote.mine ? 'this device' : r.remote.label)}${SEP}saved ${ago(r.remote.saved)}`
+            : `On this device and in Drive${SEP}saved ${ago(r.local!.savedAt)}`;
         const row = el(`<div class="slot"><b>${esc(name)}</b>
           <div class="actions"></div>
           <span class="meta num">${dateLabel(date)} · pop ${pop.toLocaleString()}</span>
@@ -1964,7 +1963,7 @@ export class UI {
         ta.value = code;
         $<HTMLButtonElement>(body, '#fCopy').disabled = false;
         $<HTMLButtonElement>(body, '#fDownload').disabled = false;
-        make.textContent = `Code ready · ${Math.round(code.length / 1024)} KB`;
+        make.innerHTML = `<span>Code ready${SEP}${Math.round(code.length / 1024)} KB</span>`;
       };
       // A text file keeps a code whole where a message would cut it short; Open a text file reads it back.
       $(body, '#fDownload').onclick = () => {
