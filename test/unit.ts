@@ -257,6 +257,47 @@ await test('rail counts for commuting but carries no car traffic', () => {
   for (let x = 5; x <= 29; x++) assert.equal(w.traffic[5 * w.w + x], 0);
 });
 
+await test('Inspect says how far a lot can grow where it stands, and why it is or is not growing', () => {
+  const w = flat(40, 30);
+  const home = w.place('res', 10, 10);
+  const works = w.place('ind', 20, 10);
+  const sim = new Sim(w);
+  const ci = 11 * w.w + 11;
+  // A spot set by hand: $6,000 an acre at the lot's centre, which growth reads, and $8,000 at its corner.
+  const spot = ({ level = 7, lv = 150, pol = 0, svc = 0, demand = 0.5, trip = true, powered = true } = {}) => {
+    w.setLevel(home, level);
+    w.landValue[ci] = lv;
+    w.landValue[10 * w.w + 10] = 200;
+    w.pollution[ci] = pol;
+    w.crime[ci] = 0;
+    w.serviceCov[ci] = svc;
+    w.city.demand.r = demand;
+    Object.assign(home, { powered, road: true, trip });
+    const d = sim.describe(10, 10);
+    const read: Record<string, string | undefined> = { ...Object.fromEntries(d.rows), note: d.note };
+    return read;
+  };
+  const full = spot();
+  assert.equal(full['Land value'], '$6,000/acre');
+  assert.equal(full['Can grow to'], 'Density 7');
+  assert.equal(full.Outlook, 'Full for its land value');
+  assert.equal(full.note, 'Density 7 is the most this land value allows. Density 8 (residential towers) needs $7,000/acre here.');
+  // A school in reach counts for $1,200 towards the thresholds, so the same land value now allows towers.
+  const school = spot({ svc: 255 });
+  assert.deepEqual([school['Can grow to'], school.Outlook, school.note], ['Density 8', 'Growing', undefined]);
+  assert.equal(spot({ level: 5 }).Outlook, 'Growing');
+  sim.capped.res = true;
+  assert.equal(spot({ level: 5 }).Outlook, 'Held at a landmark limit: build a stadium');
+  sim.capped.res = false;
+  assert.equal(spot({ level: 5, pol: 255, demand: 0.05 }).Outlook, 'Shrinking: pollution');
+  assert.equal(spot({ level: 5, demand: -0.8 }).Outlook, 'Shrinking: low demand');
+  assert.equal(spot({ level: 5, trip: false }).Outlook, 'Steady: no commute');
+  assert.equal(spot({ level: 0, powered: false }).Outlook, 'Not growing: no power');
+  assert.equal(spot({ level: 7, lv: 100 }).Outlook, 'Shrinking: land value too low');
+  // Industry has no land value threshold.
+  assert.equal(Object.fromEntries(sim.describe(works.x, works.y).rows)['Can grow to'], 'Density 4');
+});
+
 await test('trains through a level crossing add no cars to it, and rail laid along a road carries its riders as rail', () => {
   const rideTo = (shops: number, lay: (w: World) => void) => {
     const w = flat(60, 20);

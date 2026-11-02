@@ -69,7 +69,7 @@ function sections(): Section[] {
           <li><b>A commute.</b> Homes need to reach a shop or factory, and shops and factories need to reach homes, within about 80 road tiles.</li>
         </ul>
         <p>Then <b>demand</b> and local conditions decide how fast it grows. With the matching bar on the RCI meter above the line, lots in decent spots fill in. Below the line, lots in the best spots still grow, only more slowly, and poor ones start to empty out.</p>
-        <p>Growth is gradual. Each month a qualifying lot has a small chance to go up one density level, and a better score raises that chance. Pick <b>Inspect</b> (<kbd>Q</kbd>) and click a lot to see its density, residents or jobs, and any problem such as “No road access” or “Commute too long”.</p>
+        <p>Growth is gradual. Each month a qualifying lot has a small chance to go up one density level, and a better score raises that chance. Pick <b>Inspect</b> (<kbd>Q</kbd>) and click a lot to see its density, residents or jobs, any problem such as “No road access” or “Commute too long”, how dense it can grow where it stands, and its outlook.</p>
         <p>What counts as a good spot differs by zone:</p>
         <ul>
           <li><b>Homes</b> want high land value, clean air, low crime, and schools or hospitals nearby.</li>
@@ -95,7 +95,7 @@ function sections(): Section[] {
           ['Commerce past 5,000 jobs', 'Airport'],
           ['Industry past 4,000 jobs', 'Seaport, touching water'],
         ])}
-        ${tip('If a bar is high but nothing grows, check the lots rather than the meter: power, a touching road, and the commute.')}`,
+        ${tip('If a bar is high but nothing grows, check the lots rather than the meter: power, a touching road, the commute, and land value: Inspect shows the most a lot can grow where it stands, and what holds it back.')}`,
     },
     {
       id: 'density',

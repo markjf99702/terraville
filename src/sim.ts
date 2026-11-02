@@ -738,19 +738,7 @@ export class Sim {
       if (b.level > 0 && r < 0.18) this.setLevel(b, b.level - 1);
       return;
     }
-    const d = world.city.demand;
-    const valve = k === 'res' ? d.r : k === 'com' ? d.c : d.i;
-    const lv = world.landValue[ci] / 255;
-    const pol = world.pollution[ci] / 255;
-    const cr = world.crime[ci] / 255;
-    const svc = world.serviceCov[ci] / 255;
-    let local: number;
-    if (k === 'res') local = 0.1 + lv * 0.9 - pol * 1.2 - cr * 0.6 + svc * 0.25;
-    else if (k === 'com') local = 0.05 + lv * 0.7 - cr * 0.5 - pol * 0.25;
-    else local = 0.3 - lv * 0.15;
-    const score = valve + local * 0.8 - (b.trip ? 0 : 0.9);
-
-    const maxLevel = this.maxLevel(b);
+    const { score, maxLevel } = this.growth(b);
     // Without a commute a lot never grows, however good its spot: the missing trip only weighs on the score below.
     // Nor does it past a landmark limit, where the meter is also held below the line.
     if (score > 0 && b.level < maxLevel && b.trip && !this.capped[k]) {
@@ -761,6 +749,38 @@ export class Sim {
     } else if ((score < -0.12 || b.level > maxLevel) && b.level > 0) {
       if (r < 0.03 + Math.max(0, -score) * 0.2) this.setLevel(b, b.level - 1);
     }
+  }
+
+  /**
+   * What decides whether a zone's lot grows, read at its centre as growZone reads it: the score (demand plus how good
+   * the spot is, less a missing commute), the densest its land value allows, and how much each drag takes off.
+   */
+  growth(b: Building): Growth {
+    const world = this.world;
+    const k = b.kind as 'res' | 'com' | 'ind';
+    const ci = (b.y + 1) * world.w + b.x + 1;
+    const d = world.city.demand;
+    const valve = k === 'res' ? d.r : k === 'com' ? d.c : d.i;
+    const lv = world.landValue[ci] / 255;
+    const pol = world.pollution[ci] / 255;
+    const cr = world.crime[ci] / 255;
+    const svc = world.serviceCov[ci] / 255;
+    let local: number;
+    let polWeight = 0, crWeight = 0;
+    if (k === 'res') {
+      local = 0.1 + lv * 0.9 - pol * 1.2 - cr * 0.6 + svc * 0.25;
+      polWeight = 1.2;
+      crWeight = 0.6;
+    } else if (k === 'com') {
+      local = 0.05 + lv * 0.7 - cr * 0.5 - pol * 0.25;
+      polWeight = 0.25;
+      crWeight = 0.5;
+    } else local = 0.3 - lv * 0.15;
+    const score = valve + local * 0.8 - (b.trip ? 0 : 0.9);
+    const drags: [string, number][] = [
+      ['low demand', Math.max(0, -valve)], ['pollution', pol * polWeight * 0.8], ['crime', cr * crWeight * 0.8], ['no commute', b.trip ? 0 : 0.9],
+    ];
+    return { score, maxLevel: this.maxLevel(b), drags };
   }
 
   /** The densest a zone's lot can be where it stands: its land value decides, and for homes, schools and hospitals nearby help. */
@@ -1070,11 +1090,14 @@ export class Sim {
   }
 
   /** Human-readable description of a tile for the inspect tool. */
-  describe(x: number, y: number): { title: string; rows: [string, string][] } {
+  describe(x: number, y: number): { title: string; rows: [string, string][]; note?: string } {
     const world = this.world;
     const i = y * world.w + x;
     const rows: [string, string][] = [];
     let title = 'Open land';
+    let note: string | undefined;
+    // A zone's land value, pollution and crime are read at its centre, where its growth reads them.
+    let at = i;
     const b = world.buildingAt(x, y);
     const net = world.net[i];
     if (b) {
@@ -1087,6 +1110,12 @@ export class Sim {
         rows.push(['Density', `${b.level} of ${ZONE_POP[k].length - 1}`]);
         if (!b.road) rows.push(['Problem', 'No road access']);
         else if (!b.trip) rows.push(['Problem', this.noCommute(b)]);
+        const g = this.growth(b);
+        const top = ZONE_LV_GATE[k].length - 1;
+        rows.push(['Can grow to', `Density ${Math.min(top, g.maxLevel)}`]);
+        rows.push(['Outlook', this.outlook(b, g)]);
+        if (g.maxLevel < top) note = this.densityNote(b, g.maxLevel);
+        at = (b.y + 1) * world.w + b.x + 1;
       }
       if (def.capacity) rows.push(['Output', `${def.capacity} MW`]);
       const grid = this.gridAt(b.y * world.w + b.x);
@@ -1124,16 +1153,50 @@ export class Sim {
     if (world.rad[i]) rows.unshift(['Status', `Radioactive for ${world.rad[i]} years`]);
     rows.push(['Elevation', `${Math.round(world.height[i])} m`]);
     if (!world.water[i]) {
-      rows.push(['Land value', `$${(world.landValue[i] * 40).toLocaleString()}/acre`]);
-      rows.push(['Pollution', level5(world.pollution[i])]);
-      rows.push(['Crime', level5(world.crime[i])]);
+      rows.push(['Land value', `$${(world.landValue[at] * 40).toLocaleString()}/acre`]);
+      rows.push(['Pollution', level5(world.pollution[at])]);
+      rows.push(['Crime', level5(world.crime[at])]);
     }
-    return { title, rows };
+    return { title, rows, note };
+  }
+
+  /** Where a zone's lot is headed, from the same reckoning growZone makes, and the main reason when it isn't growing. */
+  private outlook(b: Building, g: Growth): string {
+    const k = b.kind as 'res' | 'com' | 'ind';
+    const stalled = b.level > 0 ? 'Steady' : 'Not growing';
+    if (!b.powered || !b.road) return `${b.level > 0 ? 'Shrinking' : 'Not growing'}: ${b.powered ? 'no road' : 'no power'}`;
+    const drag = g.drags.reduce((a, c) => (c[1] > a[1] ? c : a), ['low demand', 0])[0];
+    if (g.score > 0 && b.trip) {
+      if (b.level > g.maxLevel) return 'Shrinking: land value too low';
+      if (b.level === g.maxLevel) return 'Full for its land value';
+      if (this.capped[k]) return `Held at a landmark limit: build ${{ res: 'a stadium', com: 'an airport', ind: 'a seaport' }[k]}`;
+      return 'Growing';
+    }
+    if (b.level > 0 && g.score < -0.12) return `Shrinking: ${drag}`;
+    if (b.level > g.maxLevel) return 'Shrinking: land value too low';
+    return `${stalled}: ${drag}`;
+  }
+
+  /** What land value the next density needs at a lot held back by it. For homes, schools and hospitals in reach count. */
+  private densityNote(b: Building, max: number): string {
+    const world = this.world;
+    const k = b.kind as 'res' | 'com' | 'ind';
+    const ci = (b.y + 1) * world.w + b.x + 1;
+    const bonus = k === 'res' ? (world.serviceCov[ci] / 255) * 30 : 0;
+    const need = Math.max(0, Math.ceil(ZONE_LV_GATE[k][max + 1] - bonus)) * 40;
+    return `Density ${max} is the most this land value allows. Density ${max + 1} (${zoneTitle(k, max + 1).toLowerCase()}) needs $${need.toLocaleString()}/acre here.`;
   }
 
   dateLabel(): string {
     return dateLabel(this.world.city.month);
   }
+}
+
+export interface Growth {
+  score: number;
+  maxLevel: number;
+  /** What takes the score down, and by how much. */
+  drags: [string, number][];
 }
 
 export interface PowerGrid {
