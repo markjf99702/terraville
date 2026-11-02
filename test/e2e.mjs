@@ -962,6 +962,40 @@ try {
     await ctx.close();
   });
 
+  await test('a change of map size in the editor is an undo step, and undo brings back the map shaped before it', async () => {
+    const ctx = await profile(DESK);
+    const { page, problems } = await open(ctx);
+    await page.click('[data-act="editor"]');
+    await page.waitForFunction(() => window.__terraville.mode === 'editor');
+    const hash = () => page.evaluate(() => { const w = window.__terraville.world; let h = w.w; for (let i = 0; i < w.n; i++) h = (h * 31 + Math.round(w.height[i] * 10) + w.water[i] * 7 + w.trees[i]) | 0; return h; });
+    const state = () => page.evaluate(() => {
+      const g = window.__terraville;
+      return { w: g.world.w, h: g.world.h, terrain: [g.terrain.w, g.terrain.h], size: document.querySelector('#edSize [aria-pressed="true"]').dataset.size, undo: g.undoStack.length, redo: g.redoStack.length };
+    });
+    await page.keyboard.press('r');
+    const [p, q] = await page.evaluate(() => { const r = window.__terraville.renderer; return [r.tileToScreen(50, 40), r.tileToScreen(58, 48)]; });
+    await page.mouse.move(p.x, p.y);
+    await page.mouse.down();
+    await page.mouse.move(q.x, q.y, { steps: 6 });
+    await page.mouse.up();
+    const shaped = await hash();
+    await page.click('[data-size="large"]');
+    assert.deepEqual(await state(), { w: 180, h: 150, terrain: [180, 150], size: 'large', undo: 2, redo: 0 }, 'Large is a step, after the stroke');
+    const large = await hash();
+    await page.click('#btnUndo');
+    assert.deepEqual(await state(), { w: 120, h: 100, terrain: [120, 100], size: 'classic', undo: 1, redo: 1 });
+    assert.equal(await hash(), shaped, 'the Classic map comes back with its stroke');
+    assert.ok(await page.evaluate(() => { const r = window.__terraville.renderer; return r.world === window.__terraville.world && r.cam.x > 0 && r.cam.x < 120 && r.cam.y > 0 && r.cam.y < 100; }), 'drawn, and in view');
+    await page.click('#btnUndo');
+    assert.equal((await state()).undo, 0, 'and the stroke is still there to undo');
+    await page.click('#btnRedo');
+    await page.click('#btnRedo');
+    assert.deepEqual(await state(), { w: 180, h: 150, terrain: [180, 150], size: 'large', undo: 2, redo: 0 });
+    assert.equal(await hash(), large, 'redo brings the Large map back');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('the cost tip draws its middle dots and says why lots are blocked', async () => {
     const ctx = await profile(DESK);
     const { page, problems } = await open(ctx);

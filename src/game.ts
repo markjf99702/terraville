@@ -26,8 +26,11 @@ import { AreaSnapshot, Box, Building, World, WorldSnapshot, newCityState } from 
 export type Mode = 'title' | 'editor' | 'city';
 
 interface UndoEntry {
-  /** The whole map in the editor. In a city, just the area the action touched. */
-  snap: WorldSnapshot | AreaSnapshot;
+  /**
+   * The whole map in the editor. In a city, just the area the action touched. For a change of map size in the editor,
+   * the map it replaced, itself.
+   */
+  snap: WorldSnapshot | AreaSnapshot | World;
   cost: number;
   /** The month of the action, to decide whether undoing it still refunds the cost. */
   month: number;
@@ -415,12 +418,12 @@ export class Game {
       this.world.city.seed = next.seed;
       this.world.dirtyAll(true);
     } else {
+      // Another size is another map: its undo step keeps the whole of the one it replaces, settings and all.
+      if (this.world) this.pushEntry({ snap: this.world, cost: 0, month: this.world.city.month, terrain: { ...this.terrain } });
       this.terrain = next;
       this.world = fresh;
       this.renderer.setWorld(fresh, null);
       this.fitMap();
-      this.undoStack = [];
-      this.redoStack = [];
     }
     this.minimap.markDirty();
   }
@@ -1370,10 +1373,14 @@ export class Game {
   pushUndo(group?: string): void {
     if (!this.world) return;
     this.sealUndo();
-    this.undoStack.push({
+    this.pushEntry({
       snap: this.world.snapshot(), cost: 0, month: this.world.city.month, open: this.mode === 'city',
       terrain: this.mode === 'editor' ? { ...this.terrain } : undefined, group,
     });
+  }
+
+  private pushEntry(e: UndoEntry): void {
+    this.undoStack.push(e);
     if (this.undoStack.length > (this.mode === 'editor' ? 40 : 25)) this.undoStack.shift();
     this.redoStack = [];
     this.ui?.syncUndo();
@@ -1415,7 +1422,7 @@ export class Game {
   }
 
   /** What an area holds now, after an undo or redo put it back, for the entry on the other stack. */
-  private afterOf(s: WorldSnapshot | AreaSnapshot): AreaSnapshot | undefined {
+  private afterOf(s: WorldSnapshot | AreaSnapshot | World): AreaSnapshot | undefined {
     return 'x0' in s ? this.world.areaSnapshot(s) : undefined;
   }
 
@@ -1424,8 +1431,8 @@ export class Game {
   }
 
   /** A copy of what is there now, in the same shape as `s`, for the opposite stack. */
-  private copyLike(s: WorldSnapshot | AreaSnapshot): WorldSnapshot | AreaSnapshot {
-    return 'x0' in s ? this.world.areaSnapshot(s) : this.world.snapshot();
+  private copyLike(s: WorldSnapshot | AreaSnapshot | World): WorldSnapshot | AreaSnapshot | World {
+    return s instanceof World ? this.world : 'x0' in s ? this.world.areaSnapshot(s) : this.world.snapshot();
   }
 
   /** Record what the most recent undoable action cost, so undo refunds exactly that. */
@@ -1493,7 +1500,15 @@ export class Game {
     return now;
   }
 
-  private restore(s: WorldSnapshot | AreaSnapshot): boolean {
+  private restore(s: WorldSnapshot | AreaSnapshot | World): boolean {
+    if (s instanceof World) {
+      // A map of another size comes back whole, in view.
+      this.world = s;
+      this.renderer.setWorld(s, null);
+      this.fitMap();
+      this.minimap.markDirty();
+      return true;
+    }
     if (!('x0' in s ? this.world.restoreArea(s) : this.world.restore(s))) {
       this.clearUndo();
       return false;
