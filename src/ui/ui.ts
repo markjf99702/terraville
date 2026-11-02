@@ -1,6 +1,6 @@
 // Everything in the DOM: top bar, toolbox, panels, dialogs, title screen.
 import {
-  BUILDINGS, DIFFICULTIES, Difficulty, Kind, MAP_SIZES, ToolDef, UPGRADE_LV, cityClass, dateLabel, isZone, nextUpgrade,
+  BUILDINGS, DIFFICULTIES, DISASTER_POP, Difficulty, Kind, MAP_SIZES, ToolDef, UPGRADE_LV, cityClass, dateLabel, isZone, nextUpgrade,
 } from '../defs';
 import { DISASTER_NAMES, DisasterKind } from '../disasters';
 import { Game, SPEED_NAMES, randomCityName } from '../game';
@@ -46,6 +46,16 @@ const UNREACHABLE = 'Google Drive could not be reached, so only the cities on th
 /** Text made safe to put in HTML. Not-quite-text from a damaged save is shown as text rather than stopping the page. */
 function esc(s: unknown): string {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+}
+
+/** What a difficulty changes beyond the starting money, from its tax and disaster factors. */
+function difficultyNote(d: Difficulty): string {
+  const parts = [
+    d.income > 1 ? 'taxes bring in more' : d.income < 1 ? 'taxes bring in less' : '',
+    d.disasters < 1 ? 'fewer disasters' : d.disasters > 1 ? 'more disasters' : '',
+  ].filter(Boolean);
+  const text = parts.length ? parts.join(SEP) : 'the standard game';
+  return text[0].toUpperCase() + text.slice(1);
 }
 
 /** How long ago a moment was, briefly. */
@@ -1277,9 +1287,9 @@ export class UI {
         <div class="seedrow"><input class="textin" id="fName" maxlength="28" value="${esc(randomCityName())}" spellcheck="false">
         <button class="iconbtn" id="fDice" aria-label="Another name" title="Another name">${ICONS.dice}</button></div></label>
       <div class="field"><span>Difficulty</span>
-        <div class="choice" id="fDiff">${DIFFICULTIES.map((d) => `<button data-d="${d.id}" aria-pressed="${d.id === diff}"><b>${d.name}</b><span>${money(d.funds)} to start</span></button>`).join('')}</div>
+        <div class="choice" id="fDiff">${DIFFICULTIES.map((d) => `<button data-d="${d.id}" aria-pressed="${d.id === diff}"><b>${d.name}</b><span>${money(d.funds)} to start</span><small>${difficultyNote(d)}</small></button>`).join('')}</div>
       </div>
-      <label class="switch"><span>Random disasters<small>Fires, floods, tornadoes and worse. You can also trigger them yourself.</small></span><input type="checkbox" id="fDis" checked></label>
+      <label class="switch"><span>Random disasters<small>Fires, floods, tornadoes and worse, once the city has ${DISASTER_POP.toLocaleString()} residents. You can also set them off yourself.</small></span><input type="checkbox" id="fDis" checked></label>
       ${fromQuick ? '<p class="note">This land was generated at random. Shape it first in the terrain editor, or found the city as it is.</p>' : ''}
     </div>`);
     $(body, '#fDice').onclick = () => ($<HTMLInputElement>(body, '#fName').value = randomCityName());
@@ -1311,7 +1321,9 @@ export class UI {
       body,
       foot: [...(reroll ? [reroll] : []), other, found],
     });
-    window.setTimeout(() => $<HTMLInputElement>(body, '#fName').select(), 30);
+    // With a mouse, typing replaces the suggested name. A touch screen would bring up its keyboard over the dialog, so
+    // there the name waits for a tap.
+    if (matchMedia('(hover: hover) and (pointer: fine)').matches) window.setTimeout(() => $<HTMLInputElement>(body, '#fName').select(), 30);
   }
 
   /**

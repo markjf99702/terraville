@@ -593,10 +593,12 @@ kbd { font: 600 11.5px var(--mono); padding: 1px 6px; border: 1px solid var(--li
   border: 1px solid var(--line);
   background: var(--panel-2);
 }
+.choice button { display: flex; flex-direction: column; justify-content: flex-start; }
 .choice button b { display: block; }
-.choice button span { color: var(--muted); font-size: 12.5px; font-family: var(--mono); }
+.choice button > span { color: var(--muted); font-size: 12.5px; font-family: var(--mono); }
+.choice button small { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 1.35; }
 .choice button[aria-pressed="true"] { border-color: #fff; background: var(--sign); }
-.choice button[aria-pressed="true"] span { color: #d9f2e6; }
+.choice button[aria-pressed="true"] > span, .choice button[aria-pressed="true"] small { color: #d9f2e6; }
 .textin {
   height: 40px;
   width: 100%;

@@ -645,6 +645,25 @@ try {
     await desk.close();
   });
 
+  await test('the found dialog leaves the name alone on a touch screen, and says what each difficulty changes', async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await page.click('[data-act="quick"]');
+    await page.waitForTimeout(100);
+    assert.notEqual(await page.evaluate(() => document.activeElement?.id), 'fName', 'no keyboard comes up over the dialog');
+    assert.deepEqual(await page.$$eval('#fDiff small', (s) => s.map((x) => x.textContent)), [
+      'Taxes bring in more · fewer disasters', 'The standard game', 'Taxes bring in less · more disasters',
+    ]);
+    assert.match(await page.textContent('.switch small'), /once the city has 2,500 residents\. You can also set them off yourself\.$/);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+    const desk = await profile(DESK);
+    const { page: d } = await open(desk);
+    await d.click('[data-act="quick"]');
+    await d.waitForFunction(() => document.activeElement?.id === 'fName', null, { timeout: 2000 });
+    await desk.close();
+  });
+
   await test('on a phone, Inspect takes the bottom slot from the map layer card and the news log', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);
