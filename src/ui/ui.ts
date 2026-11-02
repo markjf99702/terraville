@@ -231,6 +231,7 @@ export class UI {
       const ro = new ResizeObserver(() => {
         this.stackCards();
         this.measureInsets();
+        this.fitInspect();
       });
       for (const id of INSET_PANELS) ro.observe($(root, id));
     }
@@ -1337,18 +1338,29 @@ export class UI {
 
   /**
    * In a short window (a phone on its side, or a laptop window at 200% zoom, 640x400), the card would grow up over the
-   * checklist or the goal and the top bar: there it stops below those it shares columns with, and scrolls.
+   * checklist or the goal card, the paused badge and the top bar: there it stops below those it shares columns with,
+   * and scrolls. On a phone on its side, a card that would have to scroll under the checklist or the goal card moves
+   * left of them instead, if that keeps it clear of the tools.
    */
   private fitInspect(): void {
     const card = $(this.root, '#inspect');
-    card.style.maxHeight = card.style.overflowY = '';
+    card.style.maxHeight = card.style.overflowY = card.style.right = '';
     if (card.hidden || !(this.short() || (this.narrow() && window.innerHeight <= 560))) return;
-    const r = card.getBoundingClientRect();
-    let top = $(this.root, '#topbar').getBoundingClientRect().bottom;
-    for (const id of ['#guide', '#goal']) {
-      const c = $(this.root, id).getBoundingClientRect();
-      if (c.width && c.left < r.right && r.left < c.right) top = Math.max(top, c.bottom);
+    const bar = $(this.root, '#topbar').getBoundingClientRect().bottom;
+    const boxes = (...ids: string[]) => ids.map((id) => $(this.root, id).getBoundingClientRect()).filter((c) => c.width);
+    const sharing = (r: DOMRect, cs: DOMRect[]) => cs.filter((c) => c.left < r.right && r.left < c.right);
+    let r = card.getBoundingClientRect();
+    const cards = sharing(r, boxes('#guide', '#goal'));
+    if (this.short() && cards.length) {
+      const edge = Math.min(...cards.map((c) => c.left)) - 8;
+      const tools = $(this.root, '#toolbox').getBoundingClientRect().right + 8;
+      const room = r.bottom - Math.max(bar, ...cards.map((c) => c.bottom)) - 8;
+      if (room < card.scrollHeight && edge - r.width >= tools) {
+        card.style.right = `${window.innerWidth - edge}px`;
+        r = card.getBoundingClientRect();
+      }
     }
+    const top = Math.max(bar, ...sharing(r, boxes('#pausedPill', '#guide', '#goal')).map((c) => c.bottom));
     card.style.maxHeight = `${Math.max(80, r.bottom - top - 8)}px`;
     card.style.overflowY = 'auto';
   }

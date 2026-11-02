@@ -2111,6 +2111,50 @@ try {
     await se.close();
   });
 
+  await test('a phone on its side: the Inspect card stays clear of the paused badge, the checklist and the goal card', async () => {
+    const ctx = await profile({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+    const { page, problems } = await open(ctx);
+    const cdp = await ctx.newCDPSession(page);
+    await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets: { left: 47, right: 47, top: 0, bottom: 21 } });
+    // Whatever is up near the top and shares columns with the card ends above the card's top.
+    const clash = () => page.evaluate(() => {
+      const card = document.querySelector('#inspect').getBoundingClientRect();
+      return ['#topbar', '#pausedPill', '#guide', '#goal'].flatMap((s) => {
+        const r = document.querySelector(s).getBoundingClientRect();
+        return r.width && r.left < card.right && card.left < r.right && r.top < card.top + 1 && r.bottom > card.top + 0.5 ? [`${s} ends at ${Math.round(r.bottom)}, the card starts at ${Math.round(card.top)}`] : [];
+      });
+    });
+    // A new city opens paused, with the checklist up: Inspect a lot on it.
+    await found(page);
+    await page.evaluate(() => {
+      const g = window.__terraville;
+      const w = g.world;
+      let at = null;
+      for (let y = 10; y < w.h - 10 && !at; y++) for (let x = 10; x < w.w - 10 && !at; x++) if (w.canPlace('res', x, y).ok) at = [x, y];
+      w.place('res', at[0], at[1]);
+      g.ui.inspect(at[0] + 1, at[1] + 1);
+    });
+    assert.deepEqual(await clash(), [], 'a lot in a new city, paused');
+    // Gridlock, paused, on a row of apartments: a tall card, and the goal card beside it.
+    await page.evaluate(() => window.__terraville.startScenario('gridlock'));
+    await page.click('.modal footer .btn.primary');
+    await page.evaluate(() => {
+      const g = window.__terraville;
+      g.setSpeed(0);
+      const b = [...g.world.buildings.values()].filter((b) => b.kind === 'res').sort((a, b) => b.level - a.level)[0];
+      g.ui.inspect(b.x + 1, b.y + 1);
+    });
+    assert.deepEqual(await clash(), [], 'apartments in Gridlock, paused');
+    // Folding the goal card away gives the card the room back.
+    const before = await page.evaluate(() => document.querySelector('#inspect').getBoundingClientRect().top);
+    await page.tap('#goal .goal-head');
+    await page.waitForTimeout(100);
+    assert.deepEqual(await clash(), [], 'with the goal folded');
+    assert.ok(await page.evaluate((t) => document.querySelector('#inspect').getBoundingClientRect().top <= t, before), 'and the card does not shrink');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('Inspect on a station shows its reach on the map, and closing the card puts the layer back', async () => {
     const ctx = await profile(DESK);
     const { page, problems } = await open(ctx);

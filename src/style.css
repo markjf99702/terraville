@@ -958,6 +958,7 @@ footer.jd-foot { display: block; margin: 0; padding: 4px 0 0; border: 0; font-si
   #editorPanel { top: max(calc(var(--top) + 66px), calc(var(--bar-bottom) + 5px)); max-height: calc(100% - var(--top) - var(--bottom) - 68px); }
   [data-mode="editor"] #minimapCard:not(.show) { display: none; }
   [data-mode="editor"] #minimapCard.show { right: calc(var(--right) + 270px); }
+  .inspecting #pausedPill { display: none; } /* it would sit on the card's title; the stats say Paused too */
   /* The title screen in two columns, so every choice is in sight: the sign and the words, and the buttons beside them. */
   #title { background: rgba(8, 12, 10, 0.78); padding-top: calc(var(--top) + 12px); padding-bottom: calc(var(--bottom) + 12px); }
   .title-inner {
