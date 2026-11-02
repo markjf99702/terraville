@@ -392,6 +392,35 @@ await test('Inspect tells a lot with no road to the other side of town from one 
   assert.deepEqual(at('Some zones have no road access'), [[lonely.x + 1, lonely.y + 1]]);
 }));
 
+await test('with shops in demand, the advisor says why an empty shop lot cannot open before it asks for more land', () => {
+  const w = flat(40, 30);
+  w.city.month = 12;
+  w.place('coal', 1, 1);
+  applyLine(w, ROAD, planLine(w, ROAD, linePath(1, 6, 38, 6)));
+  const shop = w.place('com', 20, 3); // on the road, but no wire to the plant
+  const advice = () => {
+    const sim = new Sim(w);
+    w.city.demand = { r: 0, c: 1, i: 0 };
+    (sim as any).advise();
+    return sim.messages.filter((m) => m.text.startsWith('Shops')).map(({ text, x, y }) => ({ text, x, y }));
+  };
+  assert.deepEqual(advice(), [{ text: 'Shops are in demand, but the empty commercial lot has no power.', x: shop.x + 1, y: shop.y + 1 }]);
+  // Wired up, the lot is ready to open, and one is not enough.
+  applyLine(w, POWER, planLine(w, POWER, linePath(5, 2, 20, 2)));
+  assert.deepEqual(advice(), [{ text: 'Shops are in demand. Zone more commercial land.', x: undefined, y: undefined }]);
+  // Powered but off the road: lots that cannot open are what to fix.
+  const back = w.place('com', 24, 9);
+  const back2 = w.place('com', 27, 9);
+  applyLine(w, POWER, planLine(w, POWER, linePath(21, 2, 23, 2)));
+  applyLine(w, POWER, planLine(w, POWER, linePath(23, 3, 23, 10)));
+  const sim = new Sim(w);
+  assert.deepEqual([back.powered, back2.powered, back.road, back2.road], [true, true, false, false]);
+  assert.equal(sim.stats.vacantReady.com, 1);
+  assert.deepEqual(advice(), [{ text: 'Shops are in demand. Zone more commercial land.', x: undefined, y: undefined }]);
+  w.remove(shop.id);
+  assert.deepEqual(advice(), [{ text: 'Shops are in demand, but the empty commercial lots have no road.', x: back.x + 1, y: back.y + 1 }]);
+});
+
 await test('the landmark limits: 18,000 residents, 5,000 shop jobs, 4,000 factory jobs', () => {
   const w = flat(60, 40);
   for (let k = 0; k < 9; k++) w.setLevel(w.place('res', 1 + k * 3, 1), 8); // 19,800 residents

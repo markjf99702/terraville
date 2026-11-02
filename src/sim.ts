@@ -52,6 +52,8 @@ export interface Stats {
   gridsShort: number;
   zones: { res: number; com: number; ind: number };
   vacant: { res: number; com: number; ind: number };
+  /** Vacant lots that can open as soon as there is demand: powered, and on a road. */
+  vacantReady: { res: number; com: number; ind: number };
   unpowered: number;
   noRoad: number;
   noTrip: number;
@@ -185,7 +187,7 @@ export class Sim {
     return {
       residents: 0, comJobs: 0, indJobs: 0, workers: 0, unemployment: 0,
       powerSupply: 0, powerDemand: 0, powerGrids: 0, gridsShort: 0,
-      zones: { res: 0, com: 0, ind: 0 }, vacant: { res: 0, com: 0, ind: 0 },
+      zones: { res: 0, com: 0, ind: 0 }, vacant: { res: 0, com: 0, ind: 0 }, vacantReady: { res: 0, com: 0, ind: 0 },
       unpowered: 0, noRoad: 0, noTrip: 0,
       avgLandValue: 0, avgPollution: 0, avgCrime: 0, avgTraffic: 0, fires: 0,
       approval: 50, score: 500, problems: [],
@@ -811,6 +813,7 @@ export class Sim {
     let res = 0, com = 0, ind = 0;
     s.zones = { res: 0, com: 0, ind: 0 };
     s.vacant = { res: 0, com: 0, ind: 0 };
+    s.vacantReady = { res: 0, com: 0, ind: 0 };
     s.unpowered = 0;
     s.noRoad = 0;
     s.noTrip = 0;
@@ -822,7 +825,10 @@ export class Sim {
       if (!isZone(b.kind)) continue;
       const k = b.kind as 'res' | 'com' | 'ind';
       s.zones[k]++;
-      if (b.level === 0) s.vacant[k]++;
+      if (b.level === 0) {
+        s.vacant[k]++;
+        if (b.powered && b.road) s.vacantReady[k]++;
+      }
       if (k === 'res') res += b.pop;
       else if (k === 'com') com += b.pop;
       else ind += b.pop;
@@ -1024,9 +1030,11 @@ export class Sim {
     const d = city.demand;
     if (zones === 0) {
       if (month >= 2) this.say('nozones', 'Nothing is zoned yet. Pick Residential, Commercial or Industrial from the toolbox and drag across open land next to a road.', 'info', undefined, 12);
-    } else if (d.r > 0.45 && s.vacant.res < 2) this.say('needres', 'People want to move here. Zone more residential land.', 'info', undefined, 8);
-    if (zones > 0 && d.c > 0.45 && s.vacant.com < 2) this.say('needcom', 'Shops are in demand. Zone more commercial land.', 'info', undefined, 8);
-    if (zones > 0 && d.i > 0.45 && s.vacant.ind < 2) this.say('needind', 'Factories are looking for space. Zone more industrial land.', 'info', undefined, 8);
+    } else {
+      this.needLand('res', d.r, 'People want to move here', 'residential');
+      this.needLand('com', d.c, 'Shops are in demand', 'commercial');
+      this.needLand('ind', d.i, 'Factories are looking for space', 'industrial');
+    }
     if (s.avgTraffic > 110) this.say('traffic', 'Traffic jams are getting bad. Add roads or rail.', 'warn', undefined, 12);
     if (s.avgPollution > 100) this.say('pollution', 'Pollution is choking the city.', 'warn', undefined, 12);
     if (s.avgCrime > 90) this.say('crime', 'Crime is rising. More police stations would help.', 'warn', undefined, 12);
@@ -1058,6 +1066,30 @@ export class Sim {
       this.say('class' + idx, text, 'good', undefined, 0);
       this.emit({ type: 'class', text });
     }
+  }
+
+  /**
+   * With strong demand for a zone and fewer than two lots ready to take it, ask for more land; but when there are
+   * empty lots of that zone and none can open, more land would sit dark beside them, so say what they lack instead.
+   */
+  private needLand(k: 'res' | 'com' | 'ind', demand: number, want: string, zone: string): void {
+    const s = this.stats;
+    if (demand <= 0.45 || s.vacantReady[k] >= 2) return;
+    if (s.vacant[k] === 0 || s.vacantReady[k] > 0) {
+      this.say('need' + k, `${want}. Zone more ${zone} land.`, 'info', undefined, 8);
+      return;
+    }
+    let dark = 0, off = 0, first: Building | undefined;
+    for (const b of this.world.buildings.values()) {
+      if (b.kind !== k || b.level !== 0) continue;
+      first ??= b;
+      if (!b.powered) dark++;
+      if (!b.road) off++;
+    }
+    const n = s.vacant[k];
+    const lack = dark && off ? (dark === n && off === n ? 'no power and no road' : 'no power or no road') : dark ? 'no power' : 'no road';
+    const lots = n > 1 ? `the empty ${zone} lots have` : `the empty ${zone} lot has`;
+    this.say('need' + k, `${want}, but ${lots} ${lack}.`, 'info', first && { x: first.x + 1, y: first.y + 1 }, 8);
   }
 
   /** The middle of the first zone `is` picks out, for Go there. */
