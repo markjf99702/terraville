@@ -163,6 +163,7 @@ export function buildShell(root: HTMLElement): { map: HTMLCanvasElement; minimap
       <button class="iconbtn" id="zoomFit" aria-label="Whole map" title="Whole map (0)">${ICONS.fit}</button>
       <div class="mm-row">
         <select id="overlaySel" aria-label="Map layer"></select>
+        <button class="mm-toggle" id="mmToggle" aria-pressed="false" hidden>${ICONS.map}</button>
         <button class="iconbtn" id="zoomOut" aria-label="Zoom out">${ICONS.minus}</button>
         <button class="iconbtn" id="zoomIn" aria-label="Zoom in">${ICONS.plus}</button>
       </div>
@@ -254,6 +255,10 @@ export class UI {
     try { return sessionStorage.getItem('terraville.goalFolded') === '1'; } catch { return false; }
   })();
   private chartRange = 120;
+  /** On a phone, the map layer card shows its overview map: off until asked for, then kept for the session. */
+  private overviewShown = (() => {
+    try { return sessionStorage.getItem('terraville.overview') === '1'; } catch { return false; }
+  })();
 
   constructor(private game: Game, private root: HTMLElement) {
     this.buildMinimapControls();
@@ -268,6 +273,7 @@ export class UI {
     });
     window.addEventListener('resize', () => {
       this.closeDropdown();
+      this.syncOverview();
       this.syncBarBottom();
       this.redrawGoal();
       this.fitInspect();
@@ -1050,6 +1056,11 @@ export class UI {
     $(this.root, '#zoomIn').onclick = () => this.game.renderer.zoomAt(this.game.renderer.cssW / 2, this.game.renderer.cssH / 2, 1.4);
     $(this.root, '#zoomOut').onclick = () => this.game.renderer.zoomAt(this.game.renderer.cssW / 2, this.game.renderer.cssH / 2, 1 / 1.4);
     $(this.root, '#zoomFit').onclick = () => this.game.fitMap();
+    $(this.root, '#mmToggle').onclick = () => {
+      this.overviewShown = !this.overviewShown;
+      try { sessionStorage.setItem('terraville.overview', this.overviewShown ? '1' : ''); } catch { /* ignore */ }
+      this.syncOverview();
+    };
     const mm = $<HTMLCanvasElement>(this.root, '#minimap');
     let dragging = false;
     const go = (e: PointerEvent) => {
@@ -1080,7 +1091,9 @@ export class UI {
     for (const opt of sel.options) opt.disabled = editor && opt.value !== 'none' && opt.value !== 'slope';
     const def = OVERLAYS.find((x) => x.id === o)!;
     $(this.root, '#minimapCard').classList.toggle('show', o !== 'none');
+    this.syncOverview();
     const leg = $(this.root, '#legend');
+    leg.classList.toggle('slope', o === 'slope');
     if (o === 'none') {
       leg.hidden = true;
       return;
@@ -1102,6 +1115,24 @@ export class UI {
       return;
     }
     leg.innerHTML = `<span>${def.low}</span><span class="ramp" style="background:linear-gradient(90deg, ${def.color}33, ${def.color})"></span><span>${def.high}</span>`;
+  }
+
+  /**
+   * On a phone the map layer card would cover a fifth of the map: it shows the layer and its legend, and the overview
+   * map only once its Map button asks for it. A phone on its side does the same, where the card would run under the
+   * checklist or the goal card.
+   */
+  private syncOverview(): void {
+    // A phone held upright (a tablet's card has the room), or on its side.
+    const phone = (this.narrow() && window.innerWidth <= 600) || (this.short() && matchMedia('(pointer: coarse)').matches);
+    const btn = $(this.root, '#mmToggle');
+    btn.hidden = !phone;
+    btn.setAttribute('aria-pressed', String(this.overviewShown));
+    btn.setAttribute('aria-label', 'Overview map');
+    btn.title = this.overviewShown ? 'Hide the overview map' : 'Show the overview map';
+    const card = $(this.root, '#minimapCard');
+    card.classList.toggle('mm-phone', phone);
+    card.classList.toggle('mm-folded', phone && !this.overviewShown);
   }
 
   // ---- dropdowns -------------------------------------------------------------------

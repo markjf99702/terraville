@@ -358,6 +358,16 @@ input[type="range"] { width: 100%; accent-color: var(--sign-hi); margin: 0; touc
   padding: 0 8px;
 }
 .mm-row .iconbtn { width: 30px; height: 30px; border: 1px solid var(--line); background: var(--panel-2); }
+/* On a phone the overview map waits for its Map button (see syncOverview in ui.ts). */
+.mm-toggle { flex: none; width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border-radius: 7px; border: 1px solid var(--line); background: var(--panel-2); color: var(--muted); }
+.mm-toggle svg { width: 20px; height: 20px; }
+.mm-toggle:hover { color: var(--text); border-color: var(--line-2); }
+.mm-toggle[aria-pressed="true"] { background: var(--panel-3); color: var(--text); border-color: var(--line-2); }
+#minimapCard.mm-folded #minimap, #minimapCard.mm-folded #zoomFit { display: none; }
+/* On a phone the four steepness classes go 2 by 2, each with its figure under its name. */
+.mm-phone #legend.slope { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 6px; }
+.mm-phone #legend.slope > span { flex-wrap: wrap; row-gap: 0; margin-right: 0 !important; }
+.mm-phone #legend.slope .num { flex-basis: 100%; padding-left: 14px; white-space: nowrap; }
 /* Whole map sits on the overview map's corner, leaving the layer's name its room in the row below. */
 #zoomFit { position: absolute; top: 12px; right: 12px; width: 28px; height: 28px; border: 1px solid var(--line-2); background: rgba(14, 20, 18, 0.78); }
 #zoomFit:hover { background: var(--panel-3); }
@@ -984,6 +994,10 @@ footer.jd-foot { display: block; margin: 0; padding: 4px 0 0; border: 0; font-si
   .title-foot { align-self: auto; background: none; box-shadow: none; }
   footer.jd-foot { text-align: left; }
 }
+/* A phone on its side: fingers pinch to zoom, and the layer's name and the Map button get the room. */
+@media (max-height: 500px) and (orientation: landscape) and (pointer: coarse) {
+  #minimapCard .mm-row .iconbtn { display: none; }
+}
 /* A phone on its side under 760 px (an iPhone SE is 667): the bar sheds the funds' monthly change, the R, C and I
    letters and the cloud (the menu carries a dot instead), and closes up, so it still fits one row; the news drops its
    date, as on a phone held upright. */
@@ -1057,6 +1071,7 @@ footer.jd-foot { display: block; margin: 0; padding: 4px 0 0; border: 0; font-si
   #minimapCard { display: none; }
   #minimapCard.show { display: flex; right: calc(var(--right) + 8px); bottom: calc(var(--bottom) + 90px + var(--ticker-h, 38px)); width: 180px; }
   #minimapCard.show #minimap { height: 120px; }
+  #minimapCard.show.mm-phone { width: 220px; } /* the layer's name keeps its room beside the overview map's button */
   #minimapCard .mm-row .iconbtn { display: none; } /* fingers pinch to zoom; the layer's name gets the room */
   #inspect { right: calc(var(--right) + 8px); left: calc(var(--left) + 8px); width: auto; bottom: calc(var(--bottom) + 90px + var(--ticker-h, 38px)); max-height: none; overflow-y: visible; }
   .inspecting #minimapCard.show { display: none; } /* the Inspect card has the slot while it is open */
@@ -1106,7 +1121,7 @@ footer.jd-foot { display: block; margin: 0; padding: 4px 0 0; border: 0; font-si
   .bars > button.barrow.worry { min-height: 32px; margin: 0 -6px; }
   .dropdown button { min-height: 44px; }
   #ticker button { height: 40px; }
-  .mm-row select { height: 40px; }
+  .mm-row select { height: 44px; }
   .btn.small { height: 40px; }
   .guide-nav button { min-height: 40px; }
 }

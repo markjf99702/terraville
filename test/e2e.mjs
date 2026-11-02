@@ -2025,6 +2025,52 @@ try {
     await ctx.close();
   });
 
+  await test("on a phone the map layer card leaves out the overview map until its button asks for it, for the session; a laptop's card is as it was", async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await found(page);
+    const card = () => page.evaluate(() => {
+      const box = (s) => { const e = document.querySelector(s); const r = e.getBoundingClientRect(); return e.getClientRects().length ? { top: r.top, bottom: r.bottom, left: r.left, right: r.right, height: r.height } : null; };
+      return { card: box('#minimapCard'), overview: box('#minimap'), button: box('#mmToggle'), pressed: document.querySelector('#mmToggle').getAttribute('aria-pressed') };
+    });
+    // Level land turns on the steepness: the card has the layer, its legend 2 by 2, and the button, and no overview map.
+    await page.evaluate(() => window.__terraville.setTool('level'));
+    let c = await card();
+    assert.equal(c.overview, null, 'no overview map at first');
+    assert.ok(c.button && c.button.height >= 44 && c.button.bottom <= c.card.bottom, 'a 44 px button in the card shows it');
+    assert.ok(c.card.height < 160, `the card is ${Math.round(c.card.height)} px tall`);
+    assert.equal(await page.$eval('#legend', (l) => getComputedStyle(l).gridTemplateColumns.split(' ').length), 2, 'the steepness legend is 2 by 2');
+    await page.tap('#mmToggle');
+    c = await card();
+    assert.ok(c.overview && c.overview.height > 100 && c.pressed === 'true', 'the button brings the overview map back');
+    // Kept for the session: after a reload the next layer's card has it too.
+    await page.reload();
+    await titleUp(page);
+    await page.click('[data-act="continue"]');
+    await page.waitForFunction(() => window.__terraville.mode === 'city');
+    await page.evaluate(() => window.__terraville.ui.setOverlay('traffic'));
+    assert.ok((await card()).overview, 'the overview map stays for the session');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+    // A phone on its side: the card, a single row, keeps below the goal card.
+    const side = await profile({ viewport: { width: 812, height: 375 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+    const { page: s, problems: inS } = await open(side);
+    await s.evaluate(() => window.__terraville.startScenario('gridlock'));
+    await s.click('.modal footer .btn.primary');
+    const [goal, mm] = await s.evaluate(() => ['#goal', '#minimapCard'].map((q) => document.querySelector(q).getBoundingClientRect().toJSON()));
+    assert.ok(mm.top >= goal.bottom, `the map layer card (top ${mm.top}) keeps below the goal card (bottom ${goal.bottom})`);
+    assert.deepEqual(inS, []);
+    await side.close();
+    // A laptop's card has its overview map and no button.
+    const desk = await profile(DESK);
+    const { page: d, problems: inD } = await open(desk);
+    await found(d);
+    assert.equal(await d.isVisible('#minimap'), true);
+    assert.equal(await d.isVisible('#mmToggle'), false);
+    assert.deepEqual(inD, []);
+    await desk.close();
+  });
+
   await test("on a phone the top bar keeps to two rows of finger-sized buttons, and the cards below it never cover the speed buttons", async () => {
     // Speed buttons that something else covers: a tap on one would land on that instead.
     const covered = (page) => page.evaluate(() => [...document.querySelectorAll('[data-speed]')].filter((b) => {
