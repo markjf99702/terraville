@@ -251,7 +251,7 @@ export const DISASTER_POP = 5000;
 export const DIFFICULTIES: Difficulty[] = [
   { id: 'easy', name: 'Easy', funds: 20000, income: 1.2, disasters: 0.5 },
   { id: 'medium', name: 'Medium', funds: 10000, income: 1.0, disasters: 1 },
-  { id: 'hard', name: 'Hard', funds: 5000, income: 0.85, disasters: 1.6 },
+  { id: 'hard', name: 'Hard', funds: 7500, income: 0.85, disasters: 1.6 },
 ];
 
 export const MAP_SIZES = [

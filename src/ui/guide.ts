@@ -42,7 +42,7 @@ function sections(): Section[] {
       html: `
         <p>Every city starts the same way: power, a few lots of each kind, roads between them, and wires to the lots. A new city starts paused, so nothing happens until you are ready.</p>
         <ol class="steps">
-          <li><b>Build a coal plant.</b> It costs ${money(b.coal.cost)} and makes ${num(b.coal.capacity!)} MW, enough for about ${Math.floor(b.coal.capacity! / 9)} lots. Put it at the edge of where the town will go, because it pollutes heavily.</li>
+          <li><b>Build a coal plant.</b> It costs ${money(b.coal.cost)} and makes ${num(b.coal.capacity!)} MW, enough for about ${Math.floor(b.coal.capacity! / 9)} lots. Put it at the edge of where the town will go, because it pollutes heavily. On Hard, a few wind turbines (${money(b.wind.cost)} each) are the safer start: a coal plant’s upkeep outruns a small town’s taxes.</li>
           <li><b>Lay a road spine</b> through open, gentle ground. Roads every 7 tiles leave room for a 2×2 block of lots, and every lot in the block touches a road.</li>
           <li><b>Zone a mix.</b> Start with about four residential lots, two industrial and one or two commercial. Keep industry at least a block away from the houses.</li>
           <li><b>Run a power line</b> from the plant to the nearest lot. Lots that touch each other pass power along, so one wire can feed a whole block, but not across a road: give each block its own short wire, or run one line along the road past them.</li>

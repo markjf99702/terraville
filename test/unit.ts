@@ -2185,6 +2185,16 @@ await test('a gap bulldozed beside a fire stays cleared: undo refuses it once th
   assert.equal(w.buildings.has(left.id), false);
 }));
 
+await test('a city founded on Easy starts with $20,000, on Medium $10,000, and on Hard $7,500', () => {
+  const funds = (['easy', 'medium', 'hard'] as const).map((d) => {
+    const g = headless(flat(40, 30));
+    g.foundCity('Riverton', d, true);
+    assert.equal(g.world.city.difficulty, d);
+    return g.world.city.funds;
+  });
+  assert.deepEqual(funds, [20000, 10000, 7500]);
+});
+
 await test('a landmark on fire is not offered an upgrade, and cannot be sold one', () => seeded(42, () => {
   const g = town();
   const w = g.world;
