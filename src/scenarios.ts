@@ -263,7 +263,8 @@ export function openScenario(sim: Sim): void {
 
 /** Build the scenario's world, ready to hand to a Sim. */
 export function buildScenario(s: Scenario, w = 120, h = 100): World {
-  const params: TerrainParams = { ...DEFAULT_TERRAIN, seed: s.id, w, h, ...s.terrain };
+  // The land the challenge cities were laid out on, whatever the generator has learned since.
+  const params: TerrainParams = { ...DEFAULT_TERRAIN, seed: s.id, w, h, ...s.terrain, classic: true };
   const world = generateTerrain(params);
   world.city = newCityState();
   world.city.name = s.name;

@@ -28,6 +28,11 @@ export interface TerrainParams {
    * so the seed and sliders alone no longer make it.
    */
   shaped?: boolean;
+  /**
+   * The generator as it was when the challenge cities were laid out, before archipelagos had islands: the challenges
+   * set this so their land, and the cities built on it, never move.
+   */
+  classic?: boolean;
 }
 
 export const DEFAULT_TERRAIN: Omit<TerrainParams, 'seed' | 'w' | 'h'> = {
@@ -78,6 +83,19 @@ export function cleanTerrain(raw: unknown, base: TerrainParams): TerrainParams {
 
 const DIRS4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
+/**
+ * An archipelago: its outline rounds off from ARCH_IN to ARCH_OUT of the way out from the middle, sinking ARCH_DROP.
+ * Its straits follow the zero lines of a noise of scale STRAIT_S tiles: the sea bed sinks from STRAIT_IN of the way
+ * to a line (1 on it) by up to STRAIT_DROP. On 20 Classic seeds at the default settings these make 6 to 11 islands of
+ * 150 tiles or more, none with more than 36% of the land, each with room for a flat lot.
+ */
+const ARCH_IN = 0.55;
+const ARCH_OUT = 0.95;
+const ARCH_DROP = 1.2;
+const STRAIT_S = 32;
+const STRAIT_IN = 0.6;
+const STRAIT_DROP = 1.8;
+
 export function generateTerrain(p: TerrainParams): World {
   const { w, h } = p;
   const world = new World(w, h);
@@ -89,6 +107,8 @@ export function generateTerrain(p: TerrainParams): World {
   const mtn = new Noise2D(seed + 2);
   const detail = new Noise2D(seed + 3);
   const forestN = new Noise2D(seed + 4);
+  // The channels between an archipelago's islands.
+  const strait = new Noise2D(seed + 5);
 
   const S = 44; // feature scale in tiles
   const rough = p.rough / 100;
@@ -97,6 +117,9 @@ export function generateTerrain(p: TerrainParams): World {
   // A smoother twin of `e` that drives elevation, so coastlines can be
   // intricate while the lowlands behind them stay buildable.
   const eh = new Float32Array(n);
+  // An archipelago's land without its straits cut, to set how high its islands stand: as high as one big island's
+  // would, not raised by all the sea the straits take.
+  const isles = p.style === 'archipelago' && !p.classic ? new Float32Array(n) : null;
 
   // Style mask parameters.
   const angle = rng() * Math.PI * 2;
@@ -135,10 +158,20 @@ export function generateTerrain(p: TerrainParams): World {
           break;
         }
         case 'archipelago': {
-          const r = Math.max(Math.abs(nx), Math.abs(ny));
-          m = 0.05 - smoothstep(0.6, 1.0, r) * 0.8;
           c = base.fbm((u + wAmt * qx) * 1.8, (v + wAmt * qy) * 1.8, 5, 2, 0.5);
           cs = base.fbm((u + wAmt * qx) * 1.8, (v + wAmt * qy) * 1.8, 2, 2, 0.5);
+          if (p.classic) {
+            const r = Math.max(Math.abs(nx), Math.abs(ny));
+            m = 0.05 - smoothstep(0.6, 1.0, r) * 0.8;
+            break;
+          }
+          // A rounded, ragged outline instead of a square one, and winding straits cut across it, so the land breaks
+          // into islands.
+          const r = Math.pow(nx ** 4 + ny ** 4, 0.25) + warp.get(x / 26, y / 26) * 0.1;
+          const st = 1 - Math.abs(strait.get(x / STRAIT_S + qx * 0.4, y / STRAIT_S + qy * 0.4));
+          m = 0.05 - smoothstep(ARCH_IN, ARCH_OUT, r) * ARCH_DROP;
+          isles![y * w + x] = c * 0.55 + m;
+          m -= smoothstep(STRAIT_IN, 1, st) * STRAIT_DROP;
           break;
         }
         case 'lakes': {
@@ -165,15 +198,20 @@ export function generateTerrain(p: TerrainParams): World {
   // Sea threshold from the requested water share.
   const sea = hasSea(p.style);
   let thr = -Infinity;
+  /** Where the land starts rising from, for its height; the shore everywhere but an archipelago's. */
+  let lift = NaN;
   let minH = Infinity;
   if (sea) {
-    const frac = p.style === 'archipelago' ? 0.35 + (p.water / 100) * 0.4 : 0.08 + (p.water / 100) * 0.55;
+    const frac = p.style !== 'archipelago' ? 0.08 + (p.water / 100) * 0.55
+      : p.classic ? 0.35 + (p.water / 100) * 0.4 : 0.45 + (p.water / 100) * 0.35;
     const sorted = Float32Array.from(e).sort();
     thr = sorted[Math.floor(clamp(frac, 0, 0.95) * (n - 1))];
+    if (isles) lift = Float32Array.from(isles).sort()[Math.floor(clamp(frac, 0, 0.95) * (n - 1))];
   } else {
     for (let i = 0; i < n; i++) minH = Math.min(minH, e[i], eh[i]);
     thr = minH - 0.01;
   }
+  if (Number.isNaN(lift)) lift = thr;
 
   // Elevation: gentle plains everywhere, plus mountain ranges confined to
   // regions picked by a very low-frequency mask. `hills` widens the regions
@@ -190,8 +228,10 @@ export function generateTerrain(p: TerrainParams): World {
         world.water[i] = 1;
         continue;
       }
-      const ah = Math.max(0, eh[i] - thr);
-      let height = 0.6 + a * 3 + ah * (14 + hills * 26);
+      // Near a strait an archipelago's land lies low, below where its islands start rising.
+      const al = Math.max(0, e[i] - lift);
+      const ah = Math.max(0, eh[i] - lift);
+      let height = 0.6 + al * 3 + ah * (14 + hills * 26);
       const region = mtn.fbm(x / 70 + 40, y / 70 - 12, 3);
       const mask = smoothstep(regionT - 0.12, regionT + 0.22, region) * smoothstep(0.06, 0.3, ah);
       if (mask > 0) {

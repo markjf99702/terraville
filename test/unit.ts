@@ -45,6 +45,53 @@ await test('terrain is deterministic for a seed', () => {
   assert.notDeepEqual(a.height, c.height);
 });
 
+/** The bodies of land on a map, largest first, in tiles. */
+function landBodies(world: World): number[] {
+  const { w, h, n } = world;
+  const seen = new Uint8Array(n);
+  const out: number[] = [];
+  for (let s = 0; s < n; s++) {
+    if (seen[s] || world.water[s]) continue;
+    const stack = [s];
+    seen[s] = 1;
+    let size = 0;
+    while (stack.length) {
+      const i = stack.pop()!;
+      size++;
+      const x = i % w, y = (i / w) | 0;
+      for (const j of [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, y > 0 ? i - w : -1, y < h - 1 ? i + w : -1]) {
+        if (j >= 0 && !seen[j] && !world.water[j]) {
+          seen[j] = 1;
+          stack.push(j);
+        }
+      }
+    }
+    out.push(size);
+  }
+  return out.sort((a, b) => b - a);
+}
+
+await test('an archipelago is islands: several big ones, none with most of the land', () => {
+  for (let k = 0; k < 5; k++) {
+    const world = generateTerrain({ ...DEFAULT_TERRAIN, style: 'archipelago', seed: `probe-${k}-seed`, w: 120, h: 100 });
+    const bodies = landBodies(world);
+    const land = bodies.reduce((a, b) => a + b, 0);
+    assert.ok(bodies.filter((b) => b >= 150).length >= 3, `probe-${k}-seed: three islands of 150 tiles or more`);
+    assert.ok(bodies[0] < land * 0.6, `probe-${k}-seed: the largest holds ${Math.round((100 * bodies[0]) / land)}% of the land`);
+  }
+});
+
+await test('the challenges\' land is the land they were laid out on, whatever the generator has learned since', () => {
+  // Checksums of the classic generator's land, taken before archipelagos had islands.
+  const sum = (style: 'archipelago' | 'coast' | 'lakes', seed: string) => {
+    const w = generateTerrain({ ...DEFAULT_TERRAIN, style, seed, w: 120, h: 100, classic: true });
+    let h = 0;
+    for (let i = 0; i < w.n; i++) h = (Math.imul(h, 31) + w.water[i] * 7 + w.trees[i] + Math.round(w.height[i] * 10)) | 0;
+    return h;
+  };
+  assert.deepEqual([sum('archipelago', 'amber-isle-11'), sum('coast', 'boomtown-coast-7'), sum('lakes', 'gridlock-plain-3')], [1539356577, -1648787258, -1269814288]);
+});
+
 await test('run-length encoding round-trips', () => {
   const a = new Uint8Array(5000);
   for (let i = 0; i < a.length; i++) a[i] = i % 97 < 60 ? 0 : (i * 7) & 255;
