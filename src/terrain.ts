@@ -314,8 +314,7 @@ export function generateTerrain(p: TerrainParams): World {
 /**
  * Sweep away the specks the noise leaves: bits of land under 6 tiles become water, and ponds under 4 tiles that no
  * river runs through become land, at the height of what is around them, unless filling one would join two islands. A
- * one-tile pond blocks every lot over it and needs a bridge for a road; a one-tile islet is only clutter. (The 1989
- * generator smoothed its water the same way.)
+ * one-tile pond blocks every lot over it and needs a bridge for a road; a one-tile islet is only clutter.
  */
 function tidy(world: World, river: Uint8Array): void {
   const { w, h, n } = world;
