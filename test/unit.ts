@@ -1142,19 +1142,22 @@ await test('setting off a fire always starts one where something can burn, and s
   }
 }));
 
-await test('a town big enough for fires is told what a fire or police station costs and does', () => seeded(2, () => {
-  const news = (disasters: boolean) => {
+await test('a town big enough for fires is told what a fire or police station costs and does, and when fires start', () => seeded(2, () => {
+  const news = (disasters: boolean, levels = [8, 8]) => {
     const w = flat(40, 30);
     w.city.disasters = disasters;
     w.city.month = 24;
-    for (const x of [2, 6]) w.setLevel(w.place('res', x, 2), 8);
+    levels.forEach((lv, k) => w.setLevel(w.place('res', 2 + 4 * k, 2), lv));
     const sim = new Sim(w);
     for (let k = 0; k < 4; k++) sim.step();
-    assert.ok(sim.stats.residents > 2500, `${sim.stats.residents} residents`);
+    const pop = sim.stats.residents;
+    assert.ok(levels.length === 2 ? pop > 2500 && pop < 5000 : pop >= 5000, `${pop} residents`);
     return sim.messages.map((m) => m.text).filter((t) => t.includes('station'));
   };
   const police = 'The city has no police station. Crime grows as the town gets crowded; a station ($500, $45 a month) keeps it down nearby.';
-  assert.deepEqual(news(true), ['The city has no fire station. Fires break out from time to time now; a station ($500, $45 a month) puts them out nearby.', police]);
+  // Asked at 2,500 residents, before random fires start at 5,000.
+  assert.deepEqual(news(true), ['The city has no fire station. Fires break out from time to time once it has 5,000 residents; a station ($500, $45 a month) puts them out nearby.', police]);
+  assert.deepEqual(news(true, [8, 8, 7]), ['The city has no fire station. Fires break out from time to time now; a station ($500, $45 a month) puts them out nearby.', police]);
   // With random disasters off, no fire starts on its own.
   assert.deepEqual(news(false), ['The city has no fire station. Should a fire start, a station ($500, $45 a month) puts it out nearby.', police]);
 }));
@@ -1323,25 +1326,29 @@ await test('a save with rubble left burning for years opens with it put out', ()
   assert.equal(back.fire[6 * w.w + 6], 7);
 });
 
-await test('random disasters wait for a town big enough to need a fire station', () => {
-  const w = flat(60, 40);
-  w.city.disasters = true;
-  w.city.difficulty = 'hard';
-  w.setLevel(w.place('res', 2, 2), 8); // 2,200 residents
-  const sim = new Sim(w);
-  const seen: string[] = [];
-  sim.on((e) => { if (e.type === 'disaster') seen.push(e.kind); });
-  const random = Math.random;
-  Math.random = () => 0.001; // every roll says "disaster"
-  try {
-    sim.disasters.month();
-    assert.deepEqual(seen, []);
-    w.setLevel(w.place('res', 5, 2), 5); // 2,560 residents
-    sim.tally();
-    sim.disasters.month();
-    assert.deepEqual(seen, ['fire']);
-  } finally {
-    Math.random = random;
+await test('random disasters wait for a city of 5,000 on every difficulty, well after it is asked for a fire station', () => {
+  for (const difficulty of ['easy', 'medium', 'hard'] as const) {
+    const w = flat(60, 40);
+    w.city.disasters = true;
+    w.city.difficulty = difficulty;
+    w.setLevel(w.place('res', 2, 2), 8);
+    w.setLevel(w.place('res', 5, 2), 8);
+    w.setLevel(w.place('res', 8, 2), 5); // 4,760 residents
+    const sim = new Sim(w);
+    const seen: string[] = [];
+    sim.on((e) => { if (e.type === 'disaster') seen.push(e.kind); });
+    const random = Math.random;
+    Math.random = () => 0.001; // every roll says "disaster"
+    try {
+      sim.disasters.month();
+      assert.deepEqual(seen, [], difficulty);
+      w.setLevel(w.place('res', 11, 2), 5); // 5,120 residents
+      sim.tally();
+      sim.disasters.month();
+      assert.deepEqual(seen, ['fire'], difficulty);
+    } finally {
+      Math.random = random;
+    }
   }
 });
 
@@ -1350,7 +1357,8 @@ await test('a nuclear plant melts down rarely: 0.04% a month on Medium', () => {
   w.city.disasters = true;
   w.city.difficulty = 'medium';
   w.setLevel(w.place('res', 2, 2), 8);
-  w.setLevel(w.place('res', 5, 2), 5); // 2,560 residents, so random disasters are on
+  w.setLevel(w.place('res', 5, 2), 8);
+  w.setLevel(w.place('res', 8, 2), 7); // 5,800 residents, so random disasters are on
   const plant = w.place('nuclear', 20, 20);
   const sim = new Sim(w);
   const seen: string[] = [];

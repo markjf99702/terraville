@@ -3,7 +3,7 @@
 // pictures are drawn with the game's renderer.
 import {
   AUTO_GRADE, BRIDGE_COST, BUILDINGS, CITY_CLASSES, DISASTER_POP, DOES, GRADE_COST, Kind, LANDMARK_LIMITS, NET_COST,
-  NET_MAX_SLOPE, NET_UPKEEP, POWER, ROAD, UPGRADES, UPGRADE_LV, ZONE_LV_GATE, ZONE_POP, num,
+  NET_MAX_SLOPE, NET_UPKEEP, POWER, ROAD, STATION_POP, UPGRADES, UPGRADE_LV, ZONE_LV_GATE, ZONE_POP, num,
 } from '../defs';
 import { lessMotion } from '../motion';
 import { DC, drawBuilding, drawNet, drawTrees } from '../render/sprites';
@@ -192,7 +192,7 @@ function sections(): Section[] {
       id: 'disasters',
       title: 'Disasters',
       html: `
-        <p>Random disasters start once a city passes ${num(DISASTER_POP)} residents, about when it needs its first fire station, and can be switched off from the Disasters menu. Harder difficulties bring them more often.</p>
+        <p>Random disasters start once a city passes ${num(DISASTER_POP)} residents, on every difficulty. The advisor asks for a first fire station at ${num(STATION_POP)}, so there is time to build one before they do. They can be switched off from the Disasters menu, and harder difficulties bring them more often.</p>
         ${table(['Disaster', 'How to prepare'], [
           ['Fire', 'The most common by far. Fire stations prevent fires and put them out. Buildings far from a station catch fire more often, and fire spreads through trees and touching buildings. Bulldoze a gap to stop it: a gap cleared beside a fire is a firebreak, and undo can’t put it back.'],
           ['Flood', 'Starts on low shoreline and spreads over land a few metres above the water. Keep valuable buildings on higher ground.'],

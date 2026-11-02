@@ -240,8 +240,13 @@ export interface Difficulty {
   income: number;
   disasters: number;
 }
-/** Random disasters wait for a city of this many residents, the size at which the advisor asks for a fire station. */
-export const DISASTER_POP = 2500;
+/** At this many residents the advisor asks a town for its first fire and police stations. */
+export const STATION_POP = 2500;
+/**
+ * Random disasters wait for a city of this many residents, on every difficulty: well after the advisor asks for a fire
+ * station, so a town has the time and the money to build one first.
+ */
+export const DISASTER_POP = 5000;
 
 export const DIFFICULTIES: Difficulty[] = [
   { id: 'easy', name: 'Easy', funds: 20000, income: 1.2, disasters: 0.5 },

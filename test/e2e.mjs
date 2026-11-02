@@ -877,7 +877,7 @@ try {
     assert.deepEqual(await page.$$eval('#fDiff small', (s) => s.map((x) => x.textContent)), [
       'Taxes bring in more · fewer disasters', 'The standard game', 'Taxes bring in less · more disasters',
     ]);
-    assert.match(await page.textContent('.switch small'), /once the city has 2,500 residents\. You can also set them off yourself\.$/);
+    assert.match(await page.textContent('.switch small'), /once the city has 5,000 residents\. You can also set them off yourself\.$/);
     assert.deepEqual(problems, []);
     await ctx.close();
     const desk = await profile(DESK);

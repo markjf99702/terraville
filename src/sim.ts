@@ -2,8 +2,8 @@
 // Zones are re-evaluated a quarter at a time each week, and the expensive
 // map passes (traffic, pollution, crime, land value) run at month end.
 import {
-  BUILDINGS, DIFFICULTIES, DISASTER_POP, DOES, Kind, LANDMARK_LETS, LANDMARK_LIMITS, NET_UPKEEP, POWER, RAIL, ROAD, UPGRADE_LV, ZONE_LV_GATE,
-  ZONE_POP, buildingName, cityClass, CITY_CLASSES, dateLabel, isZone, num, toIndex, upkeepOf,
+  BUILDINGS, DIFFICULTIES, DISASTER_POP, DOES, Kind, LANDMARK_LETS, LANDMARK_LIMITS, NET_UPKEEP, POWER, RAIL, ROAD, STATION_POP,
+  UPGRADE_LV, ZONE_LV_GATE, ZONE_POP, buildingName, cityClass, CITY_CLASSES, dateLabel, isZone, num, toIndex, upkeepOf,
 } from './defs';
 import { MinHeap } from './heap';
 import { clamp } from './rng';
@@ -1133,14 +1133,17 @@ export class Sim {
       if (b.kind === 'fire') fireStations++;
       if (b.kind === 'police') police++;
     }
-    // Random disasters start at this size, and fire is the commonest: say what a station costs and what it is for.
+    // A town this size needs its first stations. Random disasters follow at DISASTER_POP, fire the commonest: say what a
+    // station costs and what it is for.
     const price = (k: Kind) => `$${num(BUILDINGS[k].cost)}, $${BUILDINGS[k].upkeep} a month`;
-    if (s.residents > DISASTER_POP && fireStations === 0) {
-      this.say('needfire', city.disasters
-        ? `The city has no fire station. Fires break out from time to time now; a station (${price('fire')}) puts them out nearby.`
-        : `The city has no fire station. Should a fire start, a station (${price('fire')}) puts it out nearby.`, 'info', undefined, 18);
+    if (s.residents > STATION_POP && fireStations === 0) {
+      this.say('needfire', !city.disasters
+        ? `The city has no fire station. Should a fire start, a station (${price('fire')}) puts it out nearby.`
+        : s.residents >= DISASTER_POP
+          ? `The city has no fire station. Fires break out from time to time now; a station (${price('fire')}) puts them out nearby.`
+          : `The city has no fire station. Fires break out from time to time once it has ${num(DISASTER_POP)} residents; a station (${price('fire')}) puts them out nearby.`, 'info', undefined, 18);
     }
-    if (s.residents > DISASTER_POP && police === 0) {
+    if (s.residents > STATION_POP && police === 0) {
       this.say('needpolice', `The city has no police station. Crime grows as the town gets crowded; a station (${price('police')}) keeps it down nearby.`, 'info', undefined, 18);
     }
 
