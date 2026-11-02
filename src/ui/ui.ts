@@ -403,9 +403,9 @@ export class UI {
         <button data-act="budget" title="Budget">${ICONS.budget}<span class="label">Budget</span></button>
         <button data-act="charts" title="History">${ICONS.charts}<span class="label">History</span></button>
         <button data-act="report" class="hide-sm" title="City report">${ICONS.report}<span class="label">Report</span></button>
-        <button data-act="layers" title="Map layers" aria-haspopup="true">${ICONS.layers}<span class="label">Layers</span></button>
-        <button data-act="disasters" title="Disasters" aria-haspopup="true">${ICONS.disaster}<span class="label">Disasters</span></button>
-        <button data-act="menu" title="Menu" aria-haspopup="true" aria-label="Menu">${ICONS.menu}</button>
+        <button data-act="layers" title="Map layers" aria-haspopup="menu" aria-expanded="false">${ICONS.layers}<span class="label">Layers</span></button>
+        <button data-act="disasters" title="Disasters" aria-haspopup="menu" aria-expanded="false">${ICONS.disaster}<span class="label">Disasters</span></button>
+        <button data-act="menu" title="Menu" aria-haspopup="menu" aria-expanded="false" aria-label="Menu">${ICONS.menu}</button>
       </div>`;
     top.onclick = (e) => {
       const t = e.target as HTMLElement;
@@ -485,7 +485,7 @@ export class UI {
       </div>
       <div class="panel menu">
         <button class="primary" data-act="found">${ICONS.build}<span>Found a city here</span></button>
-        <button data-act="menu" title="Menu" aria-haspopup="true" aria-label="Menu">${ICONS.menu}</button>
+        <button data-act="menu" title="Menu" aria-haspopup="menu" aria-expanded="false" aria-label="Menu">${ICONS.menu}</button>
       </div>`;
     top.onclick = (e) => {
       const b = (e.target as HTMLElement).closest<HTMLElement>('[data-act]');
@@ -953,7 +953,7 @@ export class UI {
   private layersMenu(): HTMLElement {
     const d = el('<div role="menu"></div>');
     for (const o of OVERLAYS) {
-      const b = el<HTMLButtonElement>(`<button role="menuitemradio" aria-pressed="${this.game.renderer.overlay === o.id}"><span class="swatch" style="background:${o.color || 'transparent'};${o.color ? '' : 'border:1px solid var(--line-2)'}"></span>${o.name}</button>`);
+      const b = el<HTMLButtonElement>(`<button role="menuitemradio" aria-checked="${this.game.renderer.overlay === o.id}"><span class="swatch" style="background:${o.color || 'transparent'};${o.color ? '' : 'border:1px solid var(--line-2)'}"></span>${o.name}</button>`);
       b.onclick = () => {
         this.setOverlay(o.id);
         this.closeDropdown();
@@ -966,7 +966,7 @@ export class UI {
   private disasterMenu(): HTMLElement {
     const d = el('<div role="menu"></div>');
     const city = this.game.world.city;
-    const tog = el<HTMLButtonElement>(`<button role="menuitemcheckbox" aria-pressed="${city.disasters}"><span class="swatch" style="background:${city.disasters ? 'var(--caution)' : 'transparent'};border:1px solid var(--line-2)"></span>Random disasters ${city.disasters ? 'on' : 'off'}</button>`);
+    const tog = el<HTMLButtonElement>(`<button role="menuitemcheckbox" aria-checked="${city.disasters}"><span class="swatch" style="background:${city.disasters ? 'var(--caution)' : 'transparent'};border:1px solid var(--line-2)"></span>Random disasters ${city.disasters ? 'on' : 'off'}</button>`);
     tog.onclick = () => {
       city.disasters = !city.disasters;
       this.toast(city.disasters ? 'Random disasters are on.' : 'Random disasters are off.');
@@ -974,15 +974,18 @@ export class UI {
     };
     d.appendChild(tog);
     d.appendChild(el('<hr>'));
-    d.appendChild(el('<div style="padding:4px 10px;font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">Unleash now</div>'));
+    // The heading is seen; a screen reader hears it once, as the group's name.
+    d.appendChild(el('<div class="menu-caption" aria-hidden="true">Unleash now</div>'));
+    const group = el('<div role="group" aria-label="Unleash now"></div>');
     for (const k of Object.keys(DISASTER_NAMES) as DisasterKind[]) {
-      const b = el<HTMLButtonElement>(`<button><span class="caution" style="width:10px;height:10px"></span>${DISASTER_NAMES[k]}</button>`);
+      const b = el<HTMLButtonElement>(`<button role="menuitem"><span class="caution" style="width:10px;height:10px"></span>${DISASTER_NAMES[k]}</button>`);
       b.onclick = () => {
         this.game.sim?.disasters.trigger(k);
         this.closeDropdown();
       };
-      d.appendChild(b);
+      group.appendChild(b);
     }
+    d.appendChild(group);
     return d;
   }
 

@@ -162,7 +162,7 @@ try {
     await page.keyboard.press('Escape');
 
     await page.click('#topbar [data-act="disasters"]');
-    assert.equal(await page.getAttribute('[role="menu"] [role="menuitemcheckbox"]', 'aria-pressed'), 'true');
+    assert.equal(await page.getAttribute('[role="menu"] [role="menuitemcheckbox"]', 'aria-checked'), 'true');
     assert.equal(await images(), 0, 'the disasters switch became HTML in the Disasters menu');
     await page.keyboard.press('Escape');
 
@@ -1049,6 +1049,34 @@ try {
     assert.ok(box.width > 100 && box.left >= 0 && box.right <= 390, `the slider is on screen: ${JSON.stringify(box)}`);
     assert.deepEqual(onPhone, []);
     await phone.close();
+  });
+
+  await test('menus tell a screen reader which layer is showing, whether disasters are on, and that they are menus', async () => {
+    const ctx = await profile(DESK);
+    const { page, problems } = await open(ctx);
+    await found(page);
+    for (const act of ['layers', 'disasters', 'menu']) {
+      assert.deepEqual(await page.$eval(`#topbar [data-act="${act}"]`, (b) => [b.getAttribute('aria-haspopup'), b.getAttribute('aria-expanded')]), ['menu', 'false'], act);
+    }
+    await page.click('#topbar [data-act="layers"]');
+    assert.equal(await page.getAttribute('#topbar [data-act="layers"]', 'aria-expanded'), 'true');
+    assert.deepEqual(await page.$$eval('[role="menu"] [aria-checked="true"]', (c) => c.map((x) => x.textContent)), ['Map']);
+    assert.equal(await page.locator('[role="menu"] [aria-pressed]').count(), 0);
+    await page.keyboard.press('Escape');
+    await page.click('#topbar [data-act="disasters"]');
+    const on = await page.evaluate(() => window.__terraville.world.city.disasters);
+    assert.equal(await page.getAttribute('[role="menu"] [role="menuitemcheckbox"]', 'aria-checked'), String(on));
+    // The six disasters are menu items in a group named by its heading, which is not read twice.
+    assert.equal(await page.getAttribute('[role="menu"] [role="group"]', 'aria-label'), 'Unleash now');
+    assert.equal(await page.locator('[role="menu"] [role="group"] [role="menuitem"]').count(), 6);
+    assert.equal(await page.getAttribute('[role="menu"] .menu-caption', 'aria-hidden'), 'true');
+    // The arrow keys still reach them.
+    await page.keyboard.press('End');
+    assert.equal(await page.evaluate(() => document.activeElement.getAttribute('role')), 'menuitem');
+    await page.keyboard.press('Escape');
+    assert.equal(await page.getAttribute('#topbar [data-act="disasters"]', 'aria-expanded'), 'false');
+    assert.deepEqual(problems, []);
+    await ctx.close();
   });
 
   await test('Settings lists the keys of the place it is opened in, from the toolbox, with redo', async () => {
