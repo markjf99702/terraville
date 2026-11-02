@@ -18,6 +18,12 @@ export interface Plan {
   grading?: number;
   /** Graded heights for a road or rail line: [tile index, new height]. */
   heights?: [number, number][];
+  /** For a line: how many of its new tiles cross water, and what they cost. */
+  bridges?: number;
+  bridgeCost?: number;
+  /** For lots: part of the cost spent clearing their ground, and of what. */
+  clearing?: number;
+  clears?: 'trees' | 'rubble' | 'trees and rubble';
 }
 
 /** An L-shaped path: the longer leg first, like dragging a road in the original. */
@@ -119,7 +125,11 @@ export function planLine(world: World, bit: number, path: Pt[]): Plan {
     if (state[k] !== 'new') continue;
     plan.tiles.push([x, y]);
     plan.count++;
-    plan.cost += world.water[y * world.w + x] ? BRIDGE_COST[name] : NET_COST[name];
+    if (world.water[y * world.w + x]) {
+      plan.cost += BRIDGE_COST[name];
+      plan.bridges = (plan.bridges ?? 0) + 1;
+      plan.bridgeCost = (plan.bridgeCost ?? 0) + BRIDGE_COST[name];
+    } else plan.cost += NET_COST[name];
   }
   let moved = 0;
   for (const [i, h] of target) moved += Math.abs(world.height[i] - h);
@@ -195,6 +205,7 @@ export function planZones(world: World, kind: Kind, ax: number, ay: number, bx: 
         plan.count++;
         plan.cost += BUILDINGS[kind].cost + r.clear * BULLDOZE_COST + grading;
         plan.grading = (plan.grading ?? 0) + grading;
+        noteClearing(world, plan, x, y, s, r.clear);
       } else {
         plan.bad.push([x, y]);
         plan.reason = r.reason;
@@ -211,7 +222,25 @@ export function planPlace(world: World, kind: Kind, cx: number, cy: number): Pla
   const r = world.canPlace(kind, x, y, true);
   if (!r.ok) return { tiles: [], bad: [[x, y]], cost: 0, count: 0, reason: r.reason };
   const grading = Math.round(r.grade * GRADE_COST);
-  return { tiles: [[x, y]], bad: [], cost: BUILDINGS[kind].cost + r.clear * BULLDOZE_COST + grading, count: 1, grading };
+  const plan: Plan = { tiles: [[x, y]], bad: [], cost: BUILDINGS[kind].cost + r.clear * BULLDOZE_COST + grading, count: 1, grading };
+  noteClearing(world, plan, x, y, s, r.clear);
+  return plan;
+}
+
+/** Add a lot's clearing to its plan: `clear` tiles of trees or rubble, at the bulldozer's price. */
+function noteClearing(world: World, plan: Plan, x: number, y: number, s: number, clear: number): void {
+  if (!clear) return;
+  plan.clearing = (plan.clearing ?? 0) + clear * BULLDOZE_COST;
+  let trees = plan.clears === 'trees' || plan.clears === 'trees and rubble';
+  let rubble = plan.clears === 'rubble' || plan.clears === 'trees and rubble';
+  for (let dy = 0; dy < s; dy++) {
+    for (let dx = 0; dx < s; dx++) {
+      const i = (y + dy) * world.w + x + dx;
+      if (world.trees[i]) trees = true;
+      else if (world.rubble[i]) rubble = true;
+    }
+  }
+  plan.clears = trees && rubble ? 'trees and rubble' : trees ? 'trees' : 'rubble';
 }
 
 export function applyBuildings(world: World, kind: Kind, plan: Plan): void {

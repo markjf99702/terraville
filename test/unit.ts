@@ -389,7 +389,7 @@ await test('Inspect tells a lot with no road to the other side of town from one 
   for (let k = 0; k < 4; k++) sim.step();
   const at = (key: string) => sim.messages.filter((m) => m.text.startsWith(key)).map((m) => [m.x, m.y]);
   assert.deepEqual(at('Commuters cannot reach work'), [[home.x + 1, home.y + 1]]);
-  assert.deepEqual(at('Some zones have no road access'), [[lonely.x + 1, lonely.y + 1]]);
+  assert.deepEqual(at('1 zone has no road access and cannot develop.'), [[lonely.x + 1, lonely.y + 1]]);
 }));
 
 await test('with shops in demand, the advisor says why an empty shop lot cannot open before it asks for more land', () => {
@@ -1331,6 +1331,31 @@ await test('nothing is left burning on bare ground when a burning lot is undone,
   assert.equal(w.buildings.has(beside.id), false, 'the lot beside it was cleared');
   assert.equal(bare(), 0);
 }));
+
+await test('the cost tip says what part of a price is bridges, and what part clears trees or rubble', () => {
+  const w = flat(40, 30);
+  for (let y = 0; y < w.h; y++) for (const x of [20, 21]) w.water[y * w.w + x] = 1;
+  for (let y = 10; y < 13; y++) for (let x = 5; x < 8; x++) w.trees[y * w.w + x] = 2;
+  w.rubble[10 * w.w + 9] = 1;
+  const road = planLine(w, ROAD, linePath(15, 5, 25, 5));
+  assert.deepEqual([road.count, road.bridges, road.bridgeCost, road.cost], [11, 2, 120, 9 * 10 + 120]);
+  const lots = planZones(w, 'res', 6, 11, 9, 11);
+  assert.deepEqual([lots.count, lots.clearing, lots.clears], [2, 10, 'trees and rubble']);
+  const g = headless(w);
+  const tips: string[] = [];
+  g.ui.cursorTip = (_x: number, _y: number, html: string) => tips.push(html);
+  const tip = (tool: string, x0: number, y0: number, x1: number, y1: number) => {
+    g.setTool(tool);
+    g.pointerDown(x0 + 0.5, y0 + 0.5, 0, 0);
+    g.pointerMove(x1 + 0.5, y1 + 0.5, 0, 0);
+    const t = tips.at(-1)!.replace(/<[^>]+>/g, '');
+    g.cancelTool();
+    return t;
+  };
+  assert.equal(tip('road', 15, 5, 25, 5), 'Road · 11 tiles · $210 · includes 2 bridge tiles ($120)');
+  assert.equal(tip('power', 15, 7, 25, 7), 'Power line · 11 tiles · $95 · includes 2 tiles over water ($50)');
+  assert.equal(tip('res', 6, 11, 6, 11), 'Residential · 1 zone · $109 · includes $9 to clear trees');
+});
 
 await test('Level land leaves water alone and charges nothing for it', () => {
   const w = flat(60, 40);

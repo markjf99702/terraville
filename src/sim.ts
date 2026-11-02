@@ -1054,7 +1054,9 @@ export class Sim {
     } else if (s.unpowered > 0 && month > 2) {
       this.say('unconnected', `${s.unpowered} zone${s.unpowered > 1 ? 's are' : ' is'} not connected to a power plant.`, 'warn', this.findUnpowered(false), 8);
     }
-    if (s.noRoad > 0 && month > 1) this.say('noroad', 'Some zones have no road access and cannot develop.', 'warn', this.findZone((b) => !b.road), 10);
+    if (s.noRoad > 0 && month > 1) {
+      this.say('noroad', `${s.noRoad} zone${s.noRoad > 1 ? 's have' : ' has'} no road access and cannot develop.`, 'warn', this.findZone((b) => !b.road), 10);
+    }
     if (s.noTrip > 2 && month > 3) {
       this.say('notrip', 'Commuters cannot reach work. Connect residential zones to commercial and industrial ones by road.', 'warn', this.findZone((b) => b.road && !b.trip), 10);
     }

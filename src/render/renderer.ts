@@ -460,7 +460,7 @@ export class Renderer {
     }
     if (this.hazards.length) this.drawHazards(ctx, vx0, vy0, vx1, vy1);
     if (this.cam.zoom >= 7) this.drawEmitters(ctx, vx0, vy0, vx1, vy1);
-    if (this.sim && this.world.city.founded) this.drawPowerWarnings(ctx, vx0, vy0, vx1, vy1);
+    if (this.sim && this.world.city.founded) this.drawWarnings(ctx, vx0, vy0, vx1, vy1);
     this.drawRoamers(ctx);
     this.drawPreview(ctx);
 
@@ -661,13 +661,21 @@ export class Renderer {
     }
   }
 
-  private drawPowerWarnings(ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number): void {
-    // The bolts blink, or with less motion asked for, stay lit.
+  /**
+   * Over a zone that can't develop, a bolt for no power and a road sign for no road (or no commute along one), side by
+   * side when it lacks both. They blink, or with less motion asked for, stay lit.
+   */
+  private drawWarnings(ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number): void {
     if (!lessMotion() && this.time % 1.2 > 0.75) return;
     for (const b of this.world.buildings.values()) {
-      if (b.powered || !isZone(b.kind)) continue;
+      if (!isZone(b.kind)) continue;
+      const dark = !b.powered;
+      const cut = !b.road || !b.trip;
+      if (!dark && !cut) continue;
       if (b.x > x1 || b.y > y1 || b.x + b.size < x0 || b.y + b.size < y0) continue;
-      bolt(ctx, b.x + 1.5, b.y + 1.5, 0.42);
+      const both = dark && cut;
+      if (dark) bolt(ctx, b.x + (both ? 1 : 1.5), b.y + 1.5, 0.42);
+      if (cut) roadSign(ctx, b.x + (both ? 2 : 1.5), b.y + 1.5, 0.42);
     }
   }
 
@@ -842,6 +850,31 @@ function bolt(ctx: CanvasRenderingContext2D, x: number, y: number, r: number): v
   ctx.lineTo(x + r * 0.04, y - r * 0.12);
   ctx.closePath();
   ctx.fill();
+}
+
+/** A caution-yellow diamond, like a road sign, with a road running up it, on the bolt's dark disc. */
+function roadSign(ctx: CanvasRenderingContext2D, x: number, y: number, r: number): void {
+  ctx.fillStyle = 'rgba(20,24,22,0.8)';
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+  const d = r * 0.72;
+  ctx.fillStyle = '#F2C94C';
+  ctx.beginPath();
+  ctx.moveTo(x, y - d);
+  ctx.lineTo(x + d, y);
+  ctx.lineTo(x, y + d);
+  ctx.lineTo(x - d, y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(20,24,22,0.9)';
+  ctx.lineWidth = r * 0.11;
+  ctx.beginPath();
+  ctx.moveTo(x - d * 0.12, y - d * 0.5);
+  ctx.lineTo(x - d * 0.32, y + d * 0.5);
+  ctx.moveTo(x + d * 0.12, y - d * 0.5);
+  ctx.lineTo(x + d * 0.32, y + d * 0.5);
+  ctx.stroke();
 }
 
 function monster(ctx: CanvasRenderingContext2D, x: number, y: number, heading: number, t: number): void {

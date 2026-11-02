@@ -1,8 +1,8 @@
 // Game controller: modes, the tool state machine, money, undo, the clock.
 import { Audio } from './audio';
 import {
-  BUILDINGS, CITY_CLASSES, CITY_TOOLS, DIFFICULTIES, Difficulty, EDITOR_TOOLS, GRADE_COST, Kind, MAP_SIZES, SEP, ToolDef, Upgrade,
-  article, buildingName, cityClass, isZone, nextUpgrade,
+  BUILDINGS, CITY_CLASSES, CITY_TOOLS, DIFFICULTIES, Difficulty, EDITOR_TOOLS, GRADE_COST, Kind, MAP_SIZES, POWER, SEP, ToolDef,
+  Upgrade, article, buildingName, cityClass, isZone, nextUpgrade,
 } from './defs';
 import { lessMotion } from './motion';
 import { Minimap } from './render/minimap';
@@ -1041,6 +1041,12 @@ export class Game {
         t.kind === 'rect' ? `${plan.count} tile${plan.count > 1 ? 's' : ''}` : t.name;
       html = `${t.kind === 'place' ? '' : t.name + SEP}${what}${SEP}<span class="num">${fmtMoney(plan.cost)}</span>`;
       if (plan.grading) html += `${SEP}includes <span class="num">${fmtMoney(plan.grading)}</span> ${t.kind === 'line' ? 'to grade the slope' : 'to level the ground'}`;
+      if (plan.bridges) {
+        const n = plan.bridges;
+        const over = t.net === POWER ? `${n} tile${n > 1 ? 's' : ''} over water` : `${n} bridge tile${n > 1 ? 's' : ''}`;
+        html += `${SEP}includes ${over} (<span class="num">${fmtMoney(plan.bridgeCost ?? 0)}</span>)`;
+      }
+      if (plan.clearing) html += `${SEP}includes <span class="num">${fmtMoney(plan.clearing)}</span> to clear ${plan.clears}`;
       if (!this.affordable(plan)) {
         html += `${SEP}not enough money`;
         bad = true;

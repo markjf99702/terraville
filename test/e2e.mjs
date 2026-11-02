@@ -844,7 +844,8 @@ try {
       }
     });
     assert.equal(tip.loose, false, 'every dot is drawn, none typed into the text');
-    assert.match(tip.text, /^Residential · 2 zones · \$\d+ · 2 blocked: something is already here$/);
+    // Clearing trees, where the lots have any, is part of the price and says so.
+    assert.match(tip.text, /^Residential · 2 zones · \$\d+( · includes \$\d+ to clear trees)? · 2 blocked: something is already here$/);
     assert.deepEqual(problems, []);
     await ctx.close();
   });
