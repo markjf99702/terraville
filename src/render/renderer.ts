@@ -103,6 +103,8 @@ export class Renderer {
   dayLength = 150;
   preview: Preview | null = null;
   hover: { x: number; y: number } | null = null;
+  /** What the Inspect card describes: a building's footprint, or one tile. The pointer's hover never moves it. */
+  selected: { x: number; y: number; size: number } | null = null;
   /** Whether the simulation clock is running (freezes traffic when paused). */
   running = false;
   /** Seconds, always ticking (water, blinking). */
@@ -130,6 +132,8 @@ export class Renderer {
   private unsubscribe: (() => void) | null = null;
 
   private glow: HTMLCanvasElement;
+  /** A camera move in progress (see flyTo): where it set out from and where it is going, in tiles and log zoom. */
+  private flight: { x0: number; y0: number; z0: number; x1: number; y1: number; z1: number; t: number; ms: number } | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -160,6 +164,8 @@ export class Renderer {
     this.unsubscribe?.();
     this.world = world;
     this.sim = sim;
+    this.selected = null;
+    this.flight = null;
     this.field = new TerrainField(world);
     if (!this.vehicles) this.vehicles = new Vehicles(world);
     else this.vehicles.setWorld(world);
@@ -252,6 +258,7 @@ export class Renderer {
 
   /** Zoom and move so the whole map fits in a rectangle of the screen (CSS pixels), in its middle. */
   fitRect(l: number, t: number, r: number, b: number): void {
+    this.flight = null;
     const { w, h } = this.world;
     const z = Math.max(this.minZoom(), Math.min(96, (r - l) / w, (b - t) / h));
     this.cam.zoom = z;
@@ -287,6 +294,7 @@ export class Renderer {
   }
 
   zoomAt(sx: number, sy: number, factor: number): void {
+    this.flight = null;
     const before = this.screenToTile(sx, sy);
     this.cam.zoom = Math.max(this.minZoom(), Math.min(96, this.cam.zoom * factor));
     const after = this.screenToTile(sx, sy);
@@ -296,9 +304,49 @@ export class Renderer {
   }
 
   centerOn(x: number, y: number): void {
+    this.flight = null;
     this.cam.x = x;
     this.cam.y = y;
     this.clampCamera();
+  }
+
+  /**
+   * Move the camera to centre on (x, y) at `zoom`, easing in and out over `ms`: the position in tiles and the zoom in
+   * its logarithm, so a zoom in feels as quick as a zoom out. With less motion asked for it jumps there. Anything else
+   * that moves the camera (a drag, the wheel, a key) calls it off.
+   */
+  flyTo(x: number, y: number, zoom: number, ms = 450): void {
+    const from = { ...this.cam };
+    this.cam.zoom = Math.max(this.minZoom(), Math.min(96, zoom));
+    this.centerOn(x, y);
+    if (lessMotion() || ms <= 0) return;
+    const to = { ...this.cam };
+    if (Math.abs(to.x - from.x) < 0.01 && Math.abs(to.y - from.y) < 0.01 && Math.abs(to.zoom - from.zoom) < 0.01) return;
+    this.cam.x = from.x;
+    this.cam.y = from.y;
+    this.cam.zoom = from.zoom;
+    this.flight = { x0: from.x, y0: from.y, z0: Math.log(from.zoom), x1: to.x, y1: to.y, z1: Math.log(to.zoom), t: 0, ms };
+  }
+
+  /** Call off a camera move in progress, leaving the camera where it has got to. */
+  stopFlight(): void {
+    this.flight = null;
+  }
+
+  /** Whether the camera is on its way somewhere (see flyTo). */
+  get flying(): boolean {
+    return this.flight !== null;
+  }
+
+  private stepFlight(dt: number): void {
+    const f = this.flight;
+    if (!f) return;
+    f.t = Math.min(1, f.t + (dt * 1000) / f.ms);
+    const e = f.t < 0.5 ? 4 * f.t * f.t * f.t : 1 - Math.pow(-2 * f.t + 2, 3) / 2;
+    this.cam.x = f.x0 + (f.x1 - f.x0) * e;
+    this.cam.y = f.y0 + (f.y1 - f.y0) * e;
+    this.cam.zoom = Math.exp(f.z0 + (f.z1 - f.z0) * e);
+    if (f.t >= 1) this.flight = null;
   }
 
   // ---- chunks ---------------------------------------------------------------
@@ -411,6 +459,7 @@ export class Renderer {
 
   frame(dt: number): void {
     this.time += dt;
+    this.stepFlight(dt);
     if (this.running) this.simTime += dt;
     if (this.waterDirty) {
       this.field.updateWater();
@@ -531,6 +580,7 @@ export class Renderer {
     if (this.sim && this.world.city.founded) this.drawWarnings(ctx, vx0, vy0, vx1, vy1);
     this.drawRoamers(ctx);
     this.drawPreview(ctx);
+    this.drawSelected(ctx);
 
     // Map edge.
     ctx.strokeStyle = 'rgba(0,0,0,0.5)';
@@ -809,6 +859,22 @@ export class Renderer {
       ctx.arc(p.brush.x, p.brush.y, p.brush.r + lw * 1.2, 0, Math.PI * 2);
       ctx.stroke();
     }
+  }
+
+  /**
+   * The tile or building the Inspect card describes, in caution yellow over a dark edge (as the brush ring is drawn),
+   * 2 px wide just outside its footprint so a finger's worth of neighbours can't be taken for it.
+   */
+  private drawSelected(ctx: CanvasRenderingContext2D): void {
+    const s = this.selected;
+    if (!s) return;
+    const px = 1 / this.cam.zoom;
+    ctx.strokeStyle = 'rgba(14,20,18,0.8)';
+    ctx.lineWidth = 4 * px;
+    ctx.strokeRect(s.x - px, s.y - px, s.size + 2 * px, s.size + 2 * px);
+    ctx.strokeStyle = '#f2c14e';
+    ctx.lineWidth = 2 * px;
+    ctx.strokeRect(s.x - px, s.y - px, s.size + 2 * px, s.size + 2 * px);
   }
 
   // ---- overlays -------------------------------------------------------------

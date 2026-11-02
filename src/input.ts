@@ -78,6 +78,8 @@ export class Input {
   private down(e: PointerEvent): void {
     const g = this.game;
     if (g.mode === 'title') return;
+    // A finger or a button on the map takes the camera back from a move in progress.
+    g.renderer.stopFlight();
     g.audio.unlock();
     g.ui.hideToolTip();
     // A click on the map that closes a menu does nothing else.
@@ -231,6 +233,7 @@ export class Input {
     e.preventDefault();
     const g = this.game;
     if (g.mode === 'title') return;
+    g.renderer.stopFlight();
     const p = this.local(e);
     if (e.ctrlKey || Math.abs(e.deltaY) >= Math.abs(e.deltaX) || e.deltaMode !== 0) {
       const k = e.deltaMode === 1 ? 0.05 : 0.0022;
@@ -256,6 +259,7 @@ export class Input {
       if (e.key === 'Escape') g.ui.closeTop();
       return;
     }
+    g.renderer.stopFlight();
     const k = e.key;
     const mod = e.ctrlKey || e.metaKey;
     if (mod && (k === 'z' || k === 'Z')) {

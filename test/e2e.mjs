@@ -2405,6 +2405,62 @@ try {
     await ctx.close();
   });
 
+  await test('Inspect marks the lot it describes, whatever the pointer does next, and on a phone brings it out from under the card', async () => {
+    // Where the lot is now on screen, and whether the outline is painted 1 px outside its top edge.
+    const look = (page) => page.evaluate(() => {
+      const r = window.__terraville.renderer;
+      const s = r.selected;
+      if (!s) return { selected: null };
+      const a = r.tileToScreen(s.x, s.y);
+      const b = r.tileToScreen(s.x + s.size, s.y + s.size);
+      const px = r.canvas.getContext('2d').getImageData(Math.round((a.x + b.x) / 2 * r.dpr), Math.round((a.y - 1) * r.dpr), 1, 1).data;
+      const card = document.querySelector('#inspect').getBoundingClientRect();
+      return {
+        selected: s, hover: r.hover, lot: [a.x, a.y, b.x, b.y], card: [card.left, card.top, card.right, card.bottom],
+        yellow: px[0] > 200 && px[1] > 150 && px[2] < 120,
+      };
+    });
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await page.evaluate(() => { window.__terraville.startScenario('gridlock'); window.__terraville.ui.closeModal(); });
+    const want = await page.evaluate(() => {
+      const g = window.__terraville;
+      const t = g.renderer.screenToTile(170, 580);
+      const b = g.world.buildingAt(Math.floor(t.x), Math.floor(t.y));
+      return b && { x: b.x, y: b.y, size: b.size };
+    });
+    assert.ok(want, 'Gridlock has a lot under the finger');
+    await page.touchscreen.tap(170, 580);
+    await page.waitForFunction(() => !window.__terraville.renderer.flying);
+    await page.waitForTimeout(100);
+    const s = await look(page);
+    assert.deepEqual(s.selected, want, 'the whole lot is marked, though the lifted finger cleared the hover');
+    assert.equal(s.hover, null);
+    assert.ok(s.yellow, 'in caution yellow');
+    const [l, t, r, b] = s.lot;
+    const [cl, ct, cr, cb] = s.card;
+    assert.ok(r <= cl || l >= cr || b <= ct || t >= cb, `the lot (${s.lot.map(Math.round)}) is clear of the card (${s.card.map(Math.round)})`);
+    await page.click('#inspect .close');
+    assert.equal((await look(page)).selected, null, 'closing the card unmarks it');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+
+    // With a mouse the hover outline follows the pointer, and the mark stays on what was clicked.
+    const desk = await profile(DESK);
+    const d = await open(desk);
+    await d.page.evaluate(() => { window.__terraville.startScenario('gridlock'); window.__terraville.ui.closeModal(); });
+    await d.page.mouse.click(500, 400);
+    const first = (await look(d.page)).selected;
+    assert.ok(first, 'a click marks what it inspects');
+    await d.page.mouse.move(700, 300);
+    await d.page.mouse.move(640, 799);
+    assert.deepEqual((await look(d.page)).selected, first, 'moving the mouse leaves the mark');
+    await d.page.evaluate(() => window.__terraville.showTitle());
+    assert.equal(await d.page.evaluate(() => window.__terraville.renderer.selected), null, 'leaving the city unmarks it');
+    assert.deepEqual(d.problems, []);
+    await desk.close();
+  });
+
   await test('a landmark is upgraded from its Inspect card with a second tap, and undo refunds it', async () => {
     const ctx = await profile(DESK);
     const { page, problems } = await open(ctx);

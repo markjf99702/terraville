@@ -330,7 +330,8 @@ export class UI {
     this.closeModal();
     this.closeDropdown();
     this.hideToast(); // a notice about the last screen has nothing to say about this one
-    for (const id of ['#topbar', '#toolbox', '#editorPanel', '#minimapCard', '#ticker', '#log', '#inspect', '#guide', '#goal']) $(this.root, id).hidden = true;
+    for (const id of ['#topbar', '#toolbox', '#editorPanel', '#minimapCard', '#ticker', '#log', '#guide', '#goal']) $(this.root, id).hidden = true;
+    this.hideInspect();
     this.measureInsets();
     const t = $(this.root, '#title');
     t.hidden = false;
@@ -1427,8 +1428,46 @@ export class UI {
       this.renderTicker();
     }
     this.inspectAt = { x, y };
-    if (!refresh) this.game.renderer.hover = { x, y };
+    // The card's tile or building stays marked on the map, whatever the pointer does next.
+    this.game.renderer.selected = b ? { x: b.x, y: b.y, size: b.size } : { x, y, size: 1 };
     this.fitInspect();
+    if (!refresh) this.keepInView();
+  }
+
+  /**
+   * On a phone the card covers a good part of the map, often the very lot that was tapped: the map moves, quickly (or
+   * at once, with less motion asked for), to bring that lot into the room left between the card and the cards at the
+   * top. Upright the room is above the card; on its side, left of it.
+   */
+  private keepInView(): void {
+    const r = this.game.renderer;
+    const s = r.selected;
+    if (!s || !this.compact() || this.game.dragging) return;
+    const box = (id: string): DOMRect | null => {
+      const c = $(this.root, id).getBoundingClientRect();
+      return c.width && c.height ? c : null;
+    };
+    const card = box('#inspect');
+    if (!card) return;
+    const map = r.canvas.getBoundingClientRect();
+    const a = r.tileToScreen(s.x, s.y);
+    const b = r.tileToScreen(s.x + s.size, s.y + s.size);
+    const foot = { left: map.left + a.x, top: map.top + a.y, right: map.left + b.x, bottom: map.top + b.y };
+    const meets = (q: DOMRect) => foot.left < q.right && q.left < foot.right && foot.top < q.bottom && q.top < foot.bottom;
+    const wide = card.width > window.innerWidth * 0.6;
+    const tools = box('#toolbox');
+    const left = !wide && tools && tools.height > tools.width ? tools.right : 0;
+    const right = wide ? window.innerWidth : card.left;
+    const above = ['#topbar', '#goal', '#guide', '#pausedPill'].map(box).filter((c): c is DOMRect => !!c && c.left < right && left < c.right);
+    if (!meets(card) && !above.some(meets)) return;
+    const top = Math.max(0, ...above.map((c) => c.bottom));
+    const bottom = wide ? card.top : box('#ticker')?.top ?? window.innerHeight;
+    let dx = 0;
+    let dy = 0;
+    if (wide || foot.top < top || foot.bottom > bottom) dy = (top + bottom) / 2 - (foot.top + foot.bottom) / 2;
+    if (!wide && (foot.right > right || foot.left < left)) dx = (left + right) / 2 - (foot.left + foot.right) / 2;
+    const z = r.cam.zoom;
+    r.flyTo(r.cam.x - dx / z, r.cam.y - dy / z, z, 200);
   }
 
   /**
@@ -1469,6 +1508,7 @@ export class UI {
     $(this.root, '#inspect').hidden = true;
     this.root.classList.remove('inspecting');
     this.inspectAt = null;
+    this.game.renderer.selected = null;
     // The layer the card put up goes back to the one before, unless someone has picked another since.
     const l = this.inspectLayer;
     this.inspectLayer = null;
