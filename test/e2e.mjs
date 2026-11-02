@@ -1008,6 +1008,43 @@ try {
     await ctx.close();
   });
 
+  await test('on a phone, a section tapped in the guide opens with its heading clear of the tabs, and the tabs follow the reading', async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await page.click('[data-act="guide"]');
+    // Until the scrolling has stopped: the same place twice, 150 ms apart.
+    const settle = () => page.evaluate(async () => {
+      const s = document.querySelector('.modal .body');
+      for (let i = 0; i < 40; i++) {
+        const a = s.scrollTop;
+        await new Promise((ok) => setTimeout(ok, 150));
+        if (s.scrollTop === a) return;
+      }
+    });
+    await page.tap('[data-go="money"]');
+    await page.waitForFunction(() => document.querySelector('.modal .body').scrollTop > 0);
+    await settle();
+    const at = await page.evaluate(() => ({
+      strip: document.querySelector('.guide-nav').getBoundingClientRect().bottom,
+      heading: document.querySelector('#guide-money h3').getBoundingClientRect().top,
+      current: document.querySelector('.guide-nav [aria-current="true"]').dataset.go,
+    }));
+    assert.ok(at.heading >= at.strip, `the heading (${at.heading}) is below the strip (${at.strip})`);
+    assert.equal(at.current, 'money');
+    await page.evaluate(() => { const s = document.querySelector('.modal .body'); s.scrollTop = s.scrollHeight; });
+    await settle();
+    const end = await page.evaluate(() => {
+      const nav = document.querySelector('.guide-nav');
+      const on = nav.querySelector('[aria-current="true"]');
+      const n = nav.getBoundingClientRect();
+      const b = on.getBoundingClientRect();
+      return { current: on.dataset.go, seen: b.left >= n.left && b.right <= n.right };
+    });
+    assert.deepEqual(end, { current: 'classes', seen: true }, 'at the end the last section is current, and its tab is in view');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('on a phone, Inspect takes the bottom slot from the map layer card and the news log', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

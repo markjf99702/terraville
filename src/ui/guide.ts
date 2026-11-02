@@ -344,13 +344,27 @@ export function buildGuide(): HTMLElement {
 
 /** Highlight the section in view; call once the guide is inside its scrolling container. */
 export function trackGuide(root: HTMLElement, scroller: HTMLElement): void {
+  const nav = root.querySelector<HTMLElement>('.guide-nav')!;
   const buttons = [...root.querySelectorAll<HTMLElement>('[data-go]')];
   const secs = [...root.querySelectorAll<HTMLElement>('.guide-body section')];
+  let last = '';
   const update = () => {
-    const top = scroller.getBoundingClientRect().top + 60;
+    // On a phone the tabs are a strip over the top of the article: a section is current once its heading clears it.
+    const strip = getComputedStyle(nav).flexDirection === 'row';
+    const top = strip ? nav.getBoundingClientRect().bottom + 16 : scroller.getBoundingClientRect().top + 60;
     let current = secs[0]?.id;
     for (const s of secs) if (s.getBoundingClientRect().top <= top) current = s.id;
+    // The last sections are too short to reach the top: at the very end, the last one is current.
+    if (scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2) current = secs[secs.length - 1]?.id;
     for (const bt of buttons) bt.setAttribute('aria-current', String(`guide-${bt.dataset.go}` === current));
+    if (current === last) return;
+    last = current;
+    // Keep the current tab in sight in the strip.
+    const on = buttons.find((bt) => `guide-${bt.dataset.go}` === current);
+    if (strip && on) {
+      if (on.offsetLeft < nav.scrollLeft) nav.scrollLeft = on.offsetLeft - 12;
+      else if (on.offsetLeft + on.offsetWidth > nav.scrollLeft + nav.clientWidth) nav.scrollLeft = on.offsetLeft + on.offsetWidth - nav.clientWidth + 12;
+    }
   };
   scroller.addEventListener('scroll', update, { passive: true });
   update();
