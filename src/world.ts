@@ -231,14 +231,22 @@ export class World {
     return id ? this.buildings.get(id) : undefined;
   }
 
-  /** Largest height step from this tile to a 4-neighbour. */
+  /**
+   * Largest height step from this tile to a 4-neighbour on dry land. The drop into water is no ground anyone builds
+   * on, so a flat beach reads flat, however deep the sea beside it.
+   */
   slope(x: number, y: number): number {
-    const h0 = this.height[y * this.w + x];
+    const { w, h, height, water } = this;
+    const i = y * w + x;
+    const h0 = height[i];
     let m = 0;
-    if (x > 0) m = Math.max(m, Math.abs(h0 - this.height[y * this.w + x - 1]));
-    if (x < this.w - 1) m = Math.max(m, Math.abs(h0 - this.height[y * this.w + x + 1]));
-    if (y > 0) m = Math.max(m, Math.abs(h0 - this.height[(y - 1) * this.w + x]));
-    if (y < this.h - 1) m = Math.max(m, Math.abs(h0 - this.height[(y + 1) * this.w + x]));
+    const step = (j: number) => {
+      if (!water[j]) m = Math.max(m, Math.abs(h0 - height[j]));
+    };
+    if (x > 0) step(i - 1);
+    if (x < w - 1) step(i + 1);
+    if (y > 0) step(i - w);
+    if (y < h - 1) step(i + w);
     return m;
   }
 

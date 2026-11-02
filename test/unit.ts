@@ -107,6 +107,25 @@ await test('zones need clear, gentle land', () => {
   assert.equal(plan.count, 3);
 });
 
+await test('steepness is measured between dry tiles: a beach beside deep sea is flat, a step on land still counts', () => {
+  const w = flat(10, 10);
+  w.height.fill(1);
+  for (let y = 0; y < w.h; y++) for (let x = 0; x < 3; x++) {
+    w.height[y * w.w + x] = -30;
+    w.water[y * w.w + x] = 1;
+  }
+  assert.equal(w.slope(3, 5), 0, 'the beach at 1 m beside -30 m sea');
+  w.height[5 * w.w + 6] = 11;
+  assert.equal(w.slope(5, 5), 10, 'a 10 m step between two dry tiles');
+  assert.equal(w.slope(6, 5), 10);
+  // A tile with water all round has no dry neighbour to step to.
+  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    w.water[(2 + dy) * w.w + 8 + dx] = 1;
+    w.height[(2 + dy) * w.w + 8 + dx] = -10;
+  }
+  assert.equal(w.slope(8, 2), 0);
+});
+
 await test('zoning grades a moderate slope for a price, but not a cliff', () => {
   const w = flat();
   w.city.funds = 10000;
