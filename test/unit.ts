@@ -2803,13 +2803,13 @@ await test('figures read with commas whatever language the browser speaks, and n
       if (f.isDirectory()) walk(p);
       else if (/\.ts$/.test(f.name)) {
         readFileSync(p, 'utf8').split('\n').forEach((line, i) => {
-          if (/\.toLocaleString\(\s*\)/.test(line)) bare.push(`${p}:${i + 1}`);
+          if (/\.toLocale(Date|Time)?String\(\s*\)/.test(line)) bare.push(`${p}:${i + 1}`);
         });
       }
     }
   };
   walk(join(process.cwd(), 'src'));
-  assert.deepEqual(bare, [], 'use num() from defs.ts');
+  assert.deepEqual(bare, [], 'use num() from defs.ts, and ago() or dateLabel() for dates');
 });
 
 console.log(`\n${passed} passed`);

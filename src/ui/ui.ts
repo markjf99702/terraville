@@ -2580,7 +2580,8 @@ export class UI {
       for (const s of slots) {
         const row = el(`<div class="slot"><b>${esc(s.name)}</b>
           <div class="actions"></div>
-          <span class="meta num">${s.mode === 'city' ? `${dateLabel(s.date)} · pop ${num(s.pop)}` : 'Terrain'} · saved ${new Date(s.savedAt).toLocaleDateString()}</span></div>`);
+          <span class="meta num">${s.mode === 'city' ? `${dateLabel(s.date)} · pop ${num(s.pop)}` : 'Terrain'}</span>
+          <span class="meta" style="grid-column:1/-1">Saved ${ago(s.savedAt)}</span></div>`);
         // Said with the date, since one city can have several snapshots.
         const what = s.mode === 'city' ? `the snapshot of ${s.name}, ${dateLabel(s.date)}` : `the terrain ${s.name}`;
         $(row, '.actions').append(

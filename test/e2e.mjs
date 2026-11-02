@@ -351,6 +351,8 @@ try {
     assert.ok(labels[2].startsWith(`Open the snapshot of ${name}, `));
     assert.equal(labels[3], labels[2].replace('Open', 'Delete'));
     assert.equal(labels.length, 4);
+    // Laid out as the cities above are, saying how long ago it was saved as they do.
+    assert.deepEqual(await page.$$eval('#fOther .slot .meta', (m) => m.map((x) => x.textContent)), [await page.textContent('#fCities .slot .meta'), 'Saved just now']);
     // A code that won't open is said out loud.
     assert.equal(await page.getAttribute('#fErr', 'role'), 'alert');
     const del = page.locator('#fOther .slot button.danger');
