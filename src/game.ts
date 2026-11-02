@@ -99,6 +99,24 @@ function fmtMoney(n: number): string {
   return '$' + num(n);
 }
 
+/**
+ * What a price takes in besides the build itself, as one clause after it: ', with 3 bridge tiles ($150), $40 to grade
+ * the slope and $6 to clear trees'. Nothing when it takes in nothing else.
+ */
+export function priceIncludes(plan: Pick<Plan, 'bridges' | 'bridgeCost' | 'grading' | 'clearing' | 'clears'>, line: boolean, power: boolean): string {
+  const money = (n: number) => `<span class="num">${fmtMoney(n)}</span>`;
+  const parts: string[] = [];
+  if (plan.bridges) {
+    const n = plan.bridges;
+    parts.push(`${power ? `${n} tile${n > 1 ? 's' : ''} over water` : `${n} bridge tile${n > 1 ? 's' : ''}`} (${money(plan.bridgeCost ?? 0)})`);
+  }
+  if (plan.grading) parts.push(`${money(plan.grading)} ${line ? 'to grade the slope' : 'to level the ground'}`);
+  if (plan.clearing) parts.push(`${money(plan.clearing)} to clear ${plan.clears}`);
+  if (!parts.length) return '';
+  const last = parts.pop()!;
+  return `, with ${parts.length ? `${parts.join(', ')} and ${last}` : last}`;
+}
+
 export class Game {
   mode: Mode = 'title';
   world!: World;
@@ -1078,14 +1096,7 @@ export class Game {
         t.kind === 'zone' ? `${plan.count} zone${plan.count > 1 ? 's' : ''}` :
         t.id === 'bulldoze' ? `${plan.count} to clear` :
         t.kind === 'rect' ? `${plan.count} tile${plan.count > 1 ? 's' : ''}` : t.name;
-      html = `${t.kind === 'place' ? '' : t.name + SEP}${what}${SEP}<span class="num">${fmtMoney(plan.cost)}</span>`;
-      if (plan.grading) html += `${SEP}includes <span class="num">${fmtMoney(plan.grading)}</span> ${t.kind === 'line' ? 'to grade the slope' : 'to level the ground'}`;
-      if (plan.bridges) {
-        const n = plan.bridges;
-        const over = t.net === POWER ? `${n} tile${n > 1 ? 's' : ''} over water` : `${n} bridge tile${n > 1 ? 's' : ''}`;
-        html += `${SEP}includes ${over} (<span class="num">${fmtMoney(plan.bridgeCost ?? 0)}</span>)`;
-      }
-      if (plan.clearing) html += `${SEP}includes <span class="num">${fmtMoney(plan.clearing)}</span> to clear ${plan.clears}`;
+      html = `${t.kind === 'place' ? '' : t.name + SEP}${what}${SEP}<span class="num">${fmtMoney(plan.cost)}</span>${priceIncludes(plan, t.kind === 'line', t.net === POWER)}`;
       if (!this.affordable(plan)) {
         html += `${SEP}not enough money`;
         bad = true;
@@ -1153,7 +1164,7 @@ export class Game {
       this.brushOn = false;
       this.minimap.markDirty();
       if (this.mode === 'city') this.setUndoCost(this.brushSpent);
-      if (Math.round(this.brushSpent) >= 1) this.ui.toast(`Levelled for ${fmtMoney(this.brushSpent)}`);
+      if (Math.round(this.brushSpent) >= 1) this.ui.toast(`Levelled for ${fmtMoney(this.brushSpent)}.`);
       return;
     }
     if (this.pendingPlace) {

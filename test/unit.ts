@@ -9,7 +9,7 @@ import { DAMAGED_CODE, encode, encodeNow, decode, listSlots, pushSaved, saveCode
 import { Drive, GisOAuth2 } from '../src/drive';
 import { makeRng } from '../src/rng';
 import { SCENARIOS, buildScenario, goalRowText, goalState, openScenario, scenarioMonth, scenarioNews, successLine } from '../src/scenarios';
-import { Game } from '../src/game';
+import { Game, priceIncludes } from '../src/game';
 import { chartAxis, spreadLabels, tickLabel } from '../src/ui/charts';
 import { cutOff } from '../src/render/renderer';
 import { ago } from '../src/ui/ui';
@@ -2294,9 +2294,9 @@ await test('the cost tip says what part of a price is bridges, and what part cle
     g.cancelTool();
     return t;
   };
-  assert.equal(tip('road', 15, 5, 25, 5), 'Road · 11 tiles · $210 · includes 2 bridge tiles ($120)');
-  assert.equal(tip('power', 15, 7, 25, 7), 'Power line · 11 tiles · $95 · includes 2 tiles over water ($50)');
-  assert.equal(tip('res', 6, 11, 6, 11), 'Residential · 1 zone · $109 · includes $9 to clear trees');
+  assert.equal(tip('road', 15, 5, 25, 5), 'Road · 11 tiles · $210, with 2 bridge tiles ($120)');
+  assert.equal(tip('power', 15, 7, 25, 7), 'Power line · 11 tiles · $95, with 2 tiles over water ($50)');
+  assert.equal(tip('res', 6, 11, 6, 11), 'Residential · 1 zone · $109, with $9 to clear trees');
 });
 
 await test('Level land leaves water alone and charges nothing for it', () => {
@@ -2360,6 +2360,24 @@ await test("Level land that moves only cents of earth doesn't toast 'Levelled fo
   g.pointerUp(20.5, 15.5, 0, 0);
   assert.ok(w.city.funds < 50000 && w.city.funds > 49999.5, `spent $${50000 - w.city.funds}`);
   assert.deepEqual(g.toasts.filter((t: string) => t.startsWith('Levelled')), []);
+  // Real earth moved says what it cost, as a sentence like every other toast.
+  for (let i = 0; i < w.n; i++) w.height[i] = 4 + (i % 3);
+  g.pointerDown(20.5, 15.5, 0, 0);
+  for (let t = 0; t < 10; t++) g.brushTick(1 / 30);
+  g.pointerUp(20.5, 15.5, 0, 0);
+  assert.match(g.toasts.filter((t: string) => t.startsWith('Levelled')).join(), /^Levelled for \$[\d,]+\.$/);
+});
+
+await test('a price says what else it takes in as one clause: bridges, then grading, then clearing', () => {
+  const text = (p: Parameters<typeof priceIncludes>[0], line = false, power = false) => priceIncludes(p, line, power).replace(/<[^>]+>/g, '');
+  assert.equal(text({}), '');
+  assert.equal(text({ grading: 105, clearing: 2, clears: 'trees' }), ', with $105 to level the ground and $2 to clear trees');
+  assert.equal(text({ grading: 40 }, true), ', with $40 to grade the slope');
+  assert.equal(text({ bridges: 3, bridgeCost: 150, grading: 40, clearing: 6, clears: 'trees' }, true), ', with 3 bridge tiles ($150), $40 to grade the slope and $6 to clear trees');
+  assert.equal(text({ bridges: 1, bridgeCost: 50 }, true, true), ', with 1 tile over water ($50)');
+  assert.equal(text({ clearing: 1240, clears: 'trees and rubble' }), ', with $1,240 to clear trees and rubble');
+  // The dollar figures stay in the figures' face.
+  assert.equal((priceIncludes({ grading: 105, clearing: 2, clears: 'trees' }, false, false).match(/<span class="num">\$[\d,]+<\/span>/g) ?? []).length, 2);
 });
 
 await test('damaged saves are refused instead of half-loaded', () => {
