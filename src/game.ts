@@ -2,7 +2,7 @@
 import { Audio } from './audio';
 import {
   BUILDINGS, CITY_CLASSES, CITY_TOOLS, DIFFICULTIES, Difficulty, EDITOR_TOOLS, GRADE_COST, Kind, LANDMARK_LIMITS, MAP_SIZES, POWER, SEP, ToolDef,
-  Upgrade, article, buildingName, cityClass, isZone, nextUpgrade,
+  Upgrade, article, buildingName, cityClass, isZone, nextUpgrade, num,
 } from './defs';
 import { lessMotion } from './motion';
 import { Minimap } from './render/minimap';
@@ -96,7 +96,7 @@ const EDITOR_HINT = (narrow: boolean) =>
   `Drag to move the map, ${matchMedia('(hover: none) and (pointer: coarse)').matches ? 'pinch' : 'scroll or pinch'} to zoom. Pick a brush ${narrow ? 'below' : 'on the left'} to shape the land.`;
 
 function fmtMoney(n: number): string {
-  return '$' + Math.round(n).toLocaleString();
+  return '$' + num(n);
 }
 
 export class Game {
@@ -1253,7 +1253,7 @@ export class Game {
     if (this.mode !== 'city' || !this.sim || !k || !(k in lifts)) return undefined;
     for (const b of this.world.buildings.values()) if (b.kind === k) return undefined;
     const [zone, who, unit] = lifts[k as keyof typeof lifts];
-    const limit = `${LANDMARK_LIMITS[zone].toLocaleString('en-US')} ${unit}`;
+    const limit = `${num(LANDMARK_LIMITS[zone])} ${unit}`;
     return `The ${BUILDINGS[k].name.toLowerCase()} is open. ${this.sim.capped[zone] ? `${who} can grow past ${limit}.` : `${who} won't stall at ${limit}.`}`;
   }
 
@@ -1634,6 +1634,6 @@ export class Game {
   cityTitle(): { name: string; sub: string } {
     if (this.mode === 'editor') return { name: 'Terrain editor', sub: this.terrain.seed };
     const pop = this.sim?.stats.residents ?? 0;
-    return { name: this.world.city.name, sub: `Pop ${pop.toLocaleString()} · ${cityClass(pop)}` };
+    return { name: this.world.city.name, sub: `Pop ${num(pop)} · ${cityClass(pop)}` };
   }
 }

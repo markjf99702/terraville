@@ -1,7 +1,7 @@
 // Everything in the DOM: top bar, toolbox, panels, dialogs, title screen.
 import {
   BUILDINGS, DIFFICULTIES, DISASTER_POP, Difficulty, Kind, MAP_SIZES, SEP, ToolDef, UPGRADE_LV, article, cityClass, dateLabel,
-  isZone, nextUpgrade,
+  MONTHS, isZone, nextUpgrade, num,
 } from '../defs';
 import { DISASTER_NAMES, DisasterKind } from '../disasters';
 import { Game, SPEED_NAMES, randomCityName } from '../game';
@@ -141,12 +141,14 @@ export function ago(t: number): string {
   if (s < 3600) return `${Math.round(s / 60)} min ago`;
   if (s < 86400) return `${Math.round(s / 3600)} h ago`;
   if (s < 86400 * 7) return `${Math.round(s / 86400)} d ago`;
-  return `on ${new Date(t).toLocaleDateString()}`;
+  // Written out one way for everyone, as the game's own dates are: on 2 Nov 2026.
+  const d = new Date(t);
+  return `on ${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
 }
 
 export function money(n: number): string {
   const v = Math.round(n);
-  return (v < 0 ? '−$' : '$') + Math.abs(v).toLocaleString();
+  return (v < 0 ? '−$' : '$') + num(Math.abs(v));
 }
 
 /** Build the static shell and return the two canvases the game needs. */
@@ -344,7 +346,7 @@ export class UI {
         </div>
         <p class="lede">Shape a landscape, then grow a city on it. Zone homes, shops and factories, string the power lines, balance the books, and keep an eye on the sky.</p>
         <div class="title-actions">
-          ${last ? `<button class="btn primary" data-act="continue"><span>Continue ${esc(last.name)}</span><small class="num">${dateLabel(last.date)} · pop ${last.pop.toLocaleString()}</small></button>` : ''}
+          ${last ? `<button class="btn primary" data-act="continue"><span>Continue ${esc(last.name)}</span><small class="num">${dateLabel(last.date)} · pop ${num(last.pop)}</small></button>` : ''}
           <button class="btn${last ? '' : ' primary'}" data-act="quick"><span>Start a new city</span><small>Random land</small></button>
           <button class="btn" data-act="editor"><span>Shape the land first</span><small>Terrain editor</small></button>
           <button class="btn" data-act="challenges"><span>Challenges</span><small>Cities in trouble</small></button>
@@ -685,7 +687,7 @@ export class UI {
       if (e && e.textContent !== v) e.textContent = v;
     };
     set('signName', city.name);
-    set('signPop', `Pop ${s.residents.toLocaleString()}`);
+    set('signPop', `Pop ${num(s.residents)}`);
     set('signClass', cityClass(s.residents));
     set('stDate', dateLabel(city.month));
     set('stFunds', money(city.funds));
@@ -716,7 +718,7 @@ export class UI {
     if (rci && rci.getAttribute('aria-label') !== said) rci.setAttribute('aria-label', said);
     // The sign opens the report, and says what it shows.
     const sign = this.root.querySelector('#citySign');
-    const name = `${city.name}, ${s.residents.toLocaleString()} residents, ${cityClass(s.residents).toLowerCase()}. City report`;
+    const name = `${city.name}, ${num(s.residents)} residents, ${cityClass(s.residents).toLowerCase()}. City report`;
     if (sign && sign.getAttribute('aria-label') !== name) sign.setAttribute('aria-label', name);
   }
 
@@ -1866,7 +1868,7 @@ export class UI {
       <div class="field"><span id="fDiffCap">Difficulty</span>
         <div class="choice" id="fDiff" role="radiogroup" aria-labelledby="fDiffCap">${DIFFICULTIES.map((d) => `<button role="radio" data-d="${d.id}" aria-checked="${d.id === diff}" tabindex="${d.id === diff ? 0 : -1}"><b>${d.name}</b><span>${money(d.funds)} to start</span><small>${difficultyNote(d)}</small></button>`).join('')}</div>
       </div>
-      <label class="switch"><span>Random disasters<small>Fires, floods, tornadoes and worse, once the city has ${DISASTER_POP.toLocaleString()} residents. You can also set them off yourself.</small></span><input type="checkbox" id="fDis" checked></label>
+      <label class="switch"><span>Random disasters<small>Fires, floods, tornadoes and worse, once the city has ${num(DISASTER_POP)} residents. You can also set them off yourself.</small></span><input type="checkbox" id="fDis" checked></label>
     </div>`);
     // A phone has no minimap and the dialog covers the map: the land it would found on, drawn a pixel a tile.
     const land = body.querySelector<HTMLCanvasElement>('#fLand');
@@ -2280,7 +2282,7 @@ export class UI {
       const cut = <T,>(a: T[]) => a.slice(-n);
       const total = h.res.length;
       const start = g.world.city.month - Math.min(n, total);
-      const people = (v: number) => Math.round(v).toLocaleString();
+      const people = num;
       // The names at the line ends are the legend's.
       lineChart($(body, '#ch1'), [
         { name: 'Residents', color: ZONE_COLORS.res, values: cut(h.res) },
@@ -2302,7 +2304,7 @@ export class UI {
       lineChart($(body, '#ch6'), [
         { name: 'Made', color: '#199e70', values: cut(h.powerMade) },
         { name: 'Used', color: '#d95926', values: cut(h.powerUsed) },
-      ], { startMonth: start, format: (v) => `${Math.round(v).toLocaleString()} MW`, zero: true, whole: true });
+      ], { startMonth: start, format: (v) => `${num(v)} MW`, zero: true, whole: true });
     };
     $(body, '#cRange').onclick = (e) => {
       const b = (e.target as HTMLElement).closest<HTMLElement>('[data-n]');
@@ -2354,9 +2356,9 @@ export class UI {
         <div>
           <h3>City</h3>
           <dl class="kv">
-            <dt>Residents</dt><dd>${s.residents.toLocaleString()}</dd>
+            <dt>Residents</dt><dd>${num(s.residents)}</dd>
             <dt>Class</dt><dd>${cityClass(s.residents)}</dd>
-            <dt>Last month</dt><dd>${s.migration >= 0 ? '+' : ''}${s.migration.toLocaleString()}</dd>
+            <dt>Last month</dt><dd>${s.migration >= 0 ? '+' : ''}${num(s.migration)}</dd>
             <dt>Score</dt><dd>${s.score} / 1000${yearAgo === undefined ? '' : `<span class="kv-words">, ${yearAgo === s.score ? 'the same as' : `${s.score > yearAgo ? '+' : '−'}${Math.abs(s.score - yearAgo)} on`} a year ago</span>`}</dd>
           </dl>
         </div>
@@ -2371,14 +2373,14 @@ export class UI {
       </div>`}
       <div class="cols">
         <dl class="kv">
-          <dt>Commercial jobs</dt><dd>${s.comJobs.toLocaleString()}</dd>
-          <dt>Industrial jobs</dt><dd>${s.indJobs.toLocaleString()}</dd>
+          <dt>Commercial jobs</dt><dd>${num(s.comJobs)}</dd>
+          <dt>Industrial jobs</dt><dd>${num(s.indJobs)}</dd>
           <dt>Unemployment</dt><dd>${Math.round(s.unemployment * 100)}%</dd>
           <dt>Zones (R/C/I)</dt><dd>${s.zones.res} / ${s.zones.com} / ${s.zones.ind}</dd>
         </dl>
         <dl class="kv">
-          <dt>Power</dt><dd>${linked.toLocaleString()} of ${s.powerSupply.toLocaleString()} MW</dd>
-          ${unlinked > 0 ? `<dt>Not connected</dt><dd>${unlinked.toLocaleString()} MW</dd>` : ''}
+          <dt>Power</dt><dd>${num(linked)} of ${num(s.powerSupply)} MW</dd>
+          ${unlinked > 0 ? `<dt>Not connected</dt><dd>${num(unlinked)} MW</dd>` : ''}
           <dt>Power grids</dt><dd>${s.powerGrids}${s.gridsShort ? `, <span style="color:var(--critical-ink)">${s.gridsShort} overloaded</span>` : ''}</dd>
           <dt>Unpowered zones</dt><dd>${s.unpowered}</dd>
           <dt>Average land value</dt><dd>${money(s.avgLandValue * 40)}/acre</dd>
@@ -2530,7 +2532,7 @@ export class UI {
             : `On this device and in Drive${SEP}saved ${ago(r.local!.savedAt)}`;
         const row = el(`<div class="slot"><b>${esc(name)}</b>
           <div class="actions"></div>
-          <span class="meta num">${dateLabel(date)} · pop ${pop.toLocaleString()}</span>
+          <span class="meta num">${dateLabel(date)} · pop ${num(pop)}</span>
           <span class="meta" style="grid-column:1/-1">${where}</span></div>`);
         const everywhere = () => !!r.remote && drive.hasToken();
         const del = this.deleteBtn(name, async () => {
@@ -2574,7 +2576,7 @@ export class UI {
       for (const s of slots) {
         const row = el(`<div class="slot"><b>${esc(s.name)}</b>
           <div class="actions"></div>
-          <span class="meta num">${s.mode === 'city' ? `${dateLabel(s.date)} · pop ${s.pop.toLocaleString()}` : 'Terrain'} · saved ${new Date(s.savedAt).toLocaleDateString()}</span></div>`);
+          <span class="meta num">${s.mode === 'city' ? `${dateLabel(s.date)} · pop ${num(s.pop)}` : 'Terrain'} · saved ${new Date(s.savedAt).toLocaleDateString()}</span></div>`);
         // Said with the date, since one city can have several snapshots.
         const what = s.mode === 'city' ? `the snapshot of ${s.name}, ${dateLabel(s.date)}` : `the terrain ${s.name}`;
         $(row, '.actions').append(

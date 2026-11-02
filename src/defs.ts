@@ -15,7 +15,16 @@ export type Kind =
  * commerce (jobs) an airport, industry (jobs) a seaport.
  */
 export const LANDMARK_LIMITS = { res: 18000, com: 5000, ind: 4000 };
-const limit = (k: keyof typeof LANDMARK_LIMITS) => LANDMARK_LIMITS[k].toLocaleString('en-US');
+
+/**
+ * A whole number as the game writes it, 33,608, whatever language the browser is set to: the words are English, and
+ * the figures written into them (55,000, 18,000) have commas.
+ */
+export function num(n: number): string {
+  return Math.round(n).toLocaleString('en-US');
+}
+
+const limit = (k: keyof typeof LANDMARK_LIMITS) => num(LANDMARK_LIMITS[k]);
 /** What each landmark is needed for, as its toolbox tip and the guide say it. */
 export const LANDMARK_NEEDS = {
   stadium: `Needed before housing passes ${limit('res')} residents.`,

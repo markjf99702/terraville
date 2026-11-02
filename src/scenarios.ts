@@ -1,6 +1,6 @@
 // Challenges: a ready-made city in trouble, a goal, and a deadline.
 // A nod to the original's scenarios, with procedurally built cities.
-import { BUILDINGS, Kind, POWER, RAIL, ROAD, isZone, toIndex as idx } from './defs';
+import { BUILDINGS, Kind, POWER, RAIL, ROAD, isZone, num, toIndex as idx } from './defs';
 import { Rng, makeRng, hashString } from './rng';
 import { Sim } from './sim';
 import { DEFAULT_TERRAIN, TerrainParams, generateTerrain } from './terrain';
@@ -37,7 +37,7 @@ export function goalRowText(r: GoalRow): string {
   return isCount(r) ? `${r.label} ${r.value} / ${r.goal}` : `${r.label} ${r.value} · ${r.goal}`;
 }
 
-const people = (n: number) => n.toLocaleString('en-US');
+const people = num;
 /** A row for a count to reach. */
 const atLeast = (label: string, n: number, goal: number): GoalRow => ({ label, value: people(n), goal: people(goal), met: n >= goal });
 
@@ -98,7 +98,7 @@ export const SCENARIOS: Scenario[] = [
     terrain: { seed: 'boomtown-coast-7', style: 'coast', hills: 30, water: 35 },
     check: (sim) => {
       const r = sim.stats.residents;
-      return { progress: Math.min(1, r / 12000), status: `${r.toLocaleString()} of 12,000 residents`, met: r >= 12000, rows: [atLeast('Residents', r, 12000)] };
+      return { progress: Math.min(1, r / 12000), status: `${num(r)} of 12,000 residents`, met: r >= 12000, rows: [atLeast('Residents', r, 12000)] };
     },
   },
   {
@@ -131,7 +131,7 @@ export const SCENARIOS: Scenario[] = [
       const size = r >= 20000 && j >= 10000;
       return {
         progress: Math.max(0, Math.min(1, (40 - t) / 12)) * (size ? 1 : 0.5),
-        status: `Traffic ${t} (goal under 28) · ${r.toLocaleString()} of 20,000 residents · ${j.toLocaleString()} of 10,000 jobs`,
+        status: `Traffic ${t} (goal under 28) · ${num(r)} of 20,000 residents · ${num(j)} of 10,000 jobs`,
         met: t < 28 && size,
         rows: [{ label: 'Traffic index', value: String(t), goal: 'under 28', met: t < 28 }, atLeast('Residents', r, 20000), atLeast('Jobs', j, 10000)],
       };
@@ -170,7 +170,7 @@ export const SCENARIOS: Scenario[] = [
       const size = r >= 20000 && j >= 9000;
       return {
         progress: Math.max(0, Math.min(1, (30 - p) / 18)) * (size ? 1 : 0.5),
-        status: `Pollution ${p} (goal under 12) · ${r.toLocaleString()} of 20,000 residents · ${j.toLocaleString()} of 9,000 jobs`,
+        status: `Pollution ${p} (goal under 12) · ${num(r)} of 20,000 residents · ${num(j)} of 9,000 jobs`,
         met: p < 12 && size,
         rows: [{ label: 'Pollution index', value: String(p), goal: 'under 12', met: p < 12 }, atLeast('Residents', r, 20000), atLeast('Jobs', j, 9000)],
       };
@@ -215,7 +215,7 @@ export const SCENARIOS: Scenario[] = [
     },
     check: (sim) => {
       const r = sim.stats.residents;
-      return { progress: Math.min(1, r / 55000), status: `${r.toLocaleString()} of 55,000 residents`, met: r >= 55000, rows: [atLeast('Residents', r, 55000)] };
+      return { progress: Math.min(1, r / 55000), status: `${num(r)} of 55,000 residents`, met: r >= 55000, rows: [atLeast('Residents', r, 55000)] };
     },
   },
   {
@@ -250,7 +250,7 @@ export const SCENARIOS: Scenario[] = [
       const r = sim.stats.residents;
       return {
         progress: Math.min(1, r / 25000) * Math.min(1, a / 60),
-        status: `Approval ${a}% (goal over 60%) · ${r.toLocaleString()} of 25,000 residents`,
+        status: `Approval ${a}% (goal over 60%) · ${num(r)} of 25,000 residents`,
         met: a > 60 && r >= 25000,
         rows: [{ label: 'Approval', value: `${a}%`, goal: 'over 60%', met: a > 60 }, atLeast('Residents', r, 25000)],
       };

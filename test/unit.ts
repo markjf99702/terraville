@@ -4,7 +4,7 @@ import { World, encodeArray, decodeArray } from '../src/world';
 import { Sim, spending } from '../src/sim';
 import { generateTerrain, cleanTerrain, DEFAULT_TERRAIN } from '../src/terrain';
 import { linePath, planLine, applyLine, planZones, applyBuildings, planBulldoze, levelCost } from '../src/tools';
-import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST, UPGRADE_LV, Kind, BUILDINGS, article, buildingName, upkeepOf } from '../src/defs';
+import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST, UPGRADE_LV, Kind, BUILDINGS, article, buildingName, num, upkeepOf } from '../src/defs';
 import { DAMAGED_CODE, encode, encodeNow, decode, listSlots, pushSaved, saveCode, SlotMeta } from '../src/save';
 import { Drive, GisOAuth2 } from '../src/drive';
 import { makeRng } from '../src/rng';
@@ -12,6 +12,9 @@ import { SCENARIOS, buildScenario, goalRowText, goalState, openScenario, scenari
 import { Game } from '../src/game';
 import { chartAxis, spreadLabels, tickLabel } from '../src/ui/charts';
 import { cutOff } from '../src/render/renderer';
+import { ago } from '../src/ui/ui';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 
 let passed = 0;
 async function test(name: string, fn: () => void | Promise<void>) {
@@ -2775,6 +2778,29 @@ await test('line-end labels that would run below the chart are pushed up, not pi
   // Apart already: left alone, in the order given.
   assert.deepEqual(spreadLabels([60, 10, 35], 0, 100, 13), [60, 10, 35]);
   assert.deepEqual(spreadLabels([50, 52], 0, 100, 13), [50, 63]);
+});
+
+await test('figures read with commas whatever language the browser speaks, and nothing in src/ asks the browser for its own', () => {
+  assert.equal(num(33608), '33,608');
+  assert.equal(num(-1234.6), '-1,235');
+  assert.equal(num(700), '700');
+  // An old save says the day it was made the same way for everyone.
+  assert.match(ago(Date.UTC(2025, 2, 14, 12)), /^on 1[345] Mar 2025$/);
+  // toLocaleString() with no argument writes 33.608 in a German browser, beside the copy's 55,000.
+  const bare: string[] = [];
+  const walk = (dir: string) => {
+    for (const f of readdirSync(dir, { withFileTypes: true })) {
+      const p = join(dir, f.name);
+      if (f.isDirectory()) walk(p);
+      else if (/\.ts$/.test(f.name)) {
+        readFileSync(p, 'utf8').split('\n').forEach((line, i) => {
+          if (/\.toLocaleString\(\s*\)/.test(line)) bare.push(`${p}:${i + 1}`);
+        });
+      }
+    }
+  };
+  walk(join(process.cwd(), 'src'));
+  assert.deepEqual(bare, [], 'use num() from defs.ts');
 });
 
 console.log(`\n${passed} passed`);

@@ -3,7 +3,7 @@
 // pictures are drawn with the game's renderer.
 import {
   AUTO_GRADE, BRIDGE_COST, BUILDINGS, CITY_CLASSES, DISASTER_POP, DOES, GRADE_COST, Kind, LANDMARK_LIMITS, NET_COST,
-  NET_MAX_SLOPE, NET_UPKEEP, POWER, ROAD, UPGRADES, UPGRADE_LV, ZONE_LV_GATE, ZONE_POP,
+  NET_MAX_SLOPE, NET_UPKEEP, POWER, ROAD, UPGRADES, UPGRADE_LV, ZONE_LV_GATE, ZONE_POP, num,
 } from '../defs';
 import { lessMotion } from '../motion';
 import { DC, drawBuilding, drawNet, drawTrees } from '../render/sprites';
@@ -11,7 +11,7 @@ import { TerrainField, paintTerrain } from '../render/terrainPaint';
 import { zoneTitle } from '../sim';
 import { World } from '../world';
 
-const money = (n: number) => '$' + Math.round(n).toLocaleString();
+const money = (n: number) => '$' + num(n);
 const acre = (lv: number) => (lv ? `needs ${money(lv * 40)}/acre` : 'no minimum');
 
 interface Section {
@@ -42,7 +42,7 @@ function sections(): Section[] {
       html: `
         <p>Every city starts the same way: power, a few lots of each kind, roads between them, and wires to the lots. A new city starts paused, so nothing happens until you are ready.</p>
         <ol class="steps">
-          <li><b>Build a coal plant.</b> It costs ${money(b.coal.cost)} and makes ${b.coal.capacity} MW, enough for about ${Math.floor(b.coal.capacity! / 9)} lots. Put it at the edge of where the town will go, because it pollutes heavily.</li>
+          <li><b>Build a coal plant.</b> It costs ${money(b.coal.cost)} and makes ${num(b.coal.capacity!)} MW, enough for about ${Math.floor(b.coal.capacity! / 9)} lots. Put it at the edge of where the town will go, because it pollutes heavily.</li>
           <li><b>Lay a road spine</b> through open, gentle ground. Roads every 7 tiles leave room for a 2×2 block of lots, and every lot in the block touches a road.</li>
           <li><b>Zone a mix.</b> Start with about four residential lots, two industrial and one or two commercial. Keep industry at least a block away from the houses.</li>
           <li><b>Run a power line</b> from the plant to the nearest lot. Lots that touch each other pass power along, so one wire can feed a whole block, but not across a road: give each block its own short wire, or run one line along the road past them.</li>
@@ -84,9 +84,9 @@ function sections(): Section[] {
         <p>Taxes push all three bars at once. Each point above 7% pulls them down, and each point below pushes them up.</p>
         <p>Three limits stop a city cold until you build the landmark it needs, and the news ticker tells you when you hit one:</p>
         ${table(['Limit', 'Needs'], [
-          [`Housing past ${LANDMARK_LIMITS.res.toLocaleString()} residents`, 'Stadium'],
-          [`Commerce past ${LANDMARK_LIMITS.com.toLocaleString()} jobs`, 'Airport'],
-          [`Industry past ${LANDMARK_LIMITS.ind.toLocaleString()} jobs`, 'Seaport, touching water'],
+          [`Housing past ${num(LANDMARK_LIMITS.res)} residents`, 'Stadium'],
+          [`Commerce past ${num(LANDMARK_LIMITS.com)} jobs`, 'Airport'],
+          [`Industry past ${num(LANDMARK_LIMITS.ind)} jobs`, 'Seaport, touching water'],
         ])}
         ${tip('If a bar is high but nothing grows, check the lots rather than the meter: power, a touching road, the commute, and land value: Inspect shows the most a lot can grow where it stands, and what holds it back.')}`,
     },
@@ -119,7 +119,7 @@ function sections(): Section[] {
         ${table(['Plant', 'Cost', 'Output', 'Upkeep', 'Notes'], plants.map((k) => [
           b[k].name,
           money(b[k].cost),
-          `${b[k].capacity} MW`,
+          `${num(b[k].capacity!)} MW`,
           `${money(b[k].upkeep)}/mo`,
           k === 'coal' ? 'Heavy pollution' : k === 'nuclear' ? 'Clean, rare meltdown risk' : k === 'wind' ? '1×1, fine on hilltops' : 'Clean and quiet',
         ]), [1, 2, 3])}
@@ -192,7 +192,7 @@ function sections(): Section[] {
       id: 'disasters',
       title: 'Disasters',
       html: `
-        <p>Random disasters start once a city passes ${DISASTER_POP.toLocaleString()} residents, about when it needs its first fire station, and can be switched off from the Disasters menu. Harder difficulties bring them more often.</p>
+        <p>Random disasters start once a city passes ${num(DISASTER_POP)} residents, about when it needs its first fire station, and can be switched off from the Disasters menu. Harder difficulties bring them more often.</p>
         ${table(['Disaster', 'How to prepare'], [
           ['Fire', 'The most common by far. Fire stations prevent fires and put them out. Buildings far from a station catch fire more often, and fire spreads through trees and touching buildings. Bulldoze a gap to stop it.'],
           ['Flood', 'Starts on low shoreline and spreads over land a few metres above the water. Keep valuable buildings on higher ground.'],
@@ -218,7 +218,7 @@ function sections(): Section[] {
     {
       id: 'classes',
       title: 'City sizes and score',
-      html: `${table(['Class', 'Residents'], CITY_CLASSES.map((c) => [c.name, c.min ? `${c.min.toLocaleString()}+` : 'under 2,000']), [1])}
+      html: `${table(['Class', 'Residents'], CITY_CLASSES.map((c) => [c.name, c.min ? `${num(c.min)}+` : 'under 2,000']), [1])}
         <p>The city report scores the city out of 1,000. The mayor’s approval weighs most, 7 points for each percent, up to 700. Each size class past ${CITY_CLASSES[0].name} adds 50, up to ${(CITY_CLASSES.length - 1) * 50} for a ${CITY_CLASSES[CITY_CLASSES.length - 1].name.toLowerCase()}, and land value adds up to 50. The History charts show the approval behind it.</p>`,
     },
   ];
@@ -311,7 +311,7 @@ function fillPictures(root: HTMLElement): void {
       c.setAttribute('aria-label', zoneTitle(kind, level));
       fig.appendChild(c);
       const cap = document.createElement('figcaption');
-      const pop = ZONE_POP[kind][level].toLocaleString();
+      const pop = num(ZONE_POP[kind][level]);
       cap.innerHTML = `<b>${zoneTitle(kind, level)}</b><span class="num">${pop} ${kind === 'res' ? 'residents' : 'jobs'}</span><span class="num">${acre(ZONE_LV_GATE[kind][level])}</span>`;
       fig.appendChild(cap);
       row.appendChild(fig);

@@ -3,7 +3,7 @@
 // map passes (traffic, pollution, crime, land value) run at month end.
 import {
   BUILDINGS, DIFFICULTIES, DISASTER_POP, DOES, Kind, LANDMARK_LIMITS, NET_UPKEEP, POWER, RAIL, ROAD, UPGRADE_LV, ZONE_LV_GATE,
-  ZONE_POP, buildingName, cityClass, CITY_CLASSES, dateLabel, isZone, toIndex, upkeepOf,
+  ZONE_POP, buildingName, cityClass, CITY_CLASSES, dateLabel, isZone, num, toIndex, upkeepOf,
 } from './defs';
 import { MinHeap } from './heap';
 import { clamp } from './rng';
@@ -296,7 +296,7 @@ export class Sim {
     const yb = this.stats.yearBudget;
     const net = yb.taxIncome - spending(yb);
     const year = 1900 + Math.floor(world.city.month / 12) - 1;
-    this.say('year', `${year} closes ${net >= 0 ? 'with a surplus of' : 'with a deficit of'} $${Math.abs(Math.round(net)).toLocaleString()}. Taxes brought in $${Math.round(yb.taxIncome).toLocaleString()}.`, net >= 0 ? 'good' : 'warn', undefined, 0);
+    this.say('year', `${year} closes ${net >= 0 ? 'with a surplus of' : 'with a deficit of'} $${num(Math.abs(net))}. Taxes brought in $${num(yb.taxIncome)}.`, net >= 0 ? 'good' : 'warn', undefined, 0);
     this.stats.yearBudget = emptyBudget();
     this.emit({ type: 'year', surplus: net >= 0 });
   }
@@ -902,15 +902,15 @@ export class Sim {
     let i = valve(iTarget, Ji) + tax;
     if (this.capped.res) {
       r = Math.min(r, -0.05);
-      this.say('stadium', `Housing has stopped at ${LANDMARK_LIMITS.res.toLocaleString('en-US')} residents until the city builds a stadium.`, 'warn', undefined, 12);
+      this.say('stadium', `Housing has stopped at ${num(LANDMARK_LIMITS.res)} residents until the city builds a stadium.`, 'warn', undefined, 12);
     }
     if (this.capped.com) {
       c = Math.min(c, -0.05);
-      this.say('airport', `Commerce has stopped at ${LANDMARK_LIMITS.com.toLocaleString('en-US')} jobs until the city builds an airport.`, 'warn', undefined, 12);
+      this.say('airport', `Commerce has stopped at ${num(LANDMARK_LIMITS.com)} jobs until the city builds an airport.`, 'warn', undefined, 12);
     }
     if (this.capped.ind) {
       i = Math.min(i, -0.05);
-      this.say('seaport', `Industry has stopped at ${LANDMARK_LIMITS.ind.toLocaleString('en-US')} jobs until the city builds a seaport.`, 'warn', undefined, 12);
+      this.say('seaport', `Industry has stopped at ${num(LANDMARK_LIMITS.ind)} jobs until the city builds a seaport.`, 'warn', undefined, 12);
     }
     const d = city.demand;
     d.r = clamp(d.r * 0.5 + r * 0.5, -1, 1);
@@ -1095,12 +1095,12 @@ export class Sim {
       let text: string;
       if (burning) {
         // Short because a plant on it is burning: more plants may not be what it needs.
-        const which = `${this.grids.length > 1 ? `one of your ${this.grids.length} separate power grids needs ${worst.demand} MW but its plants make` : `the grid needs ${worst.demand} MW but the plants make`} ${worst.supply} MW while the ${buildingName(burning).toLowerCase()} is on fire`;
+        const which = `${this.grids.length > 1 ? `one of your ${this.grids.length} separate power grids needs ${num(worst.demand)} MW but its plants make` : `the grid needs ${num(worst.demand)} MW but the plants make`} ${num(worst.supply)} MW while the ${buildingName(burning).toLowerCase()} is on fire`;
         text = `Brownouts: ${which}. ${worst.demand <= worst.supply + worst.burning ? 'The power comes back once the fire is out.' : 'Even with it, the grid would be short: build another plant.'}`;
       } else {
         text = this.grids.length > 1
-          ? `Brownouts: one of your ${this.grids.length} separate power grids needs ${worst.demand} MW but its plants make ${worst.supply} MW. Join it to a grid with power to spare, or build a plant on it.`
-          : `Brownouts: the grid needs ${worst.demand} MW but the plants make ${worst.supply} MW. Build another plant.`;
+          ? `Brownouts: one of your ${this.grids.length} separate power grids needs ${num(worst.demand)} MW but its plants make ${num(worst.supply)} MW. Join it to a grid with power to spare, or build a plant on it.`
+          : `Brownouts: the grid needs ${num(worst.demand)} MW but the plants make ${num(worst.supply)} MW. Build another plant.`;
       }
       this.say('brownout', text, 'warn', this.findUnpowered(true), 6);
     } else if (s.unpowered > 0 && month > 2) {
@@ -1124,7 +1124,7 @@ export class Sim {
     if (s.avgPollution > 100) this.say('pollution', 'Pollution is choking the city.', 'warn', undefined, 12);
     if (s.avgCrime > 90) this.say('crime', 'Crime is rising. More police stations would help.', 'warn', undefined, 12);
     if (s.residents > 3000 && s.powerSupply > 0 && s.powerDemand > s.powerSupply * 0.9 && s.powerDemand <= s.powerSupply) {
-      this.say('powerlow', `Power reserve is thin: ${s.powerSupply - s.powerDemand} MW left.`, 'info', undefined, 12);
+      this.say('powerlow', `Power reserve is thin: ${num(s.powerSupply - s.powerDemand)} MW left.`, 'info', undefined, 12);
     }
     if (city.tax >= 13) this.say('tax', 'Citizens are grumbling about high taxes.', 'info', undefined, 12);
     let fireStations = 0, police = 0;
@@ -1133,7 +1133,7 @@ export class Sim {
       if (b.kind === 'police') police++;
     }
     // Random disasters start at this size, and fire is the commonest: say what a station costs and what it is for.
-    const price = (k: Kind) => `$${BUILDINGS[k].cost.toLocaleString()}, $${BUILDINGS[k].upkeep} a month`;
+    const price = (k: Kind) => `$${num(BUILDINGS[k].cost)}, $${BUILDINGS[k].upkeep} a month`;
     if (s.residents > DISASTER_POP && fireStations === 0) {
       this.say('needfire', city.disasters
         ? `The city has no fire station. Fires break out from time to time now; a station (${price('fire')}) puts them out nearby.`
@@ -1147,7 +1147,7 @@ export class Sim {
     if (idx > city.classReached) {
       city.classReached = idx;
       // 'Passed': the city may have grown well beyond the line by the month's end.
-      const text = `${city.name} has passed ${CITY_CLASSES[idx].min.toLocaleString()} residents and is now a ${CITY_CLASSES[idx].name.toLowerCase()}.`;
+      const text = `${city.name} has passed ${num(CITY_CLASSES[idx].min)} residents and is now a ${CITY_CLASSES[idx].name.toLowerCase()}.`;
       this.say('class' + idx, text, 'good', undefined, 0);
       this.emit({ type: 'class', text });
     }
@@ -1161,7 +1161,7 @@ export class Sim {
     const city = this.world.city;
     const cost = BUILDINGS[k].cost;
     if (city.funds >= cost || city.loan + 10000 > 30000 || city.funds + 10000 < cost) return '';
-    const has = Math.round(city.funds) < 0 ? `is $${Math.round(-city.funds).toLocaleString()} in debt` : `has $${Math.round(city.funds).toLocaleString()}`;
+    const has = Math.round(city.funds) < 0 ? `is $${num(-city.funds)} in debt` : `has $${num(city.funds)}`;
     return ` The city ${has}: a loan from the Budget would pay for one.`;
   }
 
@@ -1255,7 +1255,7 @@ export class Sim {
       if (isZone(b.kind)) {
         const k = b.kind as 'res' | 'com' | 'ind';
         title = zoneTitle(k, b.level);
-        rows.push([k === 'res' ? 'Residents' : 'Jobs', b.pop.toLocaleString()]);
+        rows.push([k === 'res' ? 'Residents' : 'Jobs', num(b.pop)]);
         rows.push(['Density', `${b.level} of ${ZONE_POP[k].length - 1}`]);
         if (!b.road) rows.push(['Problem', 'No road access']);
         else if (!b.trip) rows.push(['Problem', this.noCommute(b)]);
@@ -1267,7 +1267,7 @@ export class Sim {
         at = (b.y + 1) * world.w + b.x + 1;
       }
       if (!isZone(b.kind)) rows.push(['Does', DOES[b.kind as keyof typeof DOES]]);
-      if (def.capacity) rows.push(['Output', `${def.capacity} MW`]);
+      if (def.capacity) rows.push(['Output', `${num(def.capacity)} MW`]);
       const grid = this.gridAt(b.y * world.w + b.x);
       rows.push(['Power',
         def.capacity ? (world.fire[b.y * world.w + b.x] ? 'None: on fire' : 'Generating') :
@@ -1280,7 +1280,7 @@ export class Sim {
       if (def.upkeep) rows.push(['Upkeep', `$${upkeepOf(b)}/mo`]);
       if (b.kind === 'stadium' || b.kind === 'seaport' || b.kind === 'airport') {
         const adds = this.landmarkAdds(b);
-        rows.push(['Land value it adds', adds === null ? 'None: only the most upgraded counts' : adds ? `+$${(adds * 40).toLocaleString()}/acre across the city` : 'None until it is upgraded']);
+        rows.push(['Land value it adds', adds === null ? 'None: only the most upgraded counts' : adds ? `+$${num(adds * 40)}/acre across the city` : 'None until it is upgraded']);
       }
     } else if (world.water[i]) {
       title = net & ROAD ? 'Road bridge' : net & RAIL ? 'Rail bridge' : net & POWER ? 'Power line' : 'Water';
@@ -1309,7 +1309,7 @@ export class Sim {
     if (world.rad[i]) rows.unshift(['Status', `Radioactive for ${world.rad[i]} years`]);
     rows.push(['Elevation', `${Math.round(world.height[i])} m`]);
     if (!world.water[i]) {
-      rows.push(['Land value', `$${(world.landValue[at] * 40).toLocaleString()}/acre`]);
+      rows.push(['Land value', `$${num(world.landValue[at] * 40)}/acre`]);
       rows.push(['Pollution', level5(world.pollution[at])]);
       rows.push(['Crime', level5(world.crime[at])]);
     }
@@ -1340,7 +1340,7 @@ export class Sim {
     const ci = (b.y + 1) * world.w + b.x + 1;
     const bonus = k === 'res' ? (world.serviceCov[ci] / 255) * 30 : 0;
     const need = Math.max(0, Math.ceil(ZONE_LV_GATE[k][max + 1] - bonus)) * 40;
-    return `Density ${max} is the most this land value allows. Density ${max + 1} (${zoneTitle(k, max + 1).toLowerCase()}) needs $${need.toLocaleString()}/acre here.`;
+    return `Density ${max} is the most this land value allows. Density ${max + 1} (${zoneTitle(k, max + 1).toLowerCase()}) needs $${num(need)}/acre here.`;
   }
 
   dateLabel(): string {
@@ -1364,8 +1364,8 @@ export interface PowerGrid {
 
 function gridLoad(g: PowerGrid): string {
   const load = g.demand > g.supply
-    ? `Overloaded: needs ${g.demand.toLocaleString()} MW, makes ${g.supply.toLocaleString()}`
-    : `${g.demand.toLocaleString()} of ${g.supply.toLocaleString()} MW used`;
+    ? `Overloaded: needs ${num(g.demand)} MW, makes ${num(g.supply)}`
+    : `${num(g.demand)} of ${num(g.supply)} MW used`;
   return g.burning ? `${load}; a plant is on fire` : load;
 }
 
