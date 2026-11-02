@@ -27,17 +27,46 @@ export interface Roamer {
   heading: number;
 }
 
+/**
+ * One fire and everything that caught from it: tiles alight within a few tiles of each other belong to the same one.
+ * It is news once, when its first building catches, and once more when the last of it is out.
+ */
+interface Blaze {
+  /** Where its first building caught, for Go there. */
+  x: number;
+  y: number;
+  burned: number;
+  /** Whether it has been news: a fire in woods or rubble isn't, until it reaches a building. */
+  told: boolean;
+}
+
+/** How near a new fire must be to one already burning to be part of it, in tiles. */
+const BLAZE_REACH = 6;
+
 export class Disasters {
   roamers: Roamer[] = [];
   /** Seconds of screen shake left; the renderer counts it down. */
   shake = 0;
+  /** Where the latest earthquake struck. */
+  lastQuake: { x: number; y: number } | null = null;
   private floodLevel = 0;
   private floodAge = 0;
+  /** While set, a disaster set off says nothing: a challenge's opening says it all in one line. */
+  private quiet = false;
+  /** Each burning tile's fire, by number, and each fire's record. */
+  private blazeAt: Int32Array | null = null;
+  private blazes = new Map<number, Blaze>();
+  private nextBlaze = 1;
 
   constructor(private sim: Sim) {}
 
   private get world() {
     return this.sim.world;
+  }
+
+  /** The news, unless a challenge's opening is saying it all in one line. */
+  private say(...a: Parameters<Sim['say']>): void {
+    if (!this.quiet) this.sim.say(...a);
   }
 
   /** A tornado or monster under way and a flood still rising, for a save. */
@@ -84,19 +113,30 @@ export class Disasters {
   /**
    * Set off a disaster now, from the Disasters menu or a challenge's opening. `sparePlants` is for a challenge's
    * scripted opening: an earthquake strikes under a zone and leaves the power plants standing, and a fire starts
-   * anywhere but a plant, so a challenge isn't lost to its own opening before the first click.
+   * anywhere but a plant, so a challenge isn't lost to its own opening before the first click. `quiet` leaves the
+   * news to the opening, which says it in one line; the dice fall as they would anyway.
    */
-  trigger(kind: DisasterKind, o: { sparePlants?: boolean } = {}): void {
+  trigger(kind: DisasterKind, o: { sparePlants?: boolean; quiet?: boolean } = {}): void {
+    const was = this.quiet;
+    this.quiet = was || !!o.quiet;
+    try {
+      this.setOff(kind, !!o.sparePlants);
+    } finally {
+      this.quiet = was;
+    }
+  }
+
+  private setOff(kind: DisasterKind, sparePlants: boolean): void {
     switch (kind) {
-      case 'fire': return this.randomFire(true, !!o.sparePlants);
+      case 'fire': return this.randomFire(true, sparePlants);
       case 'flood': return this.startFlood();
       case 'tornado': return this.spawnRoamer('tornado');
-      case 'earthquake': return this.earthquake(!!o.sparePlants);
+      case 'earthquake': return this.earthquake(sparePlants);
       case 'monster': return this.spawnRoamer('monster');
       case 'meltdown': {
         const plants = [...this.world.buildings.values()].filter((b) => b.kind === 'nuclear');
         if (!plants.length) {
-          this.sim.say('nomelt', 'There is no nuclear plant to melt down.', 'info', undefined, 0);
+          this.say('nomelt', 'There is no nuclear plant to melt down.', 'info', undefined, 0);
           return;
         }
         this.meltdown(plants[Math.floor(Math.random() * plants.length)]);
@@ -118,7 +158,7 @@ export class Disasters {
       if (b.kind === 'res' || b.kind === 'com' || b.kind === 'ind' ? b.level > 0 : true) cands.push(b);
     }
     if (!cands.length) {
-      if (forced) this.sim.say('nofire', 'There is nothing here to burn yet.', 'info', undefined, 0);
+      if (forced) this.say('nofire', 'There is nothing here to burn yet.', 'info', undefined, 0);
       return;
     }
     if (forced) {
@@ -137,7 +177,10 @@ export class Disasters {
     }
   }
 
-  /** Set a tile (and the whole building on it) alight. */
+  /**
+   * Set a tile (and the whole building on it) alight. A fire that starts near one already burning is part of it and
+   * says nothing; one that starts away from any, or the first building a fire in woods or rubble reaches, is news.
+   */
   ignite(x: number, y: number): void {
     const world = this.world;
     if (!world.inBounds(x, y)) return;
@@ -146,20 +189,101 @@ export class Disasters {
     const b = world.buildingAt(x, y);
     const weeks = 5 + Math.floor(Math.random() * (FIRE_WEEKS - 4));
     if (b) {
+      const c = Math.floor(b.size / 2);
+      const id = this.blazeFor(b.x, b.y, b.size, { x: b.x + c, y: b.y + c });
       for (let dy = 0; dy < b.size; dy++) {
-        for (let dx = 0; dx < b.size; dx++) world.fire[(b.y + dy) * world.w + b.x + dx] = weeks;
+        for (let dx = 0; dx < b.size; dx++) this.light((b.y + dy) * world.w + b.x + dx, weeks, id);
       }
       world.dirty(b.x, b.y, b.x + b.size - 1, b.y + b.size - 1);
-      const c = Math.floor(b.size / 2);
-      const covered = world.fireCov[(b.y + c) * world.w + b.x + c] > 0;
-      const what = covered ? 'Firefighters are on the way.' : 'No fire station reaches it: bulldoze a gap around it to stop it spreading.';
-      this.sim.say('fire', `Fire at ${firePlace(b)}. ${what}`, 'alert', { x: b.x + c, y: b.y + c }, 1);
+      const blaze = this.blazes.get(id)!;
+      if (!blaze.told) {
+        blaze.told = true;
+        const covered = world.fireCov[(b.y + c) * world.w + b.x + c] > 0;
+        const what = covered ? 'Firefighters are on the way.' : 'No fire station reaches it: bulldoze a gap around it to stop it spreading.';
+        this.say('fire' + id, `Fire at ${firePlace(b)}. ${what}`, 'alert', { x: b.x + c, y: b.y + c }, 0);
+      }
       this.sim.emit({ type: 'disaster', kind: 'fire', x, y });
       this.sim.powerDirty = true;
     } else if (world.trees[i]) {
-      world.fire[i] = weeks;
+      this.light(i, weeks, this.blazeFor(x, y, 1, { x, y }));
       world.dirty(x, y, x, y);
     }
+  }
+
+  /** Each tile's fire number, kept beside the fire layer. */
+  private get blazeMap(): Int32Array {
+    if (!this.blazeAt || this.blazeAt.length !== this.world.n) this.blazeAt = new Int32Array(this.world.n);
+    return this.blazeAt;
+  }
+
+  private light(i: number, weeks: number, id: number): void {
+    this.world.fire[i] = weeks;
+    this.blazeMap[i] = id;
+  }
+
+  /**
+   * The fire burning within reach of a square, joined into one if it reaches more than one; or a new one, at `at`.
+   * Tiles in reach burning with no fire of their own (since the city was saved, say) join it too.
+   */
+  private blazeFor(x0: number, y0: number, size: number, at: { x: number; y: number }): number {
+    const world = this.world;
+    const map = this.blazeMap;
+    let id = 0;
+    const strays: number[] = [];
+    for (let y = Math.max(0, y0 - BLAZE_REACH); y <= Math.min(world.h - 1, y0 + size - 1 + BLAZE_REACH); y++) {
+      for (let x = Math.max(0, x0 - BLAZE_REACH); x <= Math.min(world.w - 1, x0 + size - 1 + BLAZE_REACH); x++) {
+        const i = y * world.w + x;
+        if (!world.fire[i]) continue;
+        const near = map[i];
+        if (!near || !this.blazes.has(near)) strays.push(i);
+        else if (near !== id) id = id ? this.merge(id, near) : near;
+      }
+    }
+    if (!id) {
+      id = this.nextBlaze++;
+      // A fire set off quietly, in a challenge's opening, has been news already.
+      this.blazes.set(id, { ...at, burned: 0, told: this.quiet });
+    }
+    const blaze = this.blazes.get(id)!;
+    for (const i of strays) {
+      map[i] = id;
+      // A building on fire when the city was saved was news then.
+      if (world.occ[i]) blaze.told = true;
+    }
+    return id;
+  }
+
+  /** Two fires that have met are one from now on: the older keeps its place, and counts what both burned. */
+  private merge(a: number, b: number): number {
+    const [keep, gone] = a < b ? [a, b] : [b, a];
+    const k = this.blazes.get(keep)!;
+    const g = this.blazes.get(gone)!;
+    k.burned += g.burned;
+    k.told ||= g.told;
+    this.blazes.delete(gone);
+    const map = this.blazeMap;
+    for (let i = 0; i < map.length; i++) if (map[i] === gone) map[i] = keep;
+    return keep;
+  }
+
+  /**
+   * Give each burning tile with no fire of its own (one burning when the city was saved, say) the fire near it, or a
+   * fire of its own, so that what catches from it is no news.
+   */
+  private adoptStrays(burning: number[]): void {
+    const w = this.world.w;
+    const map = this.blazeMap;
+    for (const i of burning) if (!map[i] || !this.blazes.has(map[i])) this.blazeFor(i % w, (i / w) | 0, 1, { x: i % w, y: (i / w) | 0 });
+  }
+
+  /** Forget each fire that has nothing left alight. */
+  private closeBlazes(): void {
+    if (!this.blazes.size) return;
+    const world = this.world;
+    const map = this.blazeMap;
+    const alight = new Set<number>();
+    for (let i = 0; i < world.n; i++) if (world.fire[i]) alight.add(map[i]);
+    for (const id of this.blazes.keys()) if (!alight.has(id)) this.blazes.delete(id);
   }
 
   private spreadFire(): void {
@@ -168,7 +292,12 @@ export class Disasters {
     const fire = world.fire;
     const burning: number[] = [];
     for (let i = 0; i < n; i++) if (fire[i]) burning.push(i);
-    if (!burning.length) return;
+    this.adoptStrays(burning);
+    if (!burning.length) {
+      // Put out some other way since last week, by a flood, say.
+      this.closeBlazes();
+      return;
+    }
     const handled = new Set<number>();
     for (const i of burning) {
       const x = i % w;
@@ -220,6 +349,7 @@ export class Disasters {
         }
       }
     }
+    this.closeBlazes();
   }
 
   /** Set the rubble on a tile alight. It burns out by itself, and spreads to anything flammable next to it. */
@@ -227,7 +357,7 @@ export class Disasters {
     const world = this.world;
     const i = y * world.w + x;
     if (world.water[i] || world.occ[i] || world.fire[i]) return;
-    world.fire[i] = 5 + Math.floor(Math.random() * (FIRE_WEEKS - 4));
+    this.light(i, 5 + Math.floor(Math.random() * (FIRE_WEEKS - 4)), this.blazeFor(x, y, 1, { x, y }));
     world.dirty(x, y, x, y);
   }
 
@@ -263,7 +393,7 @@ export class Disasters {
     }
     world.dirty(cx - 8, cy - 8, cx + 8, cy + 8);
     this.shake = Math.max(this.shake, 1.2);
-    this.sim.say('meltdown', 'Nuclear meltdown! The area around the plant is contaminated for years.', 'alert', { x: cx, y: cy }, 0);
+    this.say('meltdown', 'Nuclear meltdown! The area around the plant is contaminated for years.', 'alert', { x: cx, y: cy }, 0);
     this.sim.emit({ type: 'disaster', kind: 'meltdown', x: cx, y: cy });
   }
 
@@ -281,7 +411,7 @@ export class Disasters {
       }
     }
     if (!shore.length) {
-      this.sim.say('noflood', 'No low shoreline for a flood.', 'info', undefined, 0);
+      this.say('noflood', 'No low shoreline for a flood.', 'info', undefined, 0);
       return;
     }
     // Prefer shoreline near the city.
@@ -296,7 +426,7 @@ export class Disasters {
     this.floodTile(pickI);
     const x = pickI % w;
     const y = (pickI / w) | 0;
-    this.sim.say('flood', 'Flooding along the shore!', 'alert', { x, y }, 0);
+    this.say('flood', 'Flooding along the shore!', 'alert', { x, y }, 0);
     this.sim.emit({ type: 'disaster', kind: 'flood', x, y });
   }
 
@@ -402,7 +532,7 @@ export class Disasters {
     });
     const msg = kind === 'tornado' ? 'Tornado sighted!' : 'A monster is coming ashore!';
     // The tile it stands on: rounding would name the next one, past the edge from the last column.
-    this.sim.say(kind, msg, 'alert', { x: Math.floor(x), y: Math.floor(y) }, 0);
+    this.say(kind, msg, 'alert', { x: Math.floor(x), y: Math.floor(y) }, 0);
     this.sim.emit({ type: 'disaster', kind, x: Math.floor(x), y: Math.floor(y) });
   }
 
@@ -511,7 +641,8 @@ export class Disasters {
       }
     }
     this.shake = 2.5;
-    this.sim.say('quake', 'Earthquake! Check for fires and broken roads.', 'alert', { x: Math.floor(cx), y: Math.floor(cy) }, 0);
+    this.lastQuake = { x: Math.floor(cx), y: Math.floor(cy) };
+    this.say('quake', 'Earthquake! Check for fires and broken roads.', 'alert', { x: Math.floor(cx), y: Math.floor(cy) }, 0);
     this.sim.emit({ type: 'disaster', kind: 'earthquake', x: Math.floor(cx), y: Math.floor(cy) });
   }
 }

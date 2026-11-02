@@ -204,9 +204,14 @@ export const SCENARIOS: Scenario[] = [
     },
     start: (sim) => {
       // The quakes strike under the zones, and neither they nor the fires touch the power plants: a
-      // meltdown before the first click would be no fair start.
-      for (let k = 0; k < 3; k++) sim.disasters.trigger('earthquake', { sparePlants: true });
-      for (let k = 0; k < 4; k++) sim.disasters.trigger('fire', { sparePlants: true });
+      // meltdown before the first click would be no fair start. One line says it all, at the first quake.
+      let at: { x: number; y: number } | undefined;
+      for (let k = 0; k < 3; k++) {
+        sim.disasters.trigger('earthquake', { sparePlants: true, quiet: true });
+        at ??= sim.disasters.lastQuake ?? undefined;
+      }
+      for (let k = 0; k < 4; k++) sim.disasters.trigger('fire', { sparePlants: true, quiet: true });
+      sim.say('quake', 'A major earthquake and two aftershocks have struck. Check for fires and broken roads.', 'alert', at, 0);
     },
     check: (sim) => {
       const r = sim.stats.residents;

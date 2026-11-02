@@ -1055,7 +1055,8 @@ await test('a fire alert names what is burning and says what to do', () => {
   const alone = 'No fire station reaches it: bulldoze a gap around it to stop it spreading.';
   for (const b of lots) {
     sim.disasters.ignite(b.x, b.y);
-    w.city.month++; // past the month between fire reports
+    // Out before the next starts beside it, which is then a fire of its own.
+    for (let dy = 0; dy < b.size; dy++) for (let dx = 0; dx < b.size; dx++) w.fire[(b.y + dy) * w.w + b.x + dx] = 0;
   }
   assert.deepEqual(sim.messages.filter((m) => m.text.startsWith('Fire')).map((m) => [m.text, m.x, m.y]), [
     [`Fire at an airport. ${alone}`, 5, 5], [`Fire at the office towers. ${covered}`, 11, 3], [`Fire at the cottages. ${covered}`, 15, 3],
@@ -1330,6 +1331,7 @@ await test("Aftershock's opening quakes strike under zones, and neither they nor
       const said: string[] = [];
       sim.on((e) => {
         if (e.type === 'disaster' && e.kind === 'earthquake') quakes.push(Math.round(e.y) * w.w + Math.round(e.x));
+        if (e.type === 'disaster' && e.kind === 'meltdown') said.push('meltdown');
         if (e.type === 'message') said.push(e.message.text);
       });
       aftershock.start!(sim);
@@ -1351,6 +1353,60 @@ await test("Aftershock's opening quakes strike under zones, and neither they nor
   });
   assert.equal(w.buildings.size, 0, 'a plain quake never touched the coal plant');
 });
+
+await test("Aftershock opens with one line for its quakes and fires, and they fall just as when each said its own", () => {
+  const aftershock = SCENARIOS.find((x) => x.id === 'aftershock')!;
+  const map = (w: World) => JSON.stringify([[...w.buildings.values()].map((b) => [b.id, b.kind, b.x, b.y, b.level]), [...w.fire], [...w.rubble], [...w.net]]);
+  for (const seed of [1, 2, 3]) {
+    const open = (loud: boolean) => seeded(seed, () => {
+      const w = buildScenario(aftershock, 120, 100);
+      const sim = new Sim(w);
+      openScenario(sim);
+      const from = sim.messages.length;
+      if (!loud) aftershock.start!(sim);
+      else {
+        // The opening as it was, each quake and fire saying its own piece.
+        for (let k = 0; k < 3; k++) sim.disasters.trigger('earthquake', { sparePlants: true });
+        for (let k = 0; k < 4; k++) sim.disasters.trigger('fire', { sparePlants: true });
+      }
+      return { w, news: sim.messages.slice(from) };
+    });
+    const quiet = open(false);
+    const loud = open(true);
+    assert.equal(map(quiet.w), map(loud.w), `seed ${seed}: the quiet opening changed what the quakes and fires did`);
+    assert.equal(loud.news.filter((m) => m.text.startsWith('Earthquake!')).length, 3);
+    assert.deepEqual(quiet.news.map((m) => [m.text, m.kind]), [['A major earthquake and two aftershocks have struck. Check for fires and broken roads.', 'alert']]);
+    assert.ok(quiet.news[0].x !== undefined, 'with Go there, to the first quake');
+    assert.ok([...quiet.w.fire].some((f) => f > 0), `seed ${seed}: nothing is burning`);
+  }
+});
+
+await test('a fire is news once: spreading next door says nothing, and a fire across town says its own', () => seeded(9, () => {
+  const w = flat(60, 40);
+  const a = w.place('res', 5, 5), b = w.place('res', 8, 5), far = w.place('res', 40, 30);
+  for (const lot of [a, b, far]) w.setLevel(lot, 2);
+  const sim = new Sim(w);
+  const alerts = () => sim.messages.filter((m) => m.text.startsWith('Fire at')).map((m) => [m.x, m.y]);
+  sim.disasters.ignite(a.x, a.y);
+  sim.step();
+  sim.disasters.ignite(b.x, b.y);
+  assert.ok(w.fire[b.y * w.w + b.x] > 0, 'the lot next door is alight');
+  assert.deepEqual(alerts(), [[6, 6]], 'one alert for the fire and the lot next door');
+  sim.disasters.ignite(far.x, far.y);
+  assert.deepEqual(alerts(), [[6, 6], [41, 31]], 'a fire 30 tiles away the same month is news too');
+  for (let k = 0; k < 3; k++) sim.step();
+  assert.equal(alerts().length, 2, 'spreading is no news');
+  assert.equal(sim.saveRun().cooldown.filter(([k]) => k.startsWith('fire')).length, 0, 'nothing kept per fire in the save');
+  // Nor once the city is opened again: the fires burning then are the ones the news has told of.
+  const back = new Sim(World.deserialize(JSON.parse(JSON.stringify(w.serialize(sim.saveRun())))));
+  const told = back.messages.length;
+  const next = back.world.place('res', 41, 27);
+  back.world.setLevel(next, 2);
+  back.disasters.ignite(next.x, next.y);
+  for (let k = 0; k < 2; k++) back.step();
+  assert.ok(back.world.fire[27 * w.w + 41] > 0 || !back.world.buildings.has(next.id), 'the lot next door caught');
+  assert.deepEqual(back.messages.slice(told).filter((m) => m.text.startsWith('Fire at')), []);
+}));
 
 await test('Gridlock and Smog Valley are not won by bulldozing every job before the deadline', () => {
   const sim = new Sim(flat());

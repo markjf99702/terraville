@@ -212,12 +212,15 @@ export class Sim {
     };
   }
 
-  /** Post a message, at most once per `cool` months for the same key. */
+  /**
+   * Post a message, at most once per `cool` months for the same key. With no cooldown nothing is kept, so news keyed
+   * by the thing it is about (each fire, each building lost) doesn't pile up in the save.
+   */
   say(key: string, text: string, kind: MessageKind = 'info', at?: { x: number; y: number }, cool = 6): void {
     const month = this.world.city.month;
     const last = this.cooldown.get(key);
     if (last !== undefined && month - last < cool) return;
-    this.cooldown.set(key, month);
+    if (cool > 0) this.cooldown.set(key, month);
     const m: Message = { id: this.msgId++, text, kind, month, x: at?.x, y: at?.y };
     this.messages.push(m);
     if (this.messages.length > 80) this.messages.shift();
