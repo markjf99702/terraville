@@ -261,7 +261,7 @@ export const CITY_CLASSES: { min: number; name: string }[] = [
   { min: 10000, name: 'City' },
   { min: 50000, name: 'Capital' },
   { min: 100000, name: 'Metropolis' },
-  { min: 500000, name: 'Megalopolis' },
+  { min: 250000, name: 'Megalopolis' },
 ];
 
 export function cityClass(pop: number): string {

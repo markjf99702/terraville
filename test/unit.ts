@@ -4,7 +4,7 @@ import { World, encodeArray, decodeArray } from '../src/world';
 import { Sim, spending } from '../src/sim';
 import { generateTerrain, cleanTerrain, DEFAULT_TERRAIN } from '../src/terrain';
 import { linePath, planLine, applyLine, planZones, applyBuildings, planBulldoze, levelCost } from '../src/tools';
-import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST, UPGRADE_LV, Kind, BUILDINGS, article, buildingName, num, upkeepOf } from '../src/defs';
+import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST, UPGRADE_LV, Kind, BUILDINGS, article, buildingName, cityClass, num, upkeepOf } from '../src/defs';
 import { DAMAGED_CODE, citySlot, encode, encodeNow, decode, listSlots, pushSaved, readCode, saveCode, SlotMeta } from '../src/save';
 import { Drive, GisOAuth2 } from '../src/drive';
 import { makeRng } from '../src/rng';
@@ -823,6 +823,12 @@ await test('crime grows only where people live and work: a ring of parks around 
   const alone = crimeAt(null);
   assert.ok(crimeAt('park') < alone, `parks ${crimeAt('park')}, alone ${alone}`);
   assert.ok(crimeAt('wind') <= alone, `a wind turbine next door ${crimeAt('wind')}, alone ${alone}`);
+});
+
+await test('the size classes: a town at 2,000 residents, a city at 10,000, and a megalopolis within reach at 250,000', () => {
+  assert.deepEqual([1999, 2000, 9999, 10000, 49999, 50000, 99999, 100000, 249999, 250000, 600000].map(cityClass), [
+    'Village', 'Town', 'Town', 'City', 'City', 'Capital', 'Capital', 'Metropolis', 'Metropolis', 'Megalopolis', 'Megalopolis',
+  ]);
 });
 
 await test('a connected, powered city grows and pays taxes', () => {

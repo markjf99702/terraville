@@ -2302,14 +2302,14 @@ try {
       assert.deepEqual(problems, []);
       await ctx.close();
     }
-    // A metropolis, the longest sign, with the checklist asked for: it sits below the stats.
+    // A megalopolis, the longest sign, with the checklist asked for: it sits below the stats.
     const ctx = await profile();
     const { page, problems } = await open(ctx);
     await found(page);
-    await page.evaluate(() => { window.__terraville.sim.stats.residents = 123456; });
+    await page.evaluate(() => { window.__terraville.sim.stats.residents = 265432; });
     await page.click('#topbar [data-act="menu"]');
     await page.click('[role="menu"] button:has-text("Show the starter checklist")');
-    await page.waitForFunction(() => document.querySelector('#signSub').textContent.includes('Metropolis'));
+    await page.waitForFunction(() => document.querySelector('#signSub').textContent.includes('Megalopolis'));
     const strip = await page.evaluate(() => document.querySelector('.stat-strip').getBoundingClientRect().bottom);
     const guide = await page.evaluate(() => document.querySelector('#guide').getBoundingClientRect().top);
     assert.ok(guide >= strip, `the checklist (top ${guide}) sits below the stats (bottom ${strip})`);
