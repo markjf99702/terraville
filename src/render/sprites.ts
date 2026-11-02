@@ -11,7 +11,8 @@ import type { Building, World } from '../world';
 import { ZONE_MAP_COLORS, shade } from './color';
 
 export interface Emitter {
-  kind: 'smoke' | 'steam' | 'rotor' | 'beacon';
+  /** A 'light' is a lit window or doorway after dark, its size the glow's radius. */
+  kind: 'smoke' | 'steam' | 'rotor' | 'beacon' | 'light';
   /** World tile coordinates. */
   x: number;
   y: number;
@@ -82,6 +83,8 @@ interface BoxOpts {
   rng?: Rng;
   roofBits?: number;
   lit?: number;
+  /** Lights along the facade after dark: 2 to 4 for a box with lit windows unless given. */
+  glow?: number;
 }
 
 /** Flat-roofed box: roof on top, facade below, shadow to the SE. */
@@ -93,6 +96,10 @@ function box(dc: DC, x: number, y: number, w: number, d: number, hgt: number, o:
   const rh = d - hgt;
   // Facade.
   fill(ctx, x, fy, w, hgt, shade(o.wall, 0.8));
+  // Where its windows glow after dark, spread along the facade (taking nothing from the rng, so the look stays).
+  const glows = o.glow ?? (o.lit ? Math.max(2, Math.min(4, Math.round((w / L) * 1.2))) : 0);
+  const gr = Math.max(0.18, Math.min(0.3, (hgt / L) * 0.45));
+  for (let k = 0; k < glows; k++) dc.emit?.({ kind: 'light', x: (x + (w * (k + 0.5)) / glows) / L, y: (fy + hgt * 0.5) / L, size: gr });
   if (o.windows !== false && hgt > 2.5) {
     const glass = o.glass ?? '#2E3F4F';
     if (L >= 20) {
@@ -156,9 +163,11 @@ function house(dc: DC, x: number, y: number, w: number, d: number, hgt: number, 
   const fy = y + d - hgt;
   const rh = d - hgt;
   fill(ctx, x + w * 0.04, fy, w * 0.92, hgt, shade(wall, 0.92));
+  let door = x + w / 2;
   if (L >= 20) {
     const dw = Math.max(1.5, w * 0.13);
     const dx = x + w * (0.25 + r() * 0.45);
+    door = dx + dw / 2;
     fill(ctx, dx, fy + hgt * 0.35, dw, hgt * 0.65, shade(roof, 0.55));
     const ww = Math.max(1.5, w * 0.14);
     for (const wx of [x + w * 0.12, x + w * 0.74]) {
@@ -166,6 +175,8 @@ function house(dc: DC, x: number, y: number, w: number, d: number, hgt: number, 
       fill(ctx, wx, fy + hgt * 0.28, ww, hgt * 0.36, '#6E8FA8');
     }
   }
+  // Its front, lit after dark.
+  dc.emit?.({ kind: 'light', x: door / L, y: (fy + hgt * 0.5) / L, size: 0.2 });
   if (horiz) {
     fill(ctx, x, y, w, rh / 2, shade(roof, 1.1));
     fill(ctx, x, y + rh / 2, w, rh / 2, shade(roof, 0.8));
@@ -808,7 +819,7 @@ function drawCom(dc: DC, b: Building, X: number, Y: number, r: Rng): void {
       for (let k = 0; k < n; k++) {
         const x = X + L * 0.1 + k * sw + L * 0.05;
         const w = sw - L * 0.1;
-        box(dc, x, Y + L * 0.15, w, L * 1.4, L * 0.28, { roof: pick(r, FLAT_ROOFS), wall: pick(r, WALLS), windows: false, rng: r, roofBits: 1 });
+        box(dc, x, Y + L * 0.15, w, L * 1.4, L * 0.28, { roof: pick(r, FLAT_ROOFS), wall: pick(r, WALLS), windows: false, rng: r, roofBits: 1, glow: 1 });
         awning(dc, x, Y + L * 1.55 - L * 0.06, w, pick(r, AWNINGS));
       }
       break;
@@ -827,21 +838,21 @@ function drawCom(dc: DC, b: Building, X: number, Y: number, r: Rng): void {
     }
     case 3: {
       const g = pick(r, GLASS);
-      box(dc, X + L * 0.12, Y + L * 0.12, L * 1.45, L * 1.9, L * 0.62, { roof: pick(r, FLAT_ROOFS), wall: '#C9CCD0', glass: g, rng: r, parapet: true, roofBits: 2, bands: r() < 0.5 });
-      box(dc, X + L * 1.72, Y + L * 0.5, L * 1.16, L * 1.5, L * 0.5, { roof: pick(r, FLAT_ROOFS), wall: pick(r, APT_WALLS), glass: '#3B4A58', rng: r, parapet: true, roofBits: 2 });
+      box(dc, X + L * 0.12, Y + L * 0.12, L * 1.45, L * 1.9, L * 0.62, { roof: pick(r, FLAT_ROOFS), wall: '#C9CCD0', glass: g, rng: r, parapet: true, roofBits: 2, bands: r() < 0.5, glow: 2 });
+      box(dc, X + L * 1.72, Y + L * 0.5, L * 1.16, L * 1.5, L * 0.5, { roof: pick(r, FLAT_ROOFS), wall: pick(r, APT_WALLS), glass: '#3B4A58', rng: r, parapet: true, roofBits: 2, glow: 2 });
       parking(dc, X + L * 0.12, Y + L * 2.2, L * 2.76, L * 0.68, r, 0.7);
       break;
     }
     case 4: {
       const g = pick(r, GLASS);
-      box(dc, X + L * 0.2, Y + L * 0.15, L * 1.7, L * 2.6, L * 1.2, { roof: '#8E959B', wall: '#B8C2CA', glass: g, rng: r, parapet: true, roofBits: 3, bands: true });
-      box(dc, X + L * 2.05, Y + L * 1.2, L * 0.8, L * 1.6, L * 0.4, { roof: pick(r, FLAT_ROOFS), wall: pick(r, APT_WALLS), glass: '#3B4A58', rng: r, roofBits: 1 });
+      box(dc, X + L * 0.2, Y + L * 0.15, L * 1.7, L * 2.6, L * 1.2, { roof: '#8E959B', wall: '#B8C2CA', glass: g, rng: r, parapet: true, roofBits: 3, bands: true, glow: 3 });
+      box(dc, X + L * 2.05, Y + L * 1.2, L * 0.8, L * 1.6, L * 0.4, { roof: pick(r, FLAT_ROOFS), wall: pick(r, APT_WALLS), glass: '#3B4A58', rng: r, roofBits: 1, glow: 1 });
       break;
     }
     default: {
       // Downtown skyscraper on a podium.
       const g = pick(r, GLASS);
-      box(dc, X + L * 0.1, Y + L * 1.6, L * 2.8, L * 1.3, L * 0.3, { roof: '#9DA3A8', wall: '#C3C8CC', glass: '#3B4A58', rng: r, roofBits: 2 });
+      box(dc, X + L * 0.1, Y + L * 1.6, L * 2.8, L * 1.3, L * 0.3, { roof: '#9DA3A8', wall: '#C3C8CC', glass: '#3B4A58', rng: r, roofBits: 2, glow: 3 });
       const tx = X + L * (0.55 + r() * 0.3);
       box(dc, tx, Y + L * 0.1, L * 1.6, L * 2.75, L * 1.85, { roof: '#7F8A93', wall: '#A9B8C4', glass: g, rng: r, bands: r() < 0.5, lit: 0.12 });
       if (L >= 16) {
@@ -899,8 +910,8 @@ function drawInd(dc: DC, b: Building, X: number, Y: number, r: Rng): void {
   };
   switch (b.level) {
     case 1: {
-      box(dc, X + L * 0.15, Y + L * 0.15, L * 1.2, L * 1.0, L * 0.3, { roof: '#8E9AA0', wall: '#B9B2A3', windows: false, rng: r });
-      box(dc, X + L * 1.6, Y + L * 0.3, L * 1.2, L * 0.9, L * 0.26, { roof: '#A2735A', wall: '#C2B8A6', windows: false, rng: r });
+      box(dc, X + L * 0.15, Y + L * 0.15, L * 1.2, L * 1.0, L * 0.3, { roof: '#8E9AA0', wall: '#B9B2A3', windows: false, rng: r, glow: 1 });
+      box(dc, X + L * 1.6, Y + L * 0.3, L * 1.2, L * 0.9, L * 0.26, { roof: '#A2735A', wall: '#C2B8A6', windows: false, rng: r, glow: 1 });
       crates(X + L * 0.2, Y + L * 1.6, L * 2.6, L * 1.2, 7);
       truck(X + L * 1.8, Y + L * 2.5);
       break;
@@ -920,7 +931,7 @@ function drawInd(dc: DC, b: Building, X: number, Y: number, r: Rng): void {
       break;
     }
     default: {
-      box(dc, X + L * 0.1, Y + L * 0.8, L * 1.9, L * 1.8, L * 0.7, { roof: '#6F7A80', wall: '#9C9689', glass: '#3F4C55', rng: r, bands: true, roofBits: 3 });
+      box(dc, X + L * 0.1, Y + L * 0.8, L * 1.9, L * 1.8, L * 0.7, { roof: '#6F7A80', wall: '#9C9689', glass: '#3F4C55', rng: r, bands: true, roofBits: 3, glow: 2 });
       tank(dc, X + L * 2.45, Y + L * 2.5, L * 0.38, '#CFC9BB');
       tank(dc, X + L * 0.5, Y + L * 2.72, L * 0.24, '#B8B2A4');
       smokestack(dc, X + L * 2.3, Y + L * 1.6, L * 0.16, L * 1.45, '#7A6E66');
@@ -941,7 +952,8 @@ function drawInd(dc: DC, b: Building, X: number, Y: number, r: Rng): void {
 
 function warehouse(dc: DC, x: number, y: number, w: number, d: number, hgt: number, r: Rng): void {
   const { ctx, L } = dc;
-  box(dc, x, y, w, d, hgt, { roof: '#8E9AA0', wall: '#B4AD9D', windows: false, rng: r });
+  // Lit at two of its loading doors after dark.
+  box(dc, x, y, w, d, hgt, { roof: '#8E9AA0', wall: '#B4AD9D', windows: false, rng: r, glow: 2 });
   const rh = d - hgt;
   if (L >= 12) {
     // Sawtooth roof ridges.
@@ -996,7 +1008,7 @@ function drawPark(dc: DC, b: Building, X: number, Y: number, r: Rng): void {
 function drawPolice(dc: DC, X: number, Y: number, r: Rng): void {
   const { ctx, L } = dc;
   fill(ctx, X, Y, L * 3, L * 3, 'rgba(200,196,186,0.9)');
-  box(dc, X + L * 0.15, Y + L * 0.15, L * 2.7, L * 1.55, L * 0.42, { roof: '#3F5A8C', wall: '#D9D6CF', glass: '#2C3E57', rng: r, parapet: true });
+  box(dc, X + L * 0.15, Y + L * 0.15, L * 2.7, L * 1.55, L * 0.42, { roof: '#3F5A8C', wall: '#D9D6CF', glass: '#2C3E57', rng: r, parapet: true, glow: 2 });
   const rh = L * 1.55 - L * 0.42;
   if (L >= 12) star(ctx, X + L * 1.5, Y + L * 0.15 + rh / 2, L * 0.34, '#F2C94C');
   parking(dc, X + L * 0.15, Y + L * 1.95, L * 2.7, L * 0.9, r, 0);
@@ -1024,7 +1036,7 @@ function star(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, co
 function drawFireStation(dc: DC, X: number, Y: number, r: Rng): void {
   const { ctx, L } = dc;
   fill(ctx, X, Y, L * 3, L * 3, 'rgba(200,196,186,0.9)');
-  box(dc, X + L * 0.15, Y + L * 0.2, L * 2.25, L * 1.7, L * 0.5, { roof: '#8E3B30', wall: '#B5483A', windows: false, rng: r, parapet: true });
+  box(dc, X + L * 0.15, Y + L * 0.2, L * 2.25, L * 1.7, L * 0.5, { roof: '#8E3B30', wall: '#B5483A', windows: false, rng: r, parapet: true, glow: 1 });
   const fy = Y + L * 1.9 - L * 0.5;
   if (L >= 12) {
     for (let k = 0; k < 3; k++) fill(ctx, X + L * (0.3 + k * 0.72), fy + L * 0.12, L * 0.55, L * 0.38, k === 1 ? '#3B3B3B' : '#E7E3DA');
@@ -1054,7 +1066,7 @@ function drawSchool(dc: DC, X: number, Y: number, r: Rng): void {
       ctx.strokeRect(X + L * 1.65, Y + L * 1.7, L * 0.85, L * 0.8);
     }
   }
-  box(dc, X + L * 0.1, Y + L * 0.1, L * 2.8, L * 1.05, L * 0.4, { roof: '#9C5B3B', wall: '#D7A65A', glass: '#34495E', rng: r, parapet: true });
+  box(dc, X + L * 0.1, Y + L * 0.1, L * 2.8, L * 1.05, L * 0.4, { roof: '#9C5B3B', wall: '#D7A65A', glass: '#34495E', rng: r, parapet: true, glow: 2 });
   box(dc, X + L * 0.1, Y + L * 1.0, L * 1.0, L * 1.9, L * 0.4, { roof: '#9C5B3B', wall: '#D7A65A', glass: '#34495E', rng: r, parapet: true });
   if (L >= 16) {
     // Flagpole.
@@ -1066,7 +1078,7 @@ function drawSchool(dc: DC, X: number, Y: number, r: Rng): void {
 function drawHospital(dc: DC, X: number, Y: number, r: Rng): void {
   const { ctx, L } = dc;
   fill(ctx, X, Y, L * 3, L * 3, 'rgba(206,202,192,0.9)');
-  box(dc, X + L * 0.2, Y + L * 0.9, L * 2.6, L * 1.4, L * 0.55, { roof: '#D9D9D3', wall: '#ECEBE6', glass: '#5D7B94', rng: r, parapet: true });
+  box(dc, X + L * 0.2, Y + L * 0.9, L * 2.6, L * 1.4, L * 0.55, { roof: '#D9D9D3', wall: '#ECEBE6', glass: '#5D7B94', rng: r, parapet: true, glow: 2 });
   box(dc, X + L * 0.95, Y + L * 0.1, L * 1.1, L * 2.6, L * 0.75, { roof: '#E4E4DE', wall: '#F2F1EC', glass: '#5D7B94', rng: r, parapet: true });
   const cx = X + L * 1.5;
   const cy = Y + L * 0.1 + (L * 2.6 - L * 0.75) / 2;
@@ -1153,6 +1165,8 @@ function drawStadium(dc: DC, b: Building, X: number, Y: number): void {
   for (const [fx, fy] of [[0.1, 0.1], [0.9, 0.1], [0.1, 0.9], [0.9, 0.9]]) {
     circle(ctx, X + S * fx, Y + S * fy, mast, '#555B61');
     if (b.level >= 2) circle(ctx, X + S * fx, Y + S * fy, mast * 0.55, '#F4E7B0');
+    // Floodlights after dark.
+    dc.emit?.({ kind: 'light', x: (X + S * fx) / L, y: (Y + S * fy) / L, size: 0.3 });
   }
 }
 
@@ -1209,6 +1223,8 @@ function drawSeaport(dc: DC, b: Building, X: number, Y: number, r: Rng): void {
       x = side === 3 ? X + L * 0.1 : X + S - L * 1.2;
     }
     fill(ctx, x + L * 0.25, y + L * 0.3, w, h, 'rgba(0,0,0,0.28)');
+    // A lamp on each crane after dark.
+    dc.emit?.({ kind: 'light', x: (x + w / 2) / L, y: (y + h / 2) / L, size: 0.25 });
     ctx.strokeStyle = '#E2A21B';
     ctx.lineWidth = Math.max(1.5, L * 0.08);
     ctx.strokeRect(x, y, w, h);
@@ -1251,8 +1267,8 @@ function drawAirport(dc: DC, b: Building, X: number, Y: number, r: Rng): void {
   for (const gx of gates.length > 2 ? gates : [1.6, 3.1]) plane(ctx, X + L * gx, Y + L * 3.5, L * 0.9, -Math.PI / 2, '#F5F6F7');
   // Terminal and tower; an international airport's terminal is taller and glassier.
   const intl = b.level >= 3;
-  box(dc, X + L * 0.6, Y + L * 4.3, L * 4.2, L * 1.55, L * (intl ? 0.8 : 0.45), { roof: '#AFB6BC', wall: intl ? '#C9D6DF' : '#D5DADE', glass: intl ? '#4F8DBA' : '#5F87A6', rng: r, bands: true, roofBits: 3 });
-  box(dc, X + L * 5.05, Y + L * 3.6, L * 0.6, L * 2.2, L * 1.4, { roof: '#6E7880', wall: '#C4CAD0', glass: '#3C5B73', rng: r, bands: true });
+  box(dc, X + L * 0.6, Y + L * 4.3, L * 4.2, L * 1.55, L * (intl ? 0.8 : 0.45), { roof: '#AFB6BC', wall: intl ? '#C9D6DF' : '#D5DADE', glass: intl ? '#4F8DBA' : '#5F87A6', rng: r, bands: true, roofBits: 3, glow: 4 });
+  box(dc, X + L * 5.05, Y + L * 3.6, L * 0.6, L * 2.2, L * 1.4, { roof: '#6E7880', wall: '#C4CAD0', glass: '#3C5B73', rng: r, bands: true, glow: 1 });
   dc.emit?.({ kind: 'beacon', x: (X + L * 5.35) / L, y: (Y + L * 3.75) / L, size: 0.06 });
 }
 

@@ -2,7 +2,7 @@
 // 16x16-tile chunk canvases at one of four detail levels and cached; moving
 // things (traffic, smoke, fire, disasters, tool previews) are drawn fresh
 // every frame on top.
-import { ROAD, isZone } from '../defs';
+import { BUILDINGS, ROAD, isZone } from '../defs';
 import type { Sim } from '../sim';
 import type { Building, World } from '../world';
 import { lessMotion } from '../motion';
@@ -664,11 +664,22 @@ export class Renderer {
         ctx.drawImage(this.glow, x + 0.05, y + 0.05, 0.9, 0.9);
       }
     }
-    // Lit windows.
+    // Lit windows and doors, where each building's drawing puts them; a park's lamp, and any building whose drawing
+    // marks none, at spots of its own. A power plant shows none: its beacons and its smoke say it runs.
     ctx.globalAlpha = a * 0.8;
     for (const b of world.buildings.values()) {
       if (b.x > x1 || b.y > y1 || b.x + b.size < x0 || b.y + b.size < y0) continue;
       if (world.city.founded && !b.powered && b.kind !== 'park') continue;
+      if (BUILDINGS[b.kind].capacity) continue;
+      let lit = false;
+      if (b.kind !== 'park') {
+        for (const e of this.emittersFor(b.id)) {
+          if (e.kind !== 'light') continue;
+          ctx.drawImage(this.glow, e.x - e.size, e.y - e.size, e.size * 2, e.size * 2);
+          lit = true;
+        }
+      }
+      if (lit) continue;
       const lights = b.kind === 'park' ? 1 : isZone(b.kind) ? b.level * 2 : b.size * 2;
       for (let k = 0; k < lights; k++) {
         const lx = b.x + 0.25 + hash3(b.id, k, 1) * (b.size - 0.5);
@@ -704,6 +715,7 @@ export class Renderer {
       const active = !founded || b.powered || b.kind === 'wind' || b.kind === 'coal' || b.kind === 'nuclear';
       const seed = (b.seed % 1000) / 1000;
       for (const e of list) {
+        if (e.kind === 'light') continue; // drawn by night (see drawNight)
         if (e.kind === 'rotor') {
           const a = (this.time * (active ? 2.6 : 0.4) + seed * 6) % (Math.PI * 2);
           ctx.strokeStyle = '#F4F6F7';
