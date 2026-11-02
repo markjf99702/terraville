@@ -1178,6 +1178,25 @@ await test('a building spreads fire from all four sides in the week it comes dow
     assert.equal(w.buildings.has(mid.id), ending === 'is put out', ending);
     for (const b of around) assert.equal(w.fire[(b.y + 1) * w.w + b.x + 1], 5, `${ending}: the lot at ${b.x},${b.y} never caught`);
   }
+  // Caught from a lot that came down in the same week, with nothing else alight near it, it is still the same fire:
+  // no new alert, and not out.
+  const w = flat();
+  const lot = w.place('res', 10, 10);
+  const below = w.place('res', 10, 13);
+  for (const b of [lot, below]) w.setLevel(b, 2);
+  const sim = new Sim(w);
+  sim.disasters.ignite(11, 11);
+  for (let y = 10; y < 13; y++) for (let x = 10; x < 13; x++) w.fire[y * w.w + x] = 1;
+  const random = Math.random;
+  Math.random = () => 0;
+  try {
+    sim.disasters.week();
+  } finally {
+    Math.random = random;
+  }
+  assert.equal(w.buildings.has(lot.id), false);
+  assert.ok(w.fire[14 * w.w + 11] > 0, 'the lot below never caught');
+  assert.deepEqual(sim.messages.map((m) => m.text.split('.')[0]), ['Fire at the cottages']);
 });
 
 await test('the monster leaves fires burning in what it wrecks', () => {
@@ -1391,7 +1410,7 @@ await test("Aftershock opens with one line for its quakes and fires, and they fa
         for (let k = 0; k < 3; k++) sim.disasters.trigger('earthquake', { sparePlants: true });
         for (let k = 0; k < 4; k++) sim.disasters.trigger('fire', { sparePlants: true });
       }
-      return { w, news: sim.messages.slice(from) };
+      return { w, sim, news: sim.messages.slice(from) };
     });
     const quiet = open(false);
     const loud = open(true);
@@ -1400,6 +1419,16 @@ await test("Aftershock opens with one line for its quakes and fires, and they fa
     assert.deepEqual(quiet.news.map((m) => [m.text, m.kind]), [['A major earthquake and two aftershocks have struck. Check for fires and broken roads.', 'alert']]);
     assert.ok(quiet.news[0].x !== undefined, 'with Go there, to the first quake');
     assert.ok([...quiet.w.fire].some((f) => f > 0), `seed ${seed}: nothing is burning`);
+    // The opening's fires are one fire for the news, however far apart they started, and end with one line.
+    quiet.w.city.disasters = false;
+    const said = quiet.sim.messages.length;
+    seeded(seed, () => {
+      for (let k = 0; k < 40 && [...quiet.w.fire].some((f) => f > 0); k++) quiet.sim.step();
+    });
+    assert.ok(![...quiet.w.fire].some((f) => f > 0), `seed ${seed}: still burning after 40 weeks`);
+    const fires = quiet.sim.messages.slice(said).filter((m) => /^(Fire at|The fires? (is|are) out)/.test(m.text)).map((m) => m.text);
+    assert.equal(fires.length, 1, `seed ${seed}: ${JSON.stringify(fires)}`);
+    assert.match(fires[0], /^The fires are out\.( They burned down (a building|\d+ buildings)\.)?$/);
   }
 });
 

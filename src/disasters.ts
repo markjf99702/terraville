@@ -40,6 +40,8 @@ interface Blaze {
   burned: number;
   /** Whether it has been news: a fire in woods or rubble isn't, until it reaches a building. */
   told: boolean;
+  /** Several fires set off at once, quietly, by a challenge's opening: told as one, and out when all are. */
+  many?: boolean;
 }
 
 /** How near a new fire must be to one already burning to be part of it, in tiles. */
@@ -76,6 +78,8 @@ export class Disasters {
   private blazeAt: Int32Array | null = null;
   private blazes = new Map<number, Blaze>();
   private nextBlaze = 1;
+  /** The fire that fires set off quietly join. */
+  private quietBlaze = 0;
 
   constructor(private sim: Sim) {}
 
@@ -199,10 +203,11 @@ export class Disasters {
   }
 
   /**
-   * Set a tile (and the whole building on it) alight. A fire that starts near one already burning is part of it and
-   * says nothing; one that starts away from any, or the first building a fire in woods or rubble reaches, is news.
+   * Set a tile (and the whole building on it) alight. A fire that starts near one already burning, or catches from
+   * one (`from`, its number), is part of it and says nothing; one that starts away from any, or the first building a
+   * fire in woods or rubble reaches, is news.
    */
-  ignite(x: number, y: number): void {
+  ignite(x: number, y: number, from = 0): void {
     const world = this.world;
     if (!world.inBounds(x, y)) return;
     const i = y * world.w + x;
@@ -211,7 +216,7 @@ export class Disasters {
     const weeks = 5 + Math.floor(Math.random() * (FIRE_WEEKS - 4));
     if (b) {
       const c = Math.floor(b.size / 2);
-      const id = this.blazeFor(b.x, b.y, b.size, { x: b.x + c, y: b.y + c });
+      const id = this.blazeFor(b.x, b.y, b.size, { x: b.x + c, y: b.y + c }, from);
       for (let dy = 0; dy < b.size; dy++) {
         for (let dx = 0; dx < b.size; dx++) this.light((b.y + dy) * world.w + b.x + dx, weeks, id);
       }
@@ -226,7 +231,7 @@ export class Disasters {
       this.sim.emit({ type: 'disaster', kind: 'fire', x, y });
       this.sim.powerDirty = true;
     } else if (world.trees[i]) {
-      this.light(i, weeks, this.blazeFor(x, y, 1, { x, y }));
+      this.light(i, weeks, this.blazeFor(x, y, 1, { x, y }, from));
       world.dirty(x, y, x, y);
     }
   }
@@ -243,13 +248,15 @@ export class Disasters {
   }
 
   /**
-   * The fire burning within reach of a square, joined into one if it reaches more than one; or a new one, at `at`.
-   * Tiles in reach burning with no fire of their own (since the city was saved, say) join it too.
+   * The fire burning within reach of a square, or the one it caught from (`from`), joined into one if there are more
+   * than one; or a new one, at `at`. Tiles in reach burning with no fire of their own (since the city was saved, say)
+   * join it too.
    */
-  private blazeFor(x0: number, y0: number, size: number, at: { x: number; y: number }): number {
+  private blazeFor(x0: number, y0: number, size: number, at: { x: number; y: number }, from = 0): number {
     const world = this.world;
     const map = this.blazeMap;
-    let id = 0;
+    // What it caught from may have come down, or been put out, this very week: it is the same fire all the same.
+    let id = this.blazes.has(from) ? from : 0;
     const strays: number[] = [];
     for (let y = Math.max(0, y0 - BLAZE_REACH); y <= Math.min(world.h - 1, y0 + size - 1 + BLAZE_REACH); y++) {
       for (let x = Math.max(0, x0 - BLAZE_REACH); x <= Math.min(world.w - 1, x0 + size - 1 + BLAZE_REACH); x++) {
@@ -260,10 +267,12 @@ export class Disasters {
         else if (near !== id) id = id ? this.merge(id, near) : near;
       }
     }
+    // Fires set off quietly, in a challenge's opening, have been news already, and are one fire for the news.
+    if (!id && this.quiet && this.blazes.has(this.quietBlaze)) id = this.quietBlaze;
     if (!id) {
       id = this.nextBlaze++;
-      // A fire set off quietly, in a challenge's opening, has been news already.
-      this.blazes.set(id, { ...at, burned: 0, told: this.quiet });
+      this.blazes.set(id, { ...at, burned: 0, told: this.quiet, many: this.quiet });
+      if (this.quiet) this.quietBlaze = id;
     }
     const blaze = this.blazes.get(id)!;
     for (const i of strays) {
@@ -281,6 +290,8 @@ export class Disasters {
     const g = this.blazes.get(gone)!;
     k.burned += g.burned;
     k.told ||= g.told;
+    k.many ||= g.many;
+    if (this.quietBlaze === gone) this.quietBlaze = keep;
     this.blazes.delete(gone);
     const map = this.blazeMap;
     for (let i = 0; i < map.length; i++) if (map[i] === gone) map[i] = keep;
@@ -307,7 +318,9 @@ export class Disasters {
     for (const [id, f] of this.blazes) {
       if (alight.has(id)) continue;
       this.blazes.delete(id);
-      if (f.told) this.say('out' + id, `The fire is out.${f.burned ? ` It burned down ${buildings(f.burned)}.` : ''}`, 'info', { x: f.x, y: f.y }, 0);
+      if (!f.told) continue;
+      const [out, it] = f.many ? ['The fires are out.', 'They'] : ['The fire is out.', 'It'];
+      this.say('out' + id, `${out}${f.burned ? ` ${it} burned down ${buildings(f.burned)}.` : ''}`, 'info', { x: f.x, y: f.y }, 0);
     }
   }
 
@@ -339,7 +352,7 @@ export class Disasters {
         const flammable = world.occ[j] ? world.buildings.get(world.occ[j])?.kind !== 'park' : world.trees[j] > 0;
         if (!flammable) continue;
         const p = (world.occ[j] ? 0.16 : 0.22) * (1 - cov * 0.9);
-        if (Math.random() < p) this.ignite(nx, ny);
+        if (Math.random() < p) this.ignite(nx, ny, this.blazeMap[i]);
       }
       // Put out, or burnt down along with the rest of its building, earlier in this pass: it still spread this
       // week, as above, but counting it down again would wrap 0 round to 255 weeks.
