@@ -74,6 +74,8 @@ interface CityPlan {
   /** Density level from 0 (centre) to 1 (edge). */
   level: (kind: Kind, d: number, rng: Rng) => number;
   plants: Kind[];
+  /** The plants stand among the homes, each in the corner of a block, rather than outside the grid. */
+  plantsAmongHomes?: boolean;
   police: number;
   fire: number;
   rail?: boolean;
@@ -159,6 +161,7 @@ export const SCENARIOS: Scenario[] = [
       mix: (d, rng, side) => (side < 0.1 && rng() < 0.7 ? 'ind' : d < 1.2 ? 'com' : rng() < 0.06 ? 'ind' : rng() < 0.12 ? 'com' : 'res'),
       level: (k, d, rng) => (k === 'ind' ? 3 + Math.round(rng()) : k === 'com' ? 3 : Math.max(3, Math.round(6.5 - d * 0.5 + rng() - 0.5))),
       plants: ['coal', 'coal', 'coal', 'coal'],
+      plantsAmongHomes: true,
       police: 2,
       fire: 2,
       extras: ['seaport'],
@@ -524,8 +527,35 @@ function layCity(world: World, plan: CityPlan, rng: Rng): void {
       world.setLevel(b, Math.max(1, Math.min(max, plan.level(kind, d, rng))));
     }
   });
+  if (plan.plantsAmongHomes) {
+    // Each plant takes a block's housing and the street stubs beside it, so its smoke falls where people live: where
+    // it has the most homes round it, with the city's own blocks on all sides and the plants apart.
+    const placed: { x: number; y: number }[] = [];
+    for (const kind of plan.plants) {
+      const size = BUILDINGS[kind].size;
+      let pick: { id: number; x: number; y: number; homes: number } | undefined;
+      for (const b of world.buildings.values()) {
+        if (b.kind !== 'res') continue;
+        const c = (b.x - 1 - ox) / stride;
+        const r = (b.y - 1 - oy) / stride;
+        if (!Number.isInteger(c) || !Number.isInteger(r) || !inCity(c + 1, r) || !inCity(c, r + 1) || !inCity(c + 1, r + 1)) continue;
+        if (placed.some((p) => Math.max(Math.abs(p.x - b.x), Math.abs(p.y - b.y)) < 10)) continue;
+        let wet = false;
+        for (let dy = 0; dy < size; dy++) for (let dx = 0; dx < size; dx++) if (world.water[(b.y + dy) * world.w + b.x + dx]) wet = true;
+        if (wet) continue;
+        let homes = 0;
+        for (const o of world.buildings.values()) if (o.kind === 'res' && o !== b && Math.max(Math.abs(o.x + 1 - (b.x + size / 2)), Math.abs(o.y + 1 - (b.y + size / 2))) <= 7) homes += o.level;
+        if (!pick || homes > pick.homes) pick = { id: b.id, x: b.x, y: b.y, homes };
+      }
+      if (!pick) break;
+      world.remove(pick.id);
+      clear(world, pick.x, pick.y, size);
+      if (world.canPlace(kind, pick.x, pick.y).ok) world.place(kind, pick.x, pick.y);
+      placed.push(pick);
+    }
+  }
   // Big buildings and plants just outside the grid, wired in.
-  const outside: Kind[] = [...plan.plants, ...(plan.extras ?? []).filter((e) => BUILDINGS[e].size !== 3)];
+  const outside: Kind[] = [...(plan.plantsAmongHomes ? [] : plan.plants), ...(plan.extras ?? []).filter((e) => BUILDINGS[e].size !== 3)];
   let angle = sideAngle + Math.PI;
   const cx = ox + span / 2;
   const cy = oy + span / 2;

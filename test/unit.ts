@@ -1422,6 +1422,27 @@ await test('challenge cities open with only the factories and shops their people
   }
 });
 
+await test("Smog Valley's four coal plants stand among its homes, so their smoke counts where people live", () => seeded(1, () => {
+  const smog = SCENARIOS.find((x) => x.id === 'smog')!;
+  const w = buildScenario(smog, 120, 100);
+  const sim = new Sim(w);
+  openScenario(sim);
+  const coal = [...w.buildings.values()].filter((b) => b.kind === 'coal');
+  assert.equal(coal.length, 4);
+  for (const p of coal) {
+    const homes = [...w.buildings.values()].filter((b) => b.kind === 'res' && b.level > 0 && Math.max(Math.abs(b.x + 1 - (p.x + 2)), Math.abs(b.y + 1 - (p.y + 2))) <= 7);
+    assert.ok(homes.length >= 4, `the coal plant at ${p.x},${p.y} has ${homes.length} homes round it`);
+    assert.ok(p.powered, 'each plant is on the grid');
+  }
+  assert.equal(sim.stats.unpowered, 0);
+  // Outside the town the four plants made 0.2 of the index; Smog Valley was won with all of them running.
+  const index = () => sim.stats.avgPollution / 2.55;
+  const withCoal = index();
+  for (const p of coal) w.remove(p.id);
+  sim.computeMaps();
+  assert.ok(withCoal - index() >= 2, `the coal plants make ${(withCoal - index()).toFixed(1)} of the pollution index`);
+}));
+
 await test("Aftershock's opening quakes strike under zones, and neither they nor its fires touch the power plants", () => {
   const random = Math.random;
   const aftershock = SCENARIOS.find((x) => x.id === 'aftershock')!;
