@@ -1890,6 +1890,80 @@ try {
     assert.deepEqual(wrong, []);
   });
 
+  await test("a plant or a landmark tapped or pointed at on the map's last row slides inside, flush against the edge, on a phone and with a mouse", async () => {
+    for (const touch of [true, false]) {
+      const ctx = await profile(touch ? PHONE : DESK);
+      const { page, problems } = await open(ctx);
+      await found(page);
+      const size = await page.evaluate(() => {
+        const g = window.__terraville;
+        const w = g.world;
+        for (let i = 0; i < w.n; i++) {
+          if (w.occ[i]) w.remove(w.occ[i]);
+          w.water[i] = 0; w.height[i] = 6; w.trees[i] = 0; w.net[i] = 0; w.rubble[i] = 0;
+        }
+        w.dirtyAll(true);
+        w.city.funds = 1e6;
+        g.setSpeed(0);
+        return { w: w.w, h: w.h };
+      });
+      // The camera as far over to (px, py) as it goes (along that edge, in the middle of the room the panels leave),
+      // and where tile (x, y) is on the screen, clear of every panel; a row or column not given is the middle one.
+      const tileAt = (px, py, x, y) => page.evaluate(([px, py, x, y]) => {
+        const r = window.__terraville.renderer;
+        const w = window.__terraville.world;
+        r.stopFlight();
+        r.cam.zoom = 24;
+        r.cam.x = px ? px * 1e6 : w.w / 2;
+        r.cam.y = py ? py * 1e6 : w.h / 2;
+        r.clampCamera();
+        const c = r.freeCentre();
+        x ??= Math.floor(c.x);
+        y ??= Math.floor(c.y);
+        const p = r.tileToScreen(x + 0.5, y + 0.5);
+        return { ...p, tx: x, ty: y, clear: document.elementFromPoint(p.x, p.y) === document.querySelector('#map') };
+      }, [px, py, x, y]);
+      const shown = () => page.evaluate((touch) => {
+        const g = window.__terraville;
+        const tip = document.querySelector(touch ? '#placeCard' : '#cursorTip');
+        return { at: g.renderer.preview?.rects.map((q) => [q.x, q.y, q.ok]) ?? [], card: tip && !tip.hidden ? tip.textContent : '' };
+      }, touch);
+      const built = (kind) => page.evaluate((kind) => [...window.__terraville.world.buildings.values()].filter((b) => b.kind === kind).map((b) => [b.x, b.y]), kind);
+      const cases = [
+        // The bottom-right corner tile, a coal plant (4 tiles) and an airport (6) on the right edge's middle row, and the
+        // top-left corner.
+        ['coal', 1, 1, size.w - 1, size.h - 1, -3, -3],
+        ['airport', 1, 0, size.w - 1, null, -5, -2],
+        ['police', -1, -1, 0, 0, 0, 0],
+      ];
+      for (const [kind, px, py, tx, ty, dx, dy] of cases) {
+        await (touch ? page.tap(`[data-tool="${kind}"]`) : page.click(`[data-tool="${kind}"]`));
+        const p = await tileAt(px, py, tx, ty);
+        assert.ok(p.clear, `${kind}: tile ${p.tx},${p.ty} is on open map`);
+        const [ox, oy] = [p.tx + dx, p.ty + dy];
+        await page.evaluate(() => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok))));
+        if (touch) {
+          await page.touchscreen.tap(p.x, p.y);
+        } else {
+          await page.mouse.move(p.x - 30, p.y);
+          await page.mouse.move(p.x, p.y);
+        }
+        await page.waitForTimeout(150);
+        const s = await shown();
+        assert.deepEqual(s.at, [[ox, oy, true]], `${touch ? 'tapped' : 'pointed at'}, the ${kind} shows flush against the edge`);
+        assert.doesNotMatch(s.card, /Off the map/);
+        assert.match(s.card, /\$[\d,]+/);
+        // The second tap on the same tile, or the click, builds it there.
+        if (touch) await page.touchscreen.tap(p.x, p.y);
+        else await page.mouse.click(p.x, p.y);
+        await page.waitForTimeout(150);
+        assert.deepEqual(await built(kind), [[ox, oy]], `${kind} built flush against the edge`);
+      }
+      assert.deepEqual(problems, []);
+      await ctx.close();
+    }
+  });
+
   await test('closing a card leaves the map where it was, and the edge it let in goes back only as the map is moved', async () => {
     const ctx = await profile(DESK);
     const { page, problems } = await open(ctx);

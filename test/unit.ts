@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { World, encodeArray, decodeArray } from '../src/world';
 import { Sim, compass, passingSentence, ridersWord, spending } from '../src/sim';
 import { generateTerrain, cleanTerrain, DEFAULT_TERRAIN, applyBrush, landReadout } from '../src/terrain';
-import { linePath, planLine, applyLine, planZones, applyBuildings, planBulldoze, levelCost } from '../src/tools';
+import { linePath, planLine, applyLine, planZones, planPlace, applyBuildings, planBulldoze, levelCost } from '../src/tools';
 import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST, UPGRADE_LV, Kind, BUILDINGS, article, buildingName, cityClass, isZone, num, upkeepOf } from '../src/defs';
 import { DAMAGED_CODE, challengeWins, citySlot, encode, encodeNow, decode, listSlots, pushSaved, readCode, recordWin, saveCode, SlotMeta } from '../src/save';
 import { Drive, GisOAuth2 } from '../src/drive';
@@ -264,6 +264,27 @@ await test('zones need clear, gentle land', () => {
   assert.equal(steep.canPlace('res', 5, 5).ok, false);
   const plan = planZones(flat(), 'res', 5, 5, 11, 5);
   assert.equal(plan.count, 3);
+});
+
+await test('a building pointed at near the edge of the map slides inside it, flush against the edge; elsewhere it is centred', () => {
+  const w = flat(40, 30);
+  const at = (kind: Kind, x: number, y: number) => {
+    const p = planPlace(w, kind, x, y);
+    return [p.count, ...(p.tiles[0] ?? p.bad[0]), p.reason ?? ''];
+  };
+  // A coal plant is 4 tiles, an airport 6: centred on the tile in the open, a tile up and left of the middle.
+  assert.deepEqual(at('coal', 20, 15), [1, 19, 14, '']);
+  assert.deepEqual(at('airport', 20, 15), [1, 18, 13, '']);
+  // The last row and column, and each corner.
+  assert.deepEqual(at('coal', 39, 29), [1, 36, 26, '']);
+  assert.deepEqual(at('coal', 0, 0), [1, 0, 0, '']);
+  assert.deepEqual(at('airport', 39, 0), [1, 34, 0, '']);
+  assert.deepEqual(at('airport', 0, 29), [1, 0, 24, '']);
+  assert.deepEqual(at('airport', 38, 15), [1, 34, 13, ''], 'two tiles in, an airport still reaches the edge');
+  assert.deepEqual(at('wind', 39, 29), [1, 39, 29, '']);
+  // Flush where that land is free; where it isn't, the card says why, at the edge, not off the map.
+  w.setNet(ROAD, 37, 28);
+  assert.deepEqual(at('coal', 39, 29), [0, 36, 26, 'Clear the roads and lines first']);
 });
 
 await test('steepness is measured between dry tiles: a beach beside deep sea is flat, a step on land still counts', () => {

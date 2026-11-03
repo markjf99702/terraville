@@ -215,10 +215,14 @@ export function planZones(world: World, kind: Kind, ax: number, ay: number, bx: 
   return plan;
 }
 
+/**
+ * A building centred on tile (cx, cy), or as near it as the map allows: near an edge it slides back inside, so the
+ * tile at the edge itself puts it flush against it.
+ */
 export function planPlace(world: World, kind: Kind, cx: number, cy: number): Plan {
   const s = BUILDINGS[kind].size;
-  const x = cx - Math.floor((s - 1) / 2);
-  const y = cy - Math.floor((s - 1) / 2);
+  const x = Math.max(0, Math.min(world.w - s, cx - Math.floor((s - 1) / 2)));
+  const y = Math.max(0, Math.min(world.h - s, cy - Math.floor((s - 1) / 2)));
   const r = world.canPlace(kind, x, y, true);
   if (!r.ok) return { tiles: [], bad: [[x, y]], cost: 0, count: 0, reason: r.reason };
   const grading = Math.round(r.grade * GRADE_COST);
