@@ -1435,7 +1435,7 @@ try {
     await ctx.close();
   });
 
-  await test('land shaped in the terrain editor is kept as a draft across a reload, and founding a city or starting new land lets it go', async () => {
+  await test('land shaped in the terrain editor is kept as a draft across a reload; founding a city lets it go, and new land takes its place once changed', async () => {
     const ctx = await profile(DESK);
     const { page, problems } = await open(ctx);
     const hash = () => page.evaluate(() => { const w = window.__terraville.world; let h = w.w; for (let i = 0; i < w.n; i++) h = (h * 31 + Math.round(w.height[i] * 10) + w.water[i] * 7 + w.trees[i]) | 0; return h; });
@@ -1499,10 +1499,12 @@ try {
     await page.reload();
     await titleUp(page);
     assert.deepEqual(await buttons(), ['*continue', 'quick', 'editor', 'challenges', 'guide', 'open']);
-    // Land a quick start only shows doesn't take a draft's place; new land in the editor does, from the start.
+    // With no draft kept, new land in the editor is the draft from the start. Land a quick start only shows doesn't take
+    // a draft's place.
     await page.click('[data-act="editor"]');
     await page.waitForFunction(() => window.__terraville.mode === 'editor');
     await stroke([40, 40], [44, 44]);
+    const keptLand = await hash();
     await page.evaluate(() => window.__terraville.showTitle());
     const kept = await draft();
     await page.reload();
@@ -1512,16 +1514,40 @@ try {
     await page.keyboard.press('Escape');
     await hide();
     assert.deepEqual(await draft(), kept);
+    // Shape the land first, with a draft kept: its new land takes the draft's place only once it is changed. A tap on it
+    // and back loses nothing, through the page closing and the menu's way out, which says so.
     await page.reload();
     await titleUp(page);
     await page.click('[data-act="editor"]');
     await page.waitForFunction(() => window.__terraville.mode === 'editor');
-    assert.equal(await draft(), null);
-    const fresh = await page.evaluate(() => window.__terraville.terrain.seed);
+    assert.deepEqual(await draft(), kept);
+    await hide();
+    assert.deepEqual(await draft(), kept, 'the page closing keeps the draft as it was');
+    await page.click('#topbar [data-act="menu"]');
+    await page.click('[role="menu"] button:has-text("Back to the title screen")');
+    assert.equal(await page.textContent('.modal .body'), 'This land hasn’t been changed, so it isn’t kept. The land kept before stays: Continue shaping the land on the title screen brings it back.');
+    await page.click('.modal footer .btn.primary');
+    await titleUp(page);
+    assert.deepEqual(await draft(), kept);
+    assert.equal(await page.textContent('[data-act="draft"] > span'), 'Continue shaping the land');
+    await page.click('[data-act="draft"]');
+    await page.waitForFunction(() => window.__terraville.mode === 'editor');
+    assert.equal(await hash(), keptLand, 'Continue shaping the land still brings back the old land');
     await page.evaluate(() => window.__terraville.showTitle());
-    assert.equal((await draft()).seed, fresh, 'new land is kept as it is, untouched');
+    // One change to the new land, a slider, and it is the draft.
+    await page.click('[data-act="editor"]');
+    await page.waitForFunction(() => window.__terraville.mode === 'editor');
+    const fresh = await page.evaluate(() => window.__terraville.terrain.seed);
+    await page.$eval('#edForest', (s) => { s.value = '20'; s.dispatchEvent(new Event('input')); });
+    await page.waitForFunction(() => window.__terraville.terrain.forest === 20);
+    await page.evaluate(() => window.__terraville.showTitle());
+    assert.equal((await draft()).seed, fresh, 'changed, the new land takes the old land\'s place');
+    assert.notEqual(fresh, kept.seed);
     // With storage blocked no land can be kept: leaving says so once, and goes.
-    await page.evaluate(() => { Storage.prototype.setItem = () => { throw new DOMException('Storage is blocked.', 'SecurityError'); }; });
+    await page.evaluate(() => {
+      localStorage.removeItem('terraville.draft');
+      Storage.prototype.setItem = () => { throw new DOMException('Storage is blocked.', 'SecurityError'); };
+    });
     await page.click('[data-act="editor"]');
     await page.waitForFunction(() => window.__terraville.mode === 'editor');
     await page.click('#topbar [data-act="menu"]');

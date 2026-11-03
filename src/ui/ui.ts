@@ -2525,6 +2525,7 @@ export class UI {
     const text = !city
       ? failed ? 'Saving the land failed. Storage may be full.'
         : g.keepsDraft() ? 'The land is kept as you leave: Continue shaping the land on the title screen brings it back.'
+        : g.keepsOldDraft() ? 'This land hasn’t been changed, so it isn’t kept. The land kept before stays: Continue shaping the land on the title screen brings it back.'
         : 'Unsaved terrain will be lost.'
       : blocked ? 'This browser is blocking storage, so the city cannot be saved here.'
       : failed ? 'Saving the city failed. Storage may be full.'

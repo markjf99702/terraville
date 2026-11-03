@@ -428,9 +428,9 @@ export class Game {
   }
 
   startEditor(params?: Partial<TerrainParams>): void {
-    // New land: the draft of the land shaped before goes, and this land takes its place.
-    this.dropDraft();
-    this.draftWork = true;
+    // New land. A draft kept from before stays until this land is changed, by a stroke or a slider, so a stray tap on
+    // Shape the land first costs nothing; with none kept, this land is the draft from the start.
+    this.draftWork = !readDraft();
     this.mode = 'editor';
     this.setSim(null);
     this.renderer.setOverlay('none');
@@ -913,6 +913,11 @@ export class Game {
   /** Whether leaving the editor keeps its land, for the title screen to bring back. */
   keepsDraft(): boolean {
     return this.draftWanted() && storageAvailable();
+  }
+
+  /** Whether the editor's land is new and not yet changed, with land kept from before still the draft. */
+  keepsOldDraft(): boolean {
+    return this.mode === 'editor' && !this.draftWork && readDraft() !== null;
   }
 
   /** Keep the editor's land as the draft at once, as a plain code: the page may be closing. True when kept, or not wanted. */
