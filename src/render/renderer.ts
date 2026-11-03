@@ -935,7 +935,7 @@ export class Renderer {
     const spots: number[] = [];
     for (const id of ids) {
       const b = world.buildings.get(id);
-      if (!b || (world.city.founded && !b.powered && b.kind !== 'park') || BUILDINGS[b.kind].capacity) continue;
+      if (!b || (world.city.founded && !b.powered && !BUILDINGS[b.kind].noPower) || BUILDINGS[b.kind].capacity) continue;
       let lit = false;
       if (b.kind !== 'park') {
         for (const e of this.emittersFor(b.id)) {
@@ -1370,7 +1370,7 @@ export class Renderer {
         let c: number[] | null = null;
         let hatch = false;
         if (world.powered[i]) c = [242, 201, 76, 200];
-        else if (id && world.buildings.get(id)?.kind !== 'park') {
+        else if (id && !BUILDINGS[world.buildings.get(id)!.kind].noPower) {
           // Connected to a plant but its grid is short (hatched, so it differs from the next without colour), or not
           // connected at all.
           if (this.sim?.gridAt(i)) {

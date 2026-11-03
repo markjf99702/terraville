@@ -89,6 +89,8 @@ export interface BuildingDef {
   /** Pollution emitted at the building (0-255 scale before blurring). */
   pollution?: number;
   needsShore?: boolean;
+  /** Works without power, like a park: it takes none from the grid and passes none on to its neighbours. */
+  noPower?: boolean;
   /** How far a steep site can be: max height spread across the footprint in metres. */
   maxSpread: number;
   blurb: string;
@@ -102,7 +104,7 @@ export const BUILDINGS: Record<Kind, BuildingDef> = {
   fire: { kind: 'fire', name: 'Fire station', size: 3, cost: 500, upkeep: 45, maxSpread: 9, blurb: 'Puts out fires and prevents new ones nearby.' },
   school: { kind: 'school', name: 'School', size: 3, cost: 800, upkeep: 40, maxSpread: 9, blurb: 'Raises land value and draws families to nearby homes.' },
   hospital: { kind: 'hospital', name: 'Hospital', size: 3, cost: 1200, upkeep: 60, maxSpread: 9, blurb: 'Raises land value and lets neighbourhoods grow denser.' },
-  park: { kind: 'park', name: 'Park', size: 1, cost: 10, upkeep: 0.3, maxSpread: 30, blurb: 'Raises land value and soaks up a little pollution.' },
+  park: { kind: 'park', name: 'Park', size: 1, cost: 10, upkeep: 0.3, noPower: true, maxSpread: 30, blurb: 'Raises land value and soaks up a little pollution.' },
   stadium: { kind: 'stadium', name: 'Stadium', size: 4, cost: 3000, upkeep: 30, maxSpread: 8, blurb: LANDMARK_NEEDS.stadium },
   seaport: { kind: 'seaport', name: 'Seaport', size: 4, cost: 5000, upkeep: 50, pollution: 60, needsShore: true, maxSpread: 8, blurb: LANDMARK_NEEDS.seaport },
   airport: { kind: 'airport', name: 'Airport', size: 6, cost: 10000, upkeep: 80, pollution: 90, maxSpread: 6, blurb: LANDMARK_NEEDS.airport },
@@ -110,7 +112,7 @@ export const BUILDINGS: Record<Kind, BuildingDef> = {
   nuclear: { kind: 'nuclear', name: 'Nuclear plant', size: 4, cost: 5000, upkeep: 60, capacity: 2000, maxSpread: 8, blurb: '2,000 MW and clean air. Rarely, a meltdown.' },
   wind: { kind: 'wind', name: 'Wind turbine', size: 1, cost: 250, upkeep: 2, capacity: 18, maxSpread: 40, blurb: '18 MW. Hilltops are fine.' },
   solar: { kind: 'solar', name: 'Solar farm', size: 3, cost: 2600, upkeep: 12, capacity: 160, maxSpread: 9, blurb: '160 MW of quiet power.' },
-  mayor: { kind: 'mayor', name: 'Mayor’s house', size: 2, cost: 0, upkeep: 0, maxSpread: 9, blurb: 'The city’s gift for reaching Town: free, and it raises land value around it.' },
+  mayor: { kind: 'mayor', name: 'Mayor’s house', size: 2, cost: 0, upkeep: 0, noPower: true, maxSpread: 9, blurb: 'The city’s gift for reaching Town: free, and it raises land value around it.' },
 };
 
 /** Something a city with money to spare can make of a landmark. */

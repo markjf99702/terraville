@@ -2316,6 +2316,22 @@ await test("reaching Town gives the city a Mayor's house: free, placed once at a
   assert.deepEqual(sc.world.city.gifts, []);
 });
 
+await test("the Mayor's house needs no power, like a park: it takes none from the grid and passes none on", () => {
+  const w = flat(60, 20);
+  w.place('coal', 0, 0);
+  const lot = w.place('res', 4, 0);
+  const house = w.place('mayor', 7, 1);
+  const beyond = w.place('res', 9, 0); // touches the house, not the lot
+  const sim = new Sim(w);
+  sim.computePower();
+  assert.deepEqual([lot.powered, beyond.powered], [true, false], 'no power passes through it');
+  assert.equal(sim.stats.powerDemand, 18, 'two lots draw power, the house none');
+  assert.equal(sim.grids[0].demand, 9);
+  const card = sim.describe(house.x, house.y);
+  assert.equal(card.rows.find((r) => r[0] === 'Power')?.[1], 'Not needed');
+  assert.equal(card.rows.find((r) => r[0] === 'Its grid'), undefined);
+});
+
 await test('on a device too slow for the speed, a frame runs one week of the clock and drops the rest', () => {
   const g = headless(flat());
   g.speed = 4; // Ultra: 14 weeks a second

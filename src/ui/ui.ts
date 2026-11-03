@@ -1929,7 +1929,7 @@ export class UI {
     this.syncGifts();
     this.showNews(`A gift for ${esc(city.name)}`, `
       <p class="does">${esc(city.name)} is now a town, and the council has given it a ${esc(name.replace(/^\w/, (c) => c.toLowerCase()))}. It is free: place it from the civic tools, where it is marked Gift.</p>
-      <p class="news-p">It raises land value for about ${GIFT_REACH} tiles around it, up to <span class="num">${money(GIFT_LV * 40)}</span>/acre at its door, so the homes and shops near it can grow denser.</p>`, [
+      <p class="news-p">It raises land value for about ${GIFT_REACH} tiles around it, up to <span class="num">${money(GIFT_LV * 40)}</span>/acre at its door, so the homes and shops near it can grow denser. Like a park, it needs no power.</p>`, [
       {
         label: 'Place it', primary: true, act: () => {
           this.game.setTool(kind);

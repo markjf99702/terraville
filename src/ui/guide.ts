@@ -125,7 +125,7 @@ function sections(): Section[] {
         ]), [1, 2, 3])}
         <ul>
           <li>Every tile of every building draws 1 MW, so a 3×3 lot needs 9 MW even while it is still vacant.</li>
-          <li>Power flows through power lines and through buildings that touch, except parks. Roads and rail do not carry it. You can string a power line along an existing road.</li>
+          <li>Power flows through power lines and through buildings that touch, except parks and the Mayor’s house, which need no power. Roads and rail do not carry it. You can string a power line along an existing road.</li>
           <li>The grid updates the moment you build, even while paused. A flashing bolt on a lot means no power reaches it yet.</li>
           <li>When a grid needs more than its plants make, the lots furthest from its plants go dark first. The news ticker warns about brownouts.</li>
           <li>Plants only share power within one connected grid. Two plants on grids that never touch can leave one short while the other has plenty spare, even when the Report's city-wide total looks fine. The Power grid layer shows overloaded grids in orange, and Inspect on any lot or line gives its grid's load.</li>
@@ -225,7 +225,7 @@ function sections(): Section[] {
       title: 'City sizes and score',
       html: `${table(['Class', 'Residents'], CITY_CLASSES.map((c) => [c.name, c.min ? `${num(c.min)}+` : 'under 2,000']), [1])}
         <p>The city report scores the city out of 1,000. The mayor’s approval weighs most, 7 points for each percent, up to 700. Each size class past ${CITY_CLASSES[0].name} adds 50, up to ${(CITY_CLASSES.length - 1) * 50} for a ${CITY_CLASSES[CITY_CLASSES.length - 1].name.toLowerCase()}, and land value adds up to 50. The History charts show the approval behind it. A sandbox city, where nothing costs money, has no score.</p>
-        <p>Reaching Town brings a gift: a Mayor’s house, free, placed from the civic tools where it is marked Gift. It raises land value for about ${GIFT_REACH} tiles around it, up to ${money(GIFT_LV * 40)}/acre at its door. A city has one at a time: if it is lost, the tool comes back.</p>
+        <p>Reaching Town brings a gift: a Mayor’s house, free, placed from the civic tools where it is marked Gift. It raises land value for about ${GIFT_REACH} tiles around it, up to ${money(GIFT_LV * 40)}/acre at its door, and like a park it needs no power. A city has one at a time: if it is lost, the tool comes back.</p>
         <p>At the end of each year the city’s paper comes out: the year’s biggest news as its headline (a year in debt, a disaster, a new size class, a landmark, record growth, brownouts), residents and the change on the year before, the top worry, approval, and the year’s surplus or deficit. On Ultra it waits until you pause, and Settings turns it off.</p>`,
     },
   ];

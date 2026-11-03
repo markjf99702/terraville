@@ -424,7 +424,8 @@ export function drawNet(dc: DC, tx: number, ty: number): void {
     // it is drawn into the buildings on either side, or it would vanish.
     const feeds = (j: number) => {
       const id = world.occ[j];
-      return id !== 0 && world.buildings.get(id)?.kind !== 'park';
+      const b = id ? world.buildings.get(id) : undefined;
+      return !!b && !BUILDINGS[b.kind].noPower;
     };
     const onOther = (v & (ROAD | RAIL)) !== 0;
     let m = connMask(world, tx, ty, (j) => (world.net[j] & POWER) !== 0);

@@ -502,7 +502,7 @@ export class Sim {
     for (const b of world.buildings.values()) {
       b.powered = false;
       const def = BUILDINGS[b.kind];
-      if (!def.capacity && b.kind !== 'park') demandTotal += b.size * b.size;
+      if (!def.capacity && !def.noPower) demandTotal += b.size * b.size;
     }
 
     const conducts = (i: number): boolean => {
@@ -510,7 +510,7 @@ export class Sim {
       const id = world.occ[i];
       if (!id) return false;
       const b = world.buildings.get(id);
-      return !!b && b.kind !== 'park';
+      return !!b && !BUILDINGS[b.kind].noPower;
     };
 
     for (const plant of world.buildings.values()) {
@@ -1613,7 +1613,7 @@ export class Sim {
       const grid = this.gridAt(b.y * world.w + b.x);
       rows.push(['Power',
         def.capacity ? (world.fire[b.y * world.w + b.x] ? 'None: on fire' : 'Generating') :
-        b.kind === 'park' ? 'Not needed' :
+        def.noPower ? 'Not needed' :
         b.powered ? 'Connected' :
         // Short only because a plant is burning: the power comes back when the fire is out.
         grid && grid.demand <= grid.supply + grid.burning ? 'None: its power plant is on fire' :
