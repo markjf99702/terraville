@@ -4142,6 +4142,44 @@ try {
     await ctx.close();
   });
 
+  await test('on a phone, each gift past Town has its own card, saying what it does and whether it needs power, and its own marked tool', async () => {
+    const ctx = await profile();
+    const { page, problems } = await open(ctx);
+    await found(page);
+    const name = await page.evaluate(() => {
+      const g = window.__terraville;
+      g.setSpeed(0);
+      g.world.city.gifts = ['mayor', 'cityhall', 'plaza', 'expo', 'monument'];
+      return g.world.city.name;
+    });
+    const cards = [
+      ['cityhall', 'is now a city, and the council has given it a city hall.', /It cuts crime for about 12 tiles around it, as a small police station would, and costs nothing to run\. Like a station it needs power: without it, it works at about a third of its strength\./],
+      ['plaza', 'is now a capital, and the council has given it a plaza and statue.', /It raises land value for about 14 tiles around it, up to \$1,600\/acre beside it, so the homes and shops near it can grow denser\. Like a park, it needs no power\./],
+      ['expo', 'is now a metropolis, and the council has given it an exhibition hall.', /It draws visitors from all over, and raises land value by \$200\/acre across the whole city\. Like a park, it needs no power\./],
+      ['monument', 'is now a megalopolis, and the council has given it a monument.', /It raises land value for about 20 tiles around it, up to \$1,600\/acre at its foot, so the homes and shops near it can grow denser\. Like a park, it needs no power\./],
+    ];
+    for (const [kind, line, does] of cards) {
+      await page.evaluate((k) => window.__terraville.ui.gift(k), kind);
+      assert.equal(await page.textContent('#inspect h3'), `A gift for ${name}`);
+      const text = await page.textContent('#inspect');
+      assert.ok(text.includes(`${name} ${line} It is free: place it from the civic tools, where it is marked Gift.`), text);
+      assert.match(text, does);
+      await page.tap('#inspect .close');
+    }
+    // Every gift the city has and hasn't placed shows its tool, marked, and the card's button picks it.
+    for (const [kind] of cards) {
+      assert.equal(await page.isVisible(`[data-tool="${kind}"]`), true, `${kind}'s tool shows`);
+      assert.equal(await page.textContent(`[data-tool="${kind}"] .gift`), 'Gift');
+    }
+    await page.evaluate(() => window.__terraville.ui.gift('expo'));
+    await page.tap('#inspect .news-btns button:has-text("Place it")');
+    assert.equal(await page.evaluate(() => window.__terraville.toolId), 'expo');
+    const tool = await page.locator('[data-tool="expo"]').boundingBox();
+    assert.ok(tool.x >= 0 && tool.x + tool.width <= 390, 'its tool is brought into view in the row');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('a city in debt can still bulldoze, though it cannot build', async () => {
     const ctx = await profile();
     const { page, problems } = await open(ctx);

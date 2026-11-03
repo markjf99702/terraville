@@ -700,6 +700,10 @@ export function drawBuilding(dc: DC, b: Building): void {
     case 'wind': drawWind(dc, X, Y); break;
     case 'solar': drawSolar(dc, X, Y); break;
     case 'mayor': drawMayor(dc, X, Y, r); break;
+    case 'cityhall': drawCityHall(dc, X, Y, r); break;
+    case 'plaza': drawPlaza(dc, X, Y); break;
+    case 'expo': drawExpo(dc, X, Y, r); break;
+    case 'monument': drawMonument(dc, X, Y); break;
   }
   ctx.restore();
 }
@@ -1122,6 +1126,173 @@ function drawMayor(dc: DC, X: number, Y: number, r: Rng): void {
     fill(ctx, X + L * 1.39, Y + L * 1.18, L * 0.2, L * 0.12, '#0B6E4F');
     fill(ctx, X + L * 1.39, Y + L * 1.18, L * 0.2, Math.max(1, L * 0.025), '#FFFFFF');
   }
+}
+
+/** The City hall: a pale stone hall with a copper dome over a columned front, steps to a forecourt, lawns and a flag. */
+function drawCityHall(dc: DC, X: number, Y: number, r: Rng): void {
+  const { ctx, L } = dc;
+  fill(ctx, X, Y, L * 3, L * 3, '#8FBF65');
+  // The forecourt, from the steps down to the road.
+  fill(ctx, X + L * 0.9, Y + L * 1.7, L * 1.2, L * 1.3, '#D8D2C2');
+  // Two wings, and a taller middle under the dome.
+  box(dc, X + L * 0.15, Y + L * 0.3, L * 2.7, L * 1.3, L * 0.42, { roof: '#B9B2A2', wall: '#E9E3D3', glass: '#3E5266', rng: r, parapet: true, glow: 3 });
+  box(dc, X + L * 0.95, Y + L * 0.12, L * 1.1, L * 1.6, L * 0.6, { roof: '#C9C2B1', wall: '#F1ECDF', windows: false, rng: r });
+  const roofD = L * 1.6 - L * 0.6;
+  const dx = X + L * 1.5;
+  const dy = Y + L * 0.12 + roofD / 2;
+  circle(ctx, dx + L * 0.06, dy + L * 0.07, L * 0.36, 'rgba(18,28,22,0.24)');
+  circle(ctx, dx, dy, L * 0.34, '#5E9C86');
+  if (L >= 12) {
+    circle(ctx, dx - L * 0.1, dy - L * 0.1, L * 0.16, '#8CC1AC');
+    circle(ctx, dx, dy, L * 0.07, '#E4C260');
+  }
+  if (L >= 16) {
+    // Columns across the middle's front, and three steps down to the forecourt.
+    const fy = Y + L * 0.12 + roofD;
+    for (let k = 0; k < 5; k++) fill(ctx, X + L * (1.03 + k * 0.22), fy + L * 0.06, Math.max(1, L * 0.05), L * 0.48, '#FFFFFF');
+    for (let k = 0; k < 3; k++) fill(ctx, X + L * (0.95 - k * 0.06), Y + L * (1.73 + k * 0.07), L * (1.1 + k * 0.12), Math.max(1, L * 0.05), shade('#D8D2C2', 0.94 - k * 0.04));
+  }
+  for (const [tx, ty] of [[0.4, 2.05], [0.4, 2.62], [2.6, 2.05], [2.6, 2.62]]) tree(dc, X + L * tx, Y + L * ty, L * 0.17, '#3F7D36', false);
+  if (L >= 12) {
+    fill(ctx, X + L * 2.12, Y + L * 1.95, Math.max(1, L * 0.03), L * 0.55, '#7F8C8D');
+    fill(ctx, X + L * 2.15, Y + L * 1.95, L * 0.22, L * 0.13, '#0B6E4F');
+    fill(ctx, X + L * 2.15, Y + L * 1.95, L * 0.22, Math.max(1, L * 0.025), '#FFFFFF');
+  }
+}
+
+/** The plaza: a paved square with a ring round a statue on its plinth, flower beds, benches and a tree at each corner. */
+function drawPlaza(dc: DC, X: number, Y: number): void {
+  const { ctx, L } = dc;
+  const S = L * 3;
+  const cx = X + S / 2;
+  const cy = Y + S / 2;
+  fill(ctx, X, Y, S, S, '#DCD3C0');
+  if (L >= 12) {
+    ctx.strokeStyle = 'rgba(120,108,88,0.22)';
+    ctx.lineWidth = Math.max(1, L * 0.02);
+    ctx.beginPath();
+    for (let k = 1; k < 6; k++) {
+      ctx.moveTo(X + (S * k) / 6, Y);
+      ctx.lineTo(X + (S * k) / 6, Y + S);
+      ctx.moveTo(X, Y + (S * k) / 6);
+      ctx.lineTo(X + S, Y + (S * k) / 6);
+    }
+    ctx.stroke();
+  }
+  circle(ctx, cx, cy, L * 1.08, '#B8AC93');
+  circle(ctx, cx, cy, L * 0.96, '#E9E2D2');
+  // Flower beds between the corners, and a tree at each corner.
+  for (const [bx, by, w, h] of [[1.1, 0.12, 0.8, 0.28], [1.1, 2.6, 0.8, 0.28], [0.12, 1.1, 0.28, 0.8], [2.6, 1.1, 0.28, 0.8]]) {
+    fill(ctx, X + L * bx, Y + L * by, L * w, L * h, '#4F8A3E');
+    if (L < 16) continue;
+    // Flowers along the bed, alternately red and yellow.
+    const along = w > h;
+    for (let k = 0; k < 4; k++) {
+      const f = (k + 0.5) / 4;
+      circle(ctx, X + L * (bx + (along ? w * f : w / 2)), Y + L * (by + (along ? h / 2 : h * f)), L * 0.05, k % 2 ? '#E8C547' : '#D9534F');
+    }
+  }
+  for (const [tx, ty] of [[0.32, 0.32], [2.68, 0.32], [0.32, 2.68], [2.68, 2.68]]) tree(dc, X + L * tx, Y + L * ty, L * 0.24, '#3F7D36', false);
+  // Benches on the ring, facing in.
+  if (L >= 16) {
+    for (const [bx, by, w, h] of [[-0.25, -0.8, 0.5, 0.08], [-0.25, 0.72, 0.5, 0.08], [-0.8, -0.25, 0.08, 0.5], [0.72, -0.25, 0.08, 0.5]]) {
+      fill(ctx, cx + L * bx, cy + L * by, L * w, L * h, '#7A5A3C');
+    }
+  }
+  // Lamps round the ring, lit after dark.
+  for (const [dx, dy] of [[-0.68, -0.68], [0.68, -0.68], [-0.68, 0.68], [0.68, 0.68]]) dc.emit?.({ kind: 'light', x: (cx + L * dx) / L, y: (cy + L * dy) / L, size: 0.25 });
+  // The statue: a stepped plinth, a bronze figure on it, and their shadow cast down and right.
+  shadowBox(dc, cx - L * 0.3, cy - L * 0.3, L * 0.6, L * 0.6, L * 0.55);
+  fill(ctx, cx - L * 0.3, cy - L * 0.3, L * 0.6, L * 0.6, '#A79F8E');
+  fill(ctx, cx - L * 0.21, cy - L * 0.21, L * 0.42, L * 0.42, '#C2BBAA');
+  circle(ctx, cx, cy + L * 0.02, L * 0.14, '#5E7F6E');
+  circle(ctx, cx - L * 0.04, cy - L * 0.03, L * 0.08, '#86A897');
+  if (L >= 16) fill(ctx, cx + L * 0.08, cy - L * 0.2, Math.max(1, L * 0.05), L * 0.2, '#5E7F6E');
+}
+
+/** The exhibition hall: a long glass hall with a vaulted roof and a taller crossing, flags along its front and a fountain. */
+function drawExpo(dc: DC, X: number, Y: number, r: Rng): void {
+  const { ctx, L } = dc;
+  const S = L * 4;
+  fill(ctx, X, Y, S, S, '#D8D2C2');
+  fill(ctx, X, Y + L * 2.8, L * 1.3, L * 1.2, '#8FBF65');
+  fill(ctx, X + L * 2.7, Y + L * 2.8, L * 1.3, L * 1.2, '#8FBF65');
+  // The nave, its glass roof ribbed in white, and the crossing over its middle.
+  box(dc, X + L * 0.15, Y + L * 0.3, L * 3.7, L * 1.9, L * 0.55, { roof: '#A9C6D6', wall: '#E8EEF1', glass: '#5D88A6', bands: true, rng: r, glow: 4 });
+  const ribs = (x: number, y: number, w: number, d: number) => {
+    if (L < 12) return;
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    const n = Math.round(w / (L * 0.3));
+    for (let k = 1; k < n; k++) ctx.fillRect(x + (w * k) / n, y, Math.max(1, L * 0.025), d);
+    fill(ctx, x, y + d / 2 - Math.max(0.5, L * 0.015), w, Math.max(1, L * 0.03), 'rgba(255,255,255,0.9)');
+  };
+  ribs(X + L * 0.15, Y + L * 0.3, L * 3.7, L * 1.35);
+  box(dc, X + L * 1.45, Y + L * 0.1, L * 1.1, L * 2.3, L * 0.8, { roof: '#BCD5E2', wall: '#F1F5F7', glass: '#5D88A6', bands: true, rng: r });
+  ribs(X + L * 1.45, Y + L * 0.1, L * 1.1, L * 1.5);
+  // Flags along the front, and a fountain before the doors.
+  if (L >= 12) {
+    for (let k = 0; k < 7; k++) {
+      const fx = X + L * (0.35 + k * 0.55);
+      if (fx > X + L * 1.35 && fx < X + L * 2.65) continue;
+      fill(ctx, fx, Y + L * 2.5, Math.max(1, L * 0.025), L * 0.4, '#7F8C8D');
+      fill(ctx, fx + L * 0.025, Y + L * 2.5, L * 0.16, L * 0.1, AWNINGS[k % AWNINGS.length]);
+    }
+  }
+  circle(ctx, X + L * 2, Y + L * 3.2, L * 0.55, '#B8AC93');
+  circle(ctx, X + L * 2, Y + L * 3.2, L * 0.46, '#6FB3D2');
+  if (L >= 12) {
+    circle(ctx, X + L * 2, Y + L * 3.2, L * 0.16, '#E9E2D2');
+    circle(ctx, X + L * 2, Y + L * 3.2, L * 0.07, '#CFEAF5');
+  }
+  for (const [tx, ty] of [[0.45, 3.35], [0.95, 3.6], [3.55, 3.35], [3.05, 3.6]]) tree(dc, X + L * tx, Y + L * ty, L * 0.2, '#3F7D36', false);
+}
+
+/** The monument: a tall stone obelisk on a stepped base, a long pool before it, and lawns with paths round it. */
+function drawMonument(dc: DC, X: number, Y: number): void {
+  const { ctx, L } = dc;
+  const S = L * 3;
+  const cx = X + S / 2;
+  const by = Y + L * 1.2;
+  fill(ctx, X, Y, S, S, '#8FBF65');
+  // A paved square round the base, a path across, and paths down either side of the pool.
+  fill(ctx, X, Y + L * 1.2, L * 3, L * 0.26, '#E3D6B3');
+  fill(ctx, cx - L * 0.72, by - L * 0.58, L * 1.44, L * 1.16, '#E3D6B3');
+  fill(ctx, X + L * 0.15, Y + L * 1.2, L * 0.25, L * 1.8, '#E3D6B3');
+  fill(ctx, X + L * 2.6, Y + L * 1.2, L * 0.25, L * 1.8, '#E3D6B3');
+  fill(ctx, X + L * 0.55, Y + L * 2.0, L * 1.9, L * 0.9, '#B8AC93');
+  fill(ctx, X + L * 0.62, Y + L * 2.07, L * 1.76, L * 0.76, '#6FA9C9');
+  if (L >= 12) fill(ctx, X + L * 0.62, Y + L * 2.07, L * 1.76, Math.max(1, L * 0.04), '#9ACBE0');
+  // The base, two steps high, floodlit after dark from its front corners.
+  fill(ctx, cx - L * 0.5, by - L * 0.35, L * 1.0, L * 0.7, '#BDB5A3');
+  fill(ctx, cx - L * 0.36, by - L * 0.27, L * 0.72, L * 0.54, '#D3CCBC');
+  for (const dx of [-0.55, 0.55]) dc.emit?.({ kind: 'light', x: (cx + L * dx) / L, y: (by + L * 0.4) / L, size: 0.3 });
+  // The obelisk's long shadow, down and to the right, then its shaft: lit on the left, shaded on the right.
+  ctx.fillStyle = 'rgba(18,28,22,0.24)';
+  ctx.beginPath();
+  ctx.moveTo(cx + L * 0.12, by + L * 0.05);
+  ctx.lineTo(cx + L * 0.85, by + L * 0.5);
+  ctx.lineTo(cx + L * 0.78, by + L * 0.62);
+  ctx.lineTo(cx - L * 0.06, by + L * 0.12);
+  ctx.closePath();
+  ctx.fill();
+  const top = Y + L * 0.12;
+  ctx.fillStyle = '#F1ECDF';
+  ctx.beginPath();
+  ctx.moveTo(cx - L * 0.15, by);
+  ctx.lineTo(cx - L * 0.09, top + L * 0.18);
+  ctx.lineTo(cx, top);
+  ctx.lineTo(cx, by);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#C9C2B1';
+  ctx.beginPath();
+  ctx.moveTo(cx, by);
+  ctx.lineTo(cx, top);
+  ctx.lineTo(cx + L * 0.09, top + L * 0.18);
+  ctx.lineTo(cx + L * 0.15, by);
+  ctx.closePath();
+  ctx.fill();
+  for (const [tx, ty] of [[0.35, 0.3], [2.65, 0.3], [0.3, 2.75], [2.7, 2.75]]) tree(dc, X + L * tx, Y + L * ty, L * 0.2, '#3F7D36', false);
 }
 
 function drawStadium(dc: DC, b: Building, X: number, Y: number): void {

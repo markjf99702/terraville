@@ -4,7 +4,7 @@ import { World, encodeArray, decodeArray } from '../src/world';
 import { Sim, compass, passingSentence, ridersWord, spending } from '../src/sim';
 import { generateTerrain, cleanTerrain, DEFAULT_TERRAIN, applyBrush, landReadout } from '../src/terrain';
 import { linePath, planLine, applyLine, planZones, planPlace, applyBuildings, planBulldoze, levelCost } from '../src/tools';
-import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST, UPGRADE_LV, Kind, BUILDINGS, article, buildingName, cityClass, isZone, num, upkeepOf } from '../src/defs';
+import { ROAD, RAIL, POWER, BRIDGE_COST, NET_COST, UPGRADE_LV, EXPO_LV, HALL_CRIME, HALL_REACH, Kind, BUILDINGS, article, buildingName, cityClass, isZone, num, upkeepOf } from '../src/defs';
 import { DAMAGED_CODE, challengeWins, citySlot, encode, encodeNow, decode, listSlots, pushSaved, readCode, recordWin, saveCode, SlotMeta } from '../src/save';
 import { Drive, GisOAuth2 } from '../src/drive';
 import { makeRng } from '../src/rng';
@@ -2314,6 +2314,87 @@ await test("reaching Town gives the city a Mayor's house: free, placed once at a
   // A challenge city opens at its size class with no gift: it hasn't reached it here.
   const sc = headless(buildScenario(SCENARIOS.find((x) => x.id === 'gridlock')!));
   assert.deepEqual(sc.world.city.gifts, []);
+});
+
+await test('each size class past Town brings its own gift: a City hall that cuts crime and needs power, and three that raise land value without it', async () => {
+  const w = flat(90, 60);
+  const g = headless(w);
+  const sim: Sim = g.sim;
+  const cards: string[] = [];
+  g.ui.gift = (k: string) => cards.push(k);
+  w.city.funds = 5000;
+  w.city.classReached = 1;
+  w.city.gifts = ['mayor'];
+  // Blocks of towers along the bottom of the map, 2,200 residents each, counted as at a month's end.
+  let towers = 0;
+  const reach = (n: number) => {
+    for (; towers < n; towers++) w.setLevel(w.place('res', (towers % 29) * 3, 33 + Math.floor(towers / 29) * 3), 8);
+    sim.tally();
+    (sim as any).advise();
+  };
+  reach(5);
+  assert.deepEqual([sim.stats.cityClass, w.city.gifts, cards], ['City', ['mayor', 'cityhall'], ['cityhall']]);
+  reach(23);
+  reach(46);
+  reach(114);
+  assert.equal(sim.stats.cityClass, 'Megalopolis');
+  assert.deepEqual(w.city.gifts, ['mayor', 'cityhall', 'plaza', 'expo', 'monument']);
+  assert.deepEqual(cards, ['cityhall', 'plaza', 'expo', 'monument'], 'a card for each');
+  assert.deepEqual((await reopen(sim)).world.city.gifts, w.city.gifts, 'kept with the city');
+  for (const k of ['cityhall', 'plaza', 'expo', 'monument']) assert.equal(g.giftReady(k), true, `${k} ready to place`);
+  const at = (x: number, y: number) => y * w.w + x;
+  const maps = () => {
+    sim.computePower();
+    sim.computeMaps();
+    sim.computeMaps();
+  };
+  const row = (b: { x: number; y: number }, k: string) => sim.describe(b.x, b.y).rows.find((r) => r[0] === k)?.[1];
+  const placed = (k: string) => [...w.buildings.values()].find((b) => b.kind === k)!;
+  // The exhibition hall: the same lift on every tile of the city, near or far, and no power.
+  maps();
+  const spots = [at(5, 5), at(80, 25), at(45, 12)];
+  const before = spots.map((i) => w.landValue[i]);
+  drag(g, 'expo', 45, 20);
+  maps();
+  assert.deepEqual(spots.map((i, k) => w.landValue[i] - before[k]), [EXPO_LV, EXPO_LV, EXPO_LV]);
+  assert.equal(sim.describe(45, 20).does, 'Raises land value across the whole city');
+  assert.equal(row(placed('expo'), 'Land value it adds'), `+$${EXPO_LV * 40}/acre across the city`);
+  assert.deepEqual([placed('expo').powered, row(placed('expo'), 'Power')], [false, 'Not needed']);
+  // The plaza and the monument: a lift round them, the monument's reaching further, and no power.
+  for (const [k, x, y, far] of [['plaza', 12, 8, 14], ['monument', 70, 8, 20]] as [string, number, number, number][]) {
+    maps();
+    const near = w.landValue[at(x + 2, y)];
+    const edge = w.landValue[at(x + far - 3, y)];
+    const beyond = w.landValue[at(x + far + 4, y)];
+    drag(g, k, x, y);
+    maps();
+    const b = placed(k);
+    assert.ok(w.landValue[at(x + 2, y)] - near >= 30, `${k} beside it: ${near} → ${w.landValue[at(x + 2, y)]}`);
+    assert.ok(w.landValue[at(x + far - 3, y)] > edge, `${k} near the edge of its reach`);
+    assert.equal(w.landValue[at(x + far + 4, y)], beyond, `${k}: nothing beyond its reach`);
+    assert.deepEqual([b.powered, row(b, 'Power'), g.giftReady(k)], [false, 'Not needed', false]);
+  }
+  // The City hall cuts crime round it like a small police station, whatever the police budget, and needs power: a
+  // third of its strength without it.
+  maps();
+  const mid = at(31, 21);
+  assert.equal(w.policeCov[mid], 0);
+  drag(g, 'cityhall', 31, 21);
+  const hall = placed('cityhall');
+  maps();
+  assert.equal(row(hall, 'Power'), 'None: no plant connected');
+  const dark = w.policeCov[mid];
+  w.place('coal', hall.x + 3, hall.y);
+  maps();
+  assert.equal(row(hall, 'Power'), 'Connected');
+  assert.ok(w.policeCov[mid] >= HALL_CRIME * 0.95 && Math.abs(dark - w.policeCov[mid] * 0.35) < 3, `unpowered ${dark}, powered ${w.policeCov[mid]}`);
+  assert.ok(w.policeCov[at(31 + HALL_REACH - 3, 21)] > 0 && w.policeCov[at(31 + HALL_REACH + 2, 21)] === 0, 'about 12 tiles');
+  w.city.funding.police = 0.5;
+  maps();
+  assert.ok(w.policeCov[mid] >= HALL_CRIME * 0.95, 'the police budget does not weaken it');
+  assert.equal(sim.describe(hall.x, hall.y).does, `Cuts crime within about ${HALL_REACH} tiles`);
+  // One of each at a time.
+  assert.equal(w.canPlace('monument', 5, 20).reason, 'The city has its monument already');
 });
 
 await test("the Mayor's house needs no power, like a park: it takes none from the grid and passes none on", () => {

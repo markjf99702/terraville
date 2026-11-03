@@ -2,7 +2,7 @@
 // Zones are re-evaluated a quarter at a time each week, and the expensive
 // map passes (traffic, pollution, crime, land value) run at month end.
 import {
-  BUILDINGS, DIFFICULTIES, DISASTER_POP, DOES, GIFT_LV, GIFT_REACH, GIFTS, Kind, LANDMARK_LETS, LANDMARK_LIMITS, NET_UPKEEP, POWER, RAIL, ROAD, STATION_POP,
+  BUILDINGS, DIFFICULTIES, DISASTER_POP, DOES, EXPO_LV, GIFT_LIFT, GIFTS, HALL_CRIME, HALL_REACH, Kind, LANDMARK_LETS, LANDMARK_LIMITS, NET_UPKEEP, POWER, RAIL, ROAD, STATION_POP,
   START_YEAR, UPGRADE_LV, ZONE_LV_GATE, ZONE_POP, article, buildingName, cityClass, CITY_CLASSES, dateLabel, isZone, num, toIndex, upkeepOf,
 } from './defs';
 
@@ -859,6 +859,7 @@ export class Sim {
     const fire = new Float32Array(n);
     const service = new Float32Array(n);
     const funding = world.city.funding;
+    let expo = 0;
     let cxSum = 0;
     let cySum = 0;
     let wSum = 0;
@@ -881,9 +882,13 @@ export class Sim {
       }
       if (b.kind === 'park') parks[b.y * w + b.x] += 60;
       if (b.kind === 'stadium') stampRect(parks, w, b.x, b.y, b.size, 20);
-      if (b.kind === 'mayor') stampDisk(gift, w, h, cx, cy, GIFT_REACH, GIFT_LV);
+      const lift = GIFT_LIFT[b.kind];
+      if (lift) stampDisk(gift, w, h, cx, cy, lift.reach, lift.lv);
+      if (b.kind === 'expo') expo = EXPO_LV;
       const eff = b.powered ? 1 : 0.35;
       if (b.kind === 'police') stampDisk(police, w, h, cx, cy, 18, 255 * funding.police * eff);
+      // The City hall costs nothing to run, so the police budget doesn't weaken it; power does, as for a station.
+      if (b.kind === 'cityhall') stampDisk(police, w, h, cx, cy, HALL_REACH, HALL_CRIME * eff);
       if (b.kind === 'fire') stampDisk(fire, w, h, cx, cy, 18, 255 * funding.fire * eff);
       if (b.kind === 'school') stampDisk(service, w, h, cx, cy, 15, 170 * eff);
       if (b.kind === 'hospital') stampDisk(service, w, h, cx, cy, 18, 170 * eff);
@@ -934,7 +939,7 @@ export class Sim {
         const d = Math.hypot(x - ccx, y - ccy);
         let lv = 34 + this.terrainAppeal[i] + Math.max(0, 1 - d / reach) * 48;
         lv += Math.min(40, parks[i] * 0.6);
-        lv += gift[i];
+        lv += gift[i] + expo;
         lv += world.serviceCov[i] * 0.22;
         lv -= world.pollution[i] * 0.7;
         lv -= world.crime[i] * 0.25;
@@ -1620,6 +1625,7 @@ export class Sim {
         grid ? 'None: its grid is overloaded' : 'None: no plant connected']);
       if (grid) rows.push(['Its grid', gridLoad(grid)]);
       if (def.upkeep) rows.push(['Upkeep', `$${upkeepOf(b)}/mo`]);
+      if (b.kind === 'expo') rows.push(['Land value it adds', `+$${num(EXPO_LV * 40)}/acre across the city`]);
       if (b.kind === 'stadium' || b.kind === 'seaport' || b.kind === 'airport') {
         const adds = this.landmarkAdds(b);
         rows.push(['Land value it adds', adds === null ? 'None: only the most upgraded counts' : adds ? `+$${num(adds * 40)}/acre across the city` : 'None until it is upgraded']);

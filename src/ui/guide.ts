@@ -2,8 +2,8 @@
 // Tables pull from the game's own data so the numbers cannot drift, and the
 // pictures are drawn with the game's renderer.
 import {
-  AUTO_GRADE, BRIDGE_COST, BUILDINGS, CITY_CLASSES, DISASTER_POP, DOES, GIFT_LV, GIFT_REACH, GRADE_COST, Kind, LANDMARK_LIMITS, NET_COST,
-  NET_MAX_SLOPE, NET_UPKEEP, POWER, ROAD, STATION_POP, UPGRADES, UPGRADE_LV, ZONE_LV_GATE, ZONE_POP, isGift, num,
+  AUTO_GRADE, BRIDGE_COST, BUILDINGS, CITY_CLASSES, DISASTER_POP, DOES, EXPO_LV, GIFTS, GIFT_LIFT, GRADE_COST, HALL_REACH, Kind, LANDMARK_LIMITS,
+  NET_COST, NET_MAX_SLOPE, NET_UPKEEP, POWER, ROAD, STATION_POP, UPGRADES, UPGRADE_LV, ZONE_LV_GATE, ZONE_POP, giftClass, isGift, num,
 } from '../defs';
 import { lessMotion } from '../motion';
 import { DC, drawBuilding, drawNet, drawTrees } from '../render/sprites';
@@ -33,8 +33,9 @@ const tip = (text: string) => `<p class="tip"><span class="caution" aria-hidden=
 function sections(): Section[] {
   const b = BUILDINGS;
   const plants: Kind[] = ['coal', 'nuclear', 'wind', 'solar'];
-  const civic: [Kind, string][] = (['police', 'fire', 'school', 'hospital', 'park', 'stadium', 'airport', 'seaport', 'mayor'] as const)
+  const civic: [Kind, string][] = (['police', 'fire', 'school', 'hospital', 'park', 'stadium', 'airport', 'seaport', 'mayor', 'cityhall', 'plaza', 'expo', 'monument'] as const)
     .map((k) => [k, DOES[k]]);
+  const lower = (k: Kind) => b[k].name.replace(/^\w/, (c) => c.toLowerCase());
   return [
     {
       id: 'start',
@@ -125,7 +126,7 @@ function sections(): Section[] {
         ]), [1, 2, 3])}
         <ul>
           <li>Every tile of every building draws 1 MW, so a 3×3 lot needs 9 MW even while it is still vacant.</li>
-          <li>Power flows through power lines and through buildings that touch, except parks and the Mayor’s house, which need no power. Roads and rail do not carry it. You can string a power line along an existing road.</li>
+          <li>Power flows through power lines and through buildings that touch, except parks and the gifts that need no power: the Mayor’s house, the plaza and statue, the exhibition hall and the monument. Roads and rail do not carry it. You can string a power line along an existing road.</li>
           <li>The grid updates the moment you build, even while paused. A flashing bolt on a lot means no power reaches it yet.</li>
           <li>When a grid needs more than its plants make, the lots furthest from its plants go dark first. The news ticker warns about brownouts.</li>
           <li>Plants only share power within one connected grid. Two plants on grids that never touch can leave one short while the other has plenty spare, even when the Report's city-wide total looks fine. The Power grid layer shows overloaded grids in orange, and Inspect on any lot or line gives its grid's load.</li>
@@ -223,9 +224,19 @@ function sections(): Section[] {
     {
       id: 'classes',
       title: 'City sizes and score',
-      html: `${table(['Class', 'Residents'], CITY_CLASSES.map((c) => [c.name, c.min ? `${num(c.min)}+` : 'under 2,000']), [1])}
+      html: `${table(['Class', 'Residents', 'Its gift'], CITY_CLASSES.map((c, k) => [c.name, c.min ? `${num(c.min)}+` : 'under 2,000', GIFTS[k] ? b[GIFTS[k]!].name : 'None']), [1])}
         <p>The city report scores the city out of 1,000. The mayor’s approval weighs most, 7 points for each percent, up to 700. Each size class past ${CITY_CLASSES[0].name} adds 50, up to ${(CITY_CLASSES.length - 1) * 50} for a ${CITY_CLASSES[CITY_CLASSES.length - 1].name.toLowerCase()}, and land value adds up to 50. The History charts show the approval behind it. A sandbox city, where nothing costs money, has no score.</p>
-        <p>Reaching Town brings a gift: a Mayor’s house, free, placed from the civic tools where it is marked Gift. It raises land value for about ${GIFT_REACH} tiles around it, up to ${money(GIFT_LV * 40)}/acre at its door, and like a park it needs no power. A city has one at a time: if it is lost, the tool comes back.</p>
+        <p>Each size class from Town up brings a gift when the city reaches it: free, placed from the civic tools where it is marked Gift, with a card to say what it does. A city has one of each at a time: if it is lost, the tool comes back. A challenge city that opens past a class isn’t given its gift.</p>
+        <ul>
+          ${Object.values(GIFTS).map((k) => {
+            const lift = GIFT_LIFT[k!];
+            const does = lift ? `raises land value for about ${lift.reach} tiles around it, up to ${money(lift.lv * 40)}/acre ${lift.at}`
+              : k === 'expo' ? `raises land value by ${money(EXPO_LV * 40)}/acre across the whole city`
+                : `cuts crime for about ${HALL_REACH} tiles around it, as a small police station would, though the police budget doesn’t change it`;
+            return `<li><b>${CITY_CLASSES[giftClass(k!)].name}:</b> the ${lower(k!)}, which ${does}.</li>`;
+          }).join('')}
+        </ul>
+        <p>The four that raise land value need no power, like a park. The City hall does, like a police station: without it, it works at about a third of its strength.</p>
         <p>At the end of each year the city’s paper comes out: the year’s biggest news as its headline (a year in debt, a disaster, a new size class, a landmark, record growth, brownouts), residents and the change on the year before, the top worry, approval, and the year’s surplus or deficit. On Ultra it waits until you pause, and Settings turns it off.</p>`,
     },
   ];

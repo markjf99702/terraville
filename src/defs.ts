@@ -9,7 +9,7 @@ export type Kind =
   | 'police' | 'fire' | 'school' | 'hospital'
   | 'park' | 'stadium' | 'seaport' | 'airport'
   | 'coal' | 'nuclear' | 'wind' | 'solar'
-  | 'mayor';
+  | 'mayor' | 'cityhall' | 'plaza' | 'expo' | 'monument';
 
 /**
  * Past these a city stops growing until it builds the landmark that goes with them: housing (residents) a stadium,
@@ -40,9 +40,23 @@ export const LANDMARK_LETS = {
   seaport: `Lets industry grow past ${limit('ind')} jobs`,
 };
 
-/** How far the Mayor's house raises land value, in tiles, and by how much at its door (0-255; 40 is $1,600 an acre). */
-export const GIFT_REACH = 10;
-export const GIFT_LV = 30;
+/**
+ * The gifts that raise land value round them: for about `reach` tiles, by up to `lv` (0-255; 40 is $1,600 an acre)
+ * `at` the building. Like a park they need no power.
+ */
+export const GIFT_LIFT: Partial<Record<Kind, { reach: number; lv: number; at: string }>> = {
+  mayor: { reach: 10, lv: 30, at: 'at its door' },
+  plaza: { reach: 14, lv: 40, at: 'beside it' },
+  monument: { reach: 20, lv: 40, at: 'at its foot' },
+};
+/** The land value (0-255) the exhibition hall adds to every tile in the city. It needs no power either. */
+export const EXPO_LV = 5;
+/**
+ * How far the City hall cuts crime, in tiles, and its strength at the middle (on police coverage's 0-255; a station
+ * at full funding is 255 over 18 tiles). Like a police station it needs power, and works at about a third without.
+ */
+export const HALL_REACH = 12;
+export const HALL_CRIME = 150;
 
 /** What each building that isn't a zone does, as the guide's table and the Inspect card say it (see LANDMARK_LETS). */
 export const DOES: Record<Exclude<Kind, 'res' | 'com' | 'ind'>, string> = {
@@ -58,18 +72,27 @@ export const DOES: Record<Exclude<Kind, 'res' | 'com' | 'ind'>, string> = {
   nuclear: 'Powers the zones its grid reaches, with clean air',
   wind: 'Powers the zones its grid reaches',
   solar: 'Powers the zones its grid reaches',
-  mayor: `Raises land value within about ${GIFT_REACH} tiles`,
+  mayor: `Raises land value within about ${GIFT_LIFT.mayor!.reach} tiles`,
+  cityhall: `Cuts crime within about ${HALL_REACH} tiles`,
+  plaza: `Raises land value within about ${GIFT_LIFT.plaza!.reach} tiles`,
+  expo: 'Raises land value across the whole city',
+  monument: `Raises land value within about ${GIFT_LIFT.monument!.reach} tiles`,
 };
 
 /**
  * The building a city is given for reaching each size class, by the class's place in CITY_CLASSES: free, placed once
- * from the civic tools, with one standing at a time. Only Town has one so far.
+ * from the civic tools, with one standing at a time.
  */
-export const GIFTS: Partial<Record<number, Kind>> = { 1: 'mayor' };
+export const GIFTS: Partial<Record<number, Kind>> = { 1: 'mayor', 2: 'cityhall', 3: 'plaza', 4: 'expo', 5: 'monument' };
 
 /** Whether a kind of building is a gift. */
 export function isGift(k: Kind): boolean {
   return Object.values(GIFTS).includes(k);
+}
+
+/** The place in CITY_CLASSES of the size class a gift is given for. */
+export function giftClass(k: Kind): number {
+  return Number(Object.keys(GIFTS).find((c) => GIFTS[Number(c)] === k) ?? 0);
 }
 
 /** 'a' or 'an', as said before `word`. */
@@ -113,6 +136,10 @@ export const BUILDINGS: Record<Kind, BuildingDef> = {
   wind: { kind: 'wind', name: 'Wind turbine', size: 1, cost: 250, upkeep: 2, capacity: 18, maxSpread: 40, blurb: '18 MW. Hilltops are fine.' },
   solar: { kind: 'solar', name: 'Solar farm', size: 3, cost: 2600, upkeep: 12, capacity: 160, maxSpread: 9, blurb: '160 MW of quiet power.' },
   mayor: { kind: 'mayor', name: 'Mayor’s house', size: 2, cost: 0, upkeep: 0, noPower: true, maxSpread: 9, blurb: 'The city’s gift for reaching Town: free, and it raises land value around it.' },
+  cityhall: { kind: 'cityhall', name: 'City hall', size: 3, cost: 0, upkeep: 0, maxSpread: 9, blurb: 'The city’s gift for reaching City: free, and it cuts crime around it.' },
+  plaza: { kind: 'plaza', name: 'Plaza and statue', size: 3, cost: 0, upkeep: 0, noPower: true, maxSpread: 9, blurb: 'The city’s gift for reaching Capital: free, and it raises land value around it.' },
+  expo: { kind: 'expo', name: 'Exhibition hall', size: 4, cost: 0, upkeep: 0, noPower: true, maxSpread: 8, blurb: 'The city’s gift for reaching Metropolis: free, and it raises land value across the whole city.' },
+  monument: { kind: 'monument', name: 'Monument', size: 3, cost: 0, upkeep: 0, noPower: true, maxSpread: 9, blurb: 'The city’s gift for reaching Megalopolis: free, and it raises land value far around it.' },
 };
 
 /** Something a city with money to spare can make of a landmark. */
@@ -222,6 +249,10 @@ export const CITY_TOOLS: ToolDef[] = [
   { id: 'hospital', name: 'Hospital', kind: 'place', building: 'hospital', group: 'civic', tip: '' },
   { id: 'stadium', name: 'Stadium', kind: 'place', building: 'stadium', group: 'civic', tip: '' },
   { id: 'mayor', name: 'Mayor’s house', kind: 'place', building: 'mayor', group: 'civic', tip: '' },
+  { id: 'cityhall', name: 'City hall', kind: 'place', building: 'cityhall', group: 'civic', tip: '' },
+  { id: 'plaza', name: 'Plaza and statue', kind: 'place', building: 'plaza', group: 'civic', tip: '' },
+  { id: 'expo', name: 'Exhibition hall', kind: 'place', building: 'expo', group: 'civic', tip: '' },
+  { id: 'monument', name: 'Monument', kind: 'place', building: 'monument', group: 'civic', tip: '' },
   { id: 'coal', name: 'Coal plant', kind: 'place', building: 'coal', group: 'power', tip: '' },
   { id: 'nuclear', name: 'Nuclear', kind: 'place', building: 'nuclear', group: 'power', tip: '' },
   { id: 'wind', name: 'Wind turbine', kind: 'place', building: 'wind', group: 'power', tip: '' },

@@ -1,7 +1,7 @@
 // Everything in the DOM: top bar, toolbox, panels, dialogs, title screen.
 import {
-  BUILDINGS, BULLDOZE_COST, DIFFICULTIES, DISASTER_POP, Difficulty, GIFT_LV, GIFT_REACH, Kind, LANDMARK_LIMITS, MAP_SIZES, RAIL, ROAD, SEP,
-  ToolDef, UPGRADE_LV, article, cityClass, dateLabel, MONTHS, isGift, isZone, nextUpgrade, num,
+  BUILDINGS, BULLDOZE_COST, CITY_CLASSES, DIFFICULTIES, DISASTER_POP, Difficulty, EXPO_LV, GIFT_LIFT, HALL_REACH, Kind, LANDMARK_LIMITS, MAP_SIZES, RAIL, ROAD, SEP,
+  ToolDef, UPGRADE_LV, article, cityClass, dateLabel, MONTHS, giftClass, isGift, isZone, nextUpgrade, num,
 } from '../defs';
 import { DISASTER_NAMES, DisasterKind } from '../disasters';
 import { Game, SPEED_NAMES, randomCityName } from '../game';
@@ -1672,7 +1672,7 @@ export class UI {
       ? `<div class="clear"><button class="btn small" id="inBulldoze">${free ? 'Bulldoze' : `Bulldoze for ${money(clearCost)}`}</button></div>` : '';
     // A station's reach, or a plant's grid, is a layer away.
     const layer: Overlay | undefined = !b ? undefined
-      : b.kind === 'police' ? 'police' : b.kind === 'fire' ? 'fire' : b.kind === 'school' || b.kind === 'hospital' ? 'service'
+      : b.kind === 'police' || b.kind === 'cityhall' ? 'police' : b.kind === 'fire' ? 'fire' : b.kind === 'school' || b.kind === 'hospital' ? 'service'
         : BUILDINGS[b.kind].capacity ? 'power' : undefined;
     const showLayer = layer && this.game.renderer.overlay !== layer
       ? `<button class="btn small" id="inLayer" style="margin-top:10px">${layer === 'power' ? 'Show the power grid' : 'Show its reach'}</button>` : '';
@@ -1925,11 +1925,19 @@ export class UI {
   /** The card for a size class's gift: what it is, what it does, and a button to place it. */
   gift(kind: Kind): void {
     const city = this.game.world.city;
-    const name = BUILDINGS[kind].name;
+    const name = BUILDINGS[kind].name.replace(/^\w/, (c) => c.toLowerCase());
+    const cls = CITY_CLASSES[giftClass(kind)].name.toLowerCase();
+    const m = (n: number) => `<span class="num">${money(n)}</span>`;
+    const lift = GIFT_LIFT[kind];
+    const does = lift
+      ? `It raises land value for about ${lift.reach} tiles around it, up to ${m(lift.lv * 40)}/acre ${lift.at}, so the homes and shops near it can grow denser. Like a park, it needs no power.`
+      : kind === 'expo'
+        ? `It draws visitors from all over, and raises land value by ${m(EXPO_LV * 40)}/acre across the whole city. Like a park, it needs no power.`
+        : `It cuts crime for about ${HALL_REACH} tiles around it, as a small police station would, and costs nothing to run. Like a station it needs power: without it, it works at about a third of its strength.`;
     this.syncGifts();
     this.showNews(`A gift for ${esc(city.name)}`, `
-      <p class="does">${esc(city.name)} is now a town, and the council has given it a ${esc(name.replace(/^\w/, (c) => c.toLowerCase()))}. It is free: place it from the civic tools, where it is marked Gift.</p>
-      <p class="news-p">It raises land value for about ${GIFT_REACH} tiles around it, up to <span class="num">${money(GIFT_LV * 40)}</span>/acre at its door, so the homes and shops near it can grow denser. Like a park, it needs no power.</p>`, [
+      <p class="does">${esc(city.name)} is now ${article(cls)} ${cls}, and the council has given it ${article(name)} ${esc(name)}. It is free: place it from the civic tools, where it is marked Gift.</p>
+      <p class="news-p">${does}</p>`, [
       {
         label: 'Place it', primary: true, act: () => {
           this.game.setTool(kind);
