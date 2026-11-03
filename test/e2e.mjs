@@ -1514,6 +1514,14 @@ try {
     await page.keyboard.press('Escape');
     await hide();
     assert.deepEqual(await draft(), kept);
+    // Nor does Shape the land first in a quick start's Found a new city box, until that land is changed.
+    await page.reload();
+    await titleUp(page);
+    await page.click('[data-act="quick"]');
+    await page.click('.modal footer button:has-text("Shape the land first")');
+    await page.waitForFunction(() => window.__terraville.mode === 'editor' && !document.querySelector('.modal'));
+    await hide();
+    assert.deepEqual(await draft(), kept, 'the quick start\'s Shape the land first keeps the draft until its land is changed');
     // Shape the land first, with a draft kept: its new land takes the draft's place only once it is changed. A tap on it
     // and back loses nothing, through the page closing and the menu's way out, which says so.
     await page.reload();

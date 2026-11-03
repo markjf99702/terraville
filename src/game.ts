@@ -448,10 +448,10 @@ export class Game {
     this.ui.toast(EDITOR_HINT(this.ui.narrow()));
   }
 
-  /** Continue editing the land already on screen (from the title or a quick start). */
+  /** Continue editing the land already on screen: a quick start's, from its Found a new city box. */
   editCurrentLand(): void {
-    this.dropDraft();
-    this.draftWork = true;
+    // As with Shape the land first on the title screen, a draft kept from before stays until this land is changed.
+    this.draftWork = !readDraft();
     this.mode = 'editor';
     this.setSim(null);
     this.renderer.setOverlay('none');
