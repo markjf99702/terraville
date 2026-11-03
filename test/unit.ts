@@ -2976,6 +2976,30 @@ await test('a sandbox city builds, levels and upgrades for nothing, keeps its fu
   assert.match(m.toasts.at(-1), /^Not enough money/);
 }));
 
+await test('Escape on the map calls a Level land stroke begun with Enter off whole: the ground and the money go back', () => seeded(7, () => {
+  const g = headless(flat(60, 40));
+  g.foundCity('Gradeton', 'medium', false);
+  const w: World = g.world;
+  for (let y = 30; y < 36; y++) for (let x = 40; x < 46; x++) w.height[y * w.w + x] = 3 + (x - 40) * 2;
+  const ground = Array.from(w.height);
+  const funds = w.city.funds;
+  const steps = g.undoStack.length;
+  // The keyboard's cursor on the slope: Enter starts the brush, and it levels and spends while it runs.
+  g.kbCursor = { x: 41, y: 32 };
+  g.setTool('level');
+  g.cursorEnter();
+  assert.equal(g.brushOn, true);
+  g.brushTick(0.5);
+  assert.ok(w.height[32 * w.w + 44] < ground[32 * w.w + 44], 'the slope was being levelled');
+  assert.ok(w.city.funds < funds, 'and paid for');
+  // Escape calls it off, as it calls off a road: nothing of it is left, and nothing to undo.
+  g.cursorCancel();
+  assert.equal(g.brushOn, false);
+  assert.deepEqual(Array.from(w.height), ground);
+  assert.equal(w.city.funds, funds);
+  assert.equal(g.undoStack.length, steps);
+}));
+
 await test('a landmark on fire is not offered an upgrade, and cannot be sold one', () => seeded(42, () => {
   const g = town();
   const w = g.world;

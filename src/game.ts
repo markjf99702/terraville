@@ -1330,10 +1330,14 @@ export class Game {
     else if (this.anchor) this.ui.speak(`${this.ui.tipWords()}. The arrow keys stretch it, Enter finishes it and Escape cancels it.`, 0);
   }
 
-  /** Escape on the map in the middle of a drag: it is called off, and the cursor shows what is under it again. */
+  /**
+   * Escape on the map in the middle of a drag: it is called off, and the cursor shows what is under it again. A brush
+   * is called off whole, its ground and money put back, as a road leaves nothing behind.
+   */
   cursorCancel(): void {
     if (!this.kbCursor) return;
-    this.cancelTool();
+    if (this.brushOn) this.abortStroke();
+    else this.cancelTool();
     this.cursorAt();
     this.ui.speak('Cancelled.', 0);
   }
