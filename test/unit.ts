@@ -2915,6 +2915,67 @@ await test('a city founded on Easy starts with $20,000, on Medium $10,000, and o
   assert.deepEqual(funds, [20000, 10000, 7500]);
 });
 
+await test('a sandbox city builds, levels and upgrades for nothing, keeps its funds still at month end, and has no loans', () => seeded(7, () => {
+  const g = headless(flat(60, 40));
+  g.foundCity('Sandville', 'hard', false, true);
+  const w: World = g.world;
+  const city = w.city;
+  // It plays as Medium, landmark limits and all, with nothing in the bank.
+  assert.deepEqual([city.sandbox, city.difficulty, city.funds, city.disasters], [true, 'medium', 0, false]);
+  drag(g, 'coal', 8, 5);
+  drag(g, 'road', 10, 12, 50, 12);
+  drag(g, 'power', 10, 12, 50, 12);
+  drag(g, 'res', 12, 14, 24, 14);
+  drag(g, 'stadium', 30, 20);
+  const kinds = [...w.buildings.values()].map((b) => b.kind);
+  for (const k of ['coal', 'res', 'stadium']) assert.ok(kinds.includes(k as Kind), `${k} built`);
+  assert.ok(w.net[12 * w.w + 30] & ROAD, 'road laid');
+  const stadium = [...w.buildings.values()].find((b) => b.kind === 'stadium')!;
+  assert.equal(g.upgrade(stadium), true);
+  assert.equal(stadium.level, 2);
+  // Level land moves earth for nothing.
+  for (let y = 30; y < 36; y++) for (let x = 40; x < 46; x++) w.height[y * w.w + x] = 3 + (x - 40) * 2;
+  const before = w.height[32 * w.w + 44];
+  g.setTool('level');
+  g.pointerDown(41.5, 32.5, 0, 0);
+  g.brushTick(0.5);
+  g.pointerUp(41.5, 32.5, 0, 0);
+  assert.ok(w.height[32 * w.w + 44] < before, 'the slope was levelled');
+  assert.equal(city.funds, 0);
+  // Undo says nothing about money: there was none to give back.
+  g.undo();
+  assert.equal(g.toasts.at(-1), 'Undone');
+  // The month's upkeep shows on the ledger, but nothing is charged; there is nothing to borrow.
+  weeks(g, 4 * 3);
+  assert.ok(spending(g.sim.stats.lastBudget) > 0, 'the ledger counts the upkeep');
+  assert.equal(city.funds, 0);
+  assert.deepEqual(city.history.funds, [0, 0, 0]);
+  assert.equal(city.debtMonths, 0);
+  assert.equal(g.sim.takeLoan(10000), false);
+  assert.equal(city.loan, 0);
+  // Its year closes with no money said, in the news or the paper.
+  const papers: { closing: string }[] = [];
+  g.sim.on((e: { type: string; paper?: { closing: string } }) => { if (e.type === 'paper') papers.push(e.paper!); });
+  weeks(g, 4 * 9);
+  assert.equal(papers.length, 1);
+  assert.equal(papers[0].closing, '');
+  assert.equal(g.sim.messages.some((m: { text: string }) => /closes with/.test(m.text)), false);
+  assert.equal(city.funds, 0);
+  // It stays a sandbox through a save, and a code that says anything but true is no sandbox.
+  assert.equal(World.deserialize(JSON.parse(JSON.stringify(w.serialize()))).city.sandbox, true);
+  const odd = JSON.parse(JSON.stringify(w.serialize()));
+  odd.city.sandbox = 'yes';
+  assert.equal('sandbox' in World.deserialize(odd).city, false);
+  // The same coal plant in a city with money, at nothing in the bank, is refused.
+  const m = headless(flat(60, 40));
+  m.foundCity('Hardup', 'medium', false);
+  m.world.city.funds = 0;
+  drag(m, 'coal', 8, 5);
+  assert.equal(m.world.buildings.size, 0);
+  assert.equal('sandbox' in m.world.city, false);
+  assert.match(m.toasts.at(-1), /^Not enough money/);
+}));
+
 await test('a landmark on fire is not offered an upgrade, and cannot be sold one', () => seeded(42, () => {
   const g = town();
   const w = g.world;

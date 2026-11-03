@@ -515,15 +515,20 @@ export class Game {
     this.ui.openFound(true);
   }
 
-  foundCity(name: string, difficulty: Difficulty['id'], disasters: boolean): void {
+  /**
+   * Found a city on the land in the editor. A sandbox city plays as Medium, landmark limits and all, but nothing costs
+   * money: its funds stay at nothing, and read Unlimited.
+   */
+  foundCity(name: string, difficulty: Difficulty['id'], disasters: boolean, sandbox = false): void {
     const w = this.world;
     // The city opens on what was in the middle of the editor's view, between its panels.
     const centre = this.renderer.freeCentre();
-    const diff = DIFFICULTIES.find((d) => d.id === difficulty) ?? DIFFICULTIES[0];
+    const diff = DIFFICULTIES.find((d) => d.id === (sandbox ? 'medium' : difficulty)) ?? DIFFICULTIES[0];
     w.city = newCityState();
     w.city.name = name.trim() || randomCityName();
     w.city.difficulty = diff.id;
-    w.city.funds = diff.funds;
+    w.city.funds = sandbox ? 0 : diff.funds;
+    if (sandbox) w.city.sandbox = true;
     w.city.disasters = disasters;
     w.city.founded = true;
     w.city.seed = this.terrain.seed;
@@ -1205,7 +1210,7 @@ export class Game {
         if (top.open && top.within) this.world.adoptBuilt(full, top.within);
         const area = top.open && top.within ? this.world.changedArea(full, top.within) : null;
         if (area) this.world.restoreArea(this.world.areaSnapshot(area, full));
-        this.world.city.funds += this.brushSpent;
+        this.charge(-this.brushSpent);
         this.ui.onFunds();
       } else {
         this.world.restore(top.snap as WorldSnapshot);
@@ -1254,7 +1259,8 @@ export class Game {
       if (this.mode === 'editor' && inside) {
         this.ui.cursorTip(sx, sy, `<span class="num">${Math.round(this.world.height[ty * this.world.w + tx])} m</span>`);
       } else if (t.id === 'level' && inside) {
-        const spent = this.brushOn ? `Levelling <span class="num">${fmtMoney(this.brushSpent)}</span>${SEP}` : '';
+        const free = this.sandbox;
+        const spent = this.brushOn ? `Levelling${free ? '' : ` <span class="num">${fmtMoney(this.brushSpent)}</span>`}${SEP}` : '';
         if (this.world.water[ty * this.world.w + tx]) {
           this.ui.cursorTip(sx, sy, `${spent}<b>Water</b>: Level land can't fill it in`, false);
         } else {
@@ -1264,7 +1270,7 @@ export class Game {
           let ask = spent;
           if (!ask) {
             const est = levelCost(this.world, fx, fy, this.brush.radius, this.world.height[ty * this.world.w + tx]);
-            ask = `Hold to level${SEP}${est >= 1 ? `about <span class="num">${fmtMoney(est)}</span> to flatten this circle` : 'nothing here to level'}${SEP}`;
+            ask = `Hold to level${SEP}${est < 1 ? `nothing here to level${SEP}` : free ? '' : `about <span class="num">${fmtMoney(est)}</span> to flatten this circle${SEP}`}`;
           }
           this.ui.cursorTip(sx, sy, `${ask}<b>${cls.label}</b> (<span class="num">${s.toFixed(1)} m</span>): ${cls.note}`, false);
         }
@@ -1349,8 +1355,9 @@ export class Game {
         t.kind === 'zone' ? `${plan.count} zone${plan.count > 1 ? 's' : ''}` :
         t.id === 'bulldoze' ? `${plan.count} to clear` :
         t.kind === 'rect' ? `${plan.count} tile${plan.count > 1 ? 's' : ''}` : t.name;
-      // A gift costs nothing, unless there are trees to clear.
-      html = `${t.kind === 'place' ? '' : t.name + SEP}${what}${SEP}${plan.cost ? `<span class="num">${fmtMoney(plan.cost)}</span>` : 'free'}${priceIncludes(plan, t.kind === 'line', t.net === POWER)}`;
+      // A gift costs nothing, unless there are trees to clear. In a sandbox nothing has a price.
+      const price = this.sandbox ? '' : `${SEP}${plan.cost ? `<span class="num">${fmtMoney(plan.cost)}</span>` : 'free'}${priceIncludes(plan, t.kind === 'line', t.net === POWER)}`;
+      html = `${t.kind === 'place' ? '' : t.name + SEP}${what}${price}`;
       if (!this.affordable(plan)) {
         html += plan.cost ? `${SEP}not enough money` : `${SEP}nothing new can be built in debt`;
         bad = true;
@@ -1530,7 +1537,27 @@ export class Game {
 
   /** Whether the city can pay for a plan. Bulldozing goes ahead even in debt, so a broke city can cut its upkeep. */
   private affordable(plan: Plan): boolean {
-    return this.mode !== 'city' || this.tool().id === 'bulldoze' || plan.cost <= this.world.city.funds;
+    return this.tool().id === 'bulldoze' || this.canAfford(plan.cost);
+  }
+
+  /**
+   * Whether the city can pay `cost`. Everything that spends the city's money asks here first, and pays with charge:
+   * in a sandbox city, and outside a city, nothing costs anything.
+   */
+  private canAfford(cost: number): boolean {
+    return this.mode !== 'city' || !!this.world.city.sandbox || cost <= this.world.city.funds;
+  }
+
+  /** Take `cost` from the city's funds (a refund, when negative), and say what was taken: nothing in a sandbox. */
+  private charge(cost: number): number {
+    if (this.mode !== 'city' || this.world.city.sandbox) return 0;
+    this.world.city.funds -= cost;
+    return cost;
+  }
+
+  /** Whether the city is a sandbox, where nothing costs money, so no price is shown. */
+  get sandbox(): boolean {
+    return this.mode === 'city' && !!this.world.city.sandbox;
   }
 
   /** Carry out a plan, the pointer having lifted on tile (tx, ty). */
@@ -1541,7 +1568,6 @@ export class Game {
       this.audio.play('error');
       return;
     }
-    const city = this.world.city;
     if (!this.affordable(plan)) return this.notEnough(plan.cost);
     const opens = this.opening(t.building as Kind | undefined);
     const spot = this.footprint(t, plan);
@@ -1560,8 +1586,7 @@ export class Game {
       for (const [x, y] of plan.tiles.slice(0, 8)) this.renderer.vehicles.addDust(x + size / 2, y + size / 2, 0.6);
     }
     if (this.mode === 'city') {
-      city.funds -= plan.cost;
-      this.setUndoCost(plan.cost);
+      this.setUndoCost(this.charge(plan.cost));
       this.built = { html: this.builtText(t, plan), until: performance.now() + 1200, tiles: spot, shown: true };
     }
     this.sealUndo();
@@ -1622,12 +1647,13 @@ export class Game {
    */
   private builtText(t: ToolDef, plan: Plan): string {
     const n = plan.count;
-    const cost = `<span class="num">${fmtMoney(plan.cost)}</span>`;
-    if (t.id === 'bulldoze') return `Cleared ${n}${SEP}${cost}`;
-    if (t.kind === 'zone') return `Zoned ${n} lot${n > 1 ? 's' : ''}${SEP}${cost}`;
-    if (t.kind === 'place') return `${BUILDINGS[t.building!].name} built${SEP}${cost}`;
+    // A sandbox charged nothing, so says no price.
+    const cost = this.sandbox ? '' : `${SEP}<span class="num">${fmtMoney(plan.cost)}</span>`;
+    if (t.id === 'bulldoze') return `Cleared ${n}${cost}`;
+    if (t.kind === 'zone') return `Zoned ${n} lot${n > 1 ? 's' : ''}${cost}`;
+    if (t.kind === 'place') return `${BUILDINGS[t.building!].name} built${cost}`;
     const done = t.id === 'trees' ? 'Trees planted' : t.id === 'park' ? 'Parks built' : `${t.name} built`;
-    return `${done}${SEP}${n} tile${n > 1 ? 's' : ''}${SEP}${cost}`;
+    return `${done}${SEP}${n} tile${n > 1 ? 's' : ''}${cost}`;
   }
 
   /** Dust where the bulldozer takes down buildings: one cloud each, eight at most. Empty lots raise none. */
@@ -1673,18 +1699,17 @@ export class Game {
   upgrade(b: Building): boolean {
     const up = this.upgradeFor(b);
     if (!up) return false;
-    const city = this.world.city;
-    if (up.cost > city.funds) {
+    if (!this.canAfford(up.cost)) {
       this.notEnough(up.cost);
       return false;
     }
     this.sealUndo();
     const area = { x0: b.x, y0: b.y, x1: b.x + b.size - 1, y1: b.y + b.size - 1, mask: new Uint8Array(b.size * b.size).fill(1) };
-    const entry: UndoEntry = { snap: this.world.areaSnapshot(area), cost: up.cost, month: city.month, upgrade: true };
+    const entry: UndoEntry = { snap: this.world.areaSnapshot(area), cost: 0, month: this.world.city.month, upgrade: true };
     this.undoStack.push(entry);
     if (this.undoStack.length > 25) this.undoStack.shift();
     this.redoStack = [];
-    city.funds -= up.cost;
+    entry.cost = this.charge(up.cost);
     const was = buildingName(b).toLowerCase();
     this.world.setLevel(b, b.level + 1);
     entry.after = this.world.areaSnapshot(area);
@@ -1709,7 +1734,8 @@ export class Game {
       return;
     }
     const city = this.mode === 'city';
-    if (city && this.world.city.funds <= 0) {
+    // Not a cent left (a sandbox always has).
+    if (city && !this.canAfford(Number.MIN_VALUE)) {
       this.brushOn = false;
       this.ui.toast('Out of money for levelling.', 'warn');
       return;
@@ -1731,7 +1757,7 @@ export class Game {
           : { x0: res.x0, y0: res.y0, x1: res.x1, y1: res.y1 };
       }
       const cost = res.moved * GRADE_COST;
-      if (cost > this.world.city.funds) {
+      if (!this.canAfford(cost)) {
         // Too dear: put the ground back and stop.
         this.world.height.set(saved!);
         this.world.dirty(res.x0 - 1, res.y0 - 1, res.x1 + 1, res.y1 + 1, true);
@@ -1740,8 +1766,7 @@ export class Game {
         this.ui.toast('Not enough money to keep levelling.', 'warn');
         return;
       }
-      this.world.city.funds -= cost;
-      this.brushSpent += cost;
+      this.brushSpent += this.charge(cost);
     }
     if (res.moved > 0.01 || t.id === 'water' || t.id === 'land' || t.id === 'forest' || t.id === 'clear') {
       this.audio.play('terrain');
@@ -1897,7 +1922,7 @@ export class Game {
     this.redoStack.push({ snap: back, cost: refund, month: e.month, upgrade: e.upgrade, after: this.afterOf(e.snap), terrain: this.swapTerrain(e), bulldoze: e.bulldoze });
     if (e.upgrade) this.sim?.computeMaps();
     this.ui.syncUndo();
-    if (city) this.world.city.funds += refund;
+    if (city) this.charge(-refund);
     const money = refund >= 1 ? `${fmtMoney(refund)} back` : e.cost >= 1 ? `no refund after ${REFUND_MONTHS} months` : '';
     this.sayUndone('Undone', money, refund >= 1, e.snap);
     this.ui.onFunds();
@@ -1916,7 +1941,7 @@ export class Game {
       return;
     }
     if (this.overtaken(e, 'redone')) return;
-    if (this.mode === 'city' && e.cost > this.world.city.funds) {
+    if (!this.canAfford(e.cost)) {
       this.redoStack.push(e);
       this.ui.toast('Not enough money to redo that.', 'warn');
       return;
@@ -1930,7 +1955,7 @@ export class Game {
     });
     if (e.upgrade) this.sim?.computeMaps();
     this.ui.syncUndo();
-    if (this.mode === 'city') this.world.city.funds -= e.cost;
+    this.charge(e.cost);
     this.sayUndone('Redone', e.cost >= 1 ? fmtMoney(e.cost) : '', true, e.snap);
     this.ui.onFunds();
     this.ui.refreshInspect();

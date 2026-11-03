@@ -160,6 +160,7 @@ function sections(): Section[] {
           <li><b>Loans</b> come in $10,000 steps up to $30,000 at 7% a year. They are worth it to fund a plant or a landmark that unlocks growth, not to cover running costs.</li>
           <li><b>In debt</b> nothing new can be built, but bulldozing still works at $1 a tile, so you can clear away what the city can’t afford to run. After a year in debt a card says which costs are biggest, the tax rate that would cover them, and what the Budget can still lend.</li>
           <li><b>Underfunding</b> police or fire weakens their reach. Cutting roads and rail below 90% makes tiles crumble into rubble every month.</li>
+          <li><b>A sandbox city</b>, the fourth choice in Found a new city, charges nothing: funds read Unlimited and everything builds. It plays as Medium, landmark limits and all, and its Budget still shows what taxes would bring in and the city would cost, with no loans. Random disasters start switched off, the report gives no score, the year’s paper says nothing of money, and a sandbox stays a sandbox.</li>
         </ul>
         ${tip('The Budget pauses the game and shows last month and the year so far line by line. The History charts show whether income is keeping up with spending.')}`,
     },
@@ -223,7 +224,7 @@ function sections(): Section[] {
       id: 'classes',
       title: 'City sizes and score',
       html: `${table(['Class', 'Residents'], CITY_CLASSES.map((c) => [c.name, c.min ? `${num(c.min)}+` : 'under 2,000']), [1])}
-        <p>The city report scores the city out of 1,000. The mayor’s approval weighs most, 7 points for each percent, up to 700. Each size class past ${CITY_CLASSES[0].name} adds 50, up to ${(CITY_CLASSES.length - 1) * 50} for a ${CITY_CLASSES[CITY_CLASSES.length - 1].name.toLowerCase()}, and land value adds up to 50. The History charts show the approval behind it.</p>
+        <p>The city report scores the city out of 1,000. The mayor’s approval weighs most, 7 points for each percent, up to 700. Each size class past ${CITY_CLASSES[0].name} adds 50, up to ${(CITY_CLASSES.length - 1) * 50} for a ${CITY_CLASSES[CITY_CLASSES.length - 1].name.toLowerCase()}, and land value adds up to 50. The History charts show the approval behind it. A sandbox city, where nothing costs money, has no score.</p>
         <p>Reaching Town brings a gift: a Mayor’s house, free, placed from the civic tools where it is marked Gift. It raises land value for about ${GIFT_REACH} tiles around it, up to ${money(GIFT_LV * 40)}/acre at its door. A city has one at a time: if it is lost, the tool comes back.</p>
         <p>At the end of each year the city’s paper comes out: the year’s biggest news as its headline (a year in debt, a disaster, a new size class, a landmark, record growth, brownouts), residents and the change on the year before, the top worry, approval, and the year’s surplus or deficit. On Ultra it waits until you pause, and Settings turns it off.</p>`,
     },

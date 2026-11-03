@@ -80,6 +80,11 @@ export interface CityState {
   /** The gift buildings the city has been given for reaching a size class (see GIFTS). */
   gifts: Kind[];
   /**
+   * A sandbox city, chosen when it was founded and kept for its life: nothing costs money, so its funds never move,
+   * and it has no loans and no score.
+   */
+  sandbox?: true;
+  /**
    * Set when the city is a challenge: which one, the deadline month, and the outcome once decided, with the month it
    * was decided and whether the goal tracker has been closed since. For a goal that must hold to the end, also how many
    * month-ends in a row it has been met.
@@ -158,6 +163,8 @@ function cleanCity(raw: unknown): CityState {
       landmarks: y.landmarks.filter((l): l is [number, number] => Array.isArray(l) && l.length === 2 && l.every((v) => Number.isFinite(v))).map(([id, level]) => [Math.floor(id), Math.floor(level)]),
     };
   } else delete city.year;
+  if (s.sandbox === true) city.sandbox = true;
+  else delete city.sandbox;
   // Only the plain ids Terraville makes; a city without one gets a new id when it opens.
   if (typeof s.id !== 'string' || !/^[a-z0-9]{1,24}$/.test(s.id)) delete city.id;
   const sc = record(s.scenario);

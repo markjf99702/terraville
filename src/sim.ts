@@ -92,7 +92,7 @@ export interface Paper {
   /** The city report's top worry, with how bad it is (0-100). */
   worry: { label: string; value: number } | null;
   approval: number;
-  /** The year's surplus or deficit, as the news ticker says it. */
+  /** The year's surplus or deficit, as the news ticker says it; empty for a sandbox, which has no money to speak of. */
   closing: string;
 }
 
@@ -457,10 +457,12 @@ export class Sim {
     const yb = this.stats.yearBudget;
     const net = yb.taxIncome - spending(yb);
     const year = 1900 + Math.floor(world.city.month / 12) - 1;
-    const closing = `${year} closes ${net >= 0 ? 'with a surplus of' : 'with a deficit of'} $${num(Math.abs(net))}. Taxes brought in $${num(yb.taxIncome)}.`;
-    this.say('year', closing, net >= 0 ? 'good' : 'warn', undefined, 0);
+    // A sandbox's year closes with no money said: none came in or went out (its Budget still has the ledger).
+    const sandbox = !!world.city.sandbox;
+    const closing = sandbox ? '' : `${year} closes ${net >= 0 ? 'with a surplus of' : 'with a deficit of'} $${num(Math.abs(net))}. Taxes brought in $${num(yb.taxIncome)}.`;
+    if (closing) this.say('year', closing, net >= 0 ? 'good' : 'warn', undefined, 0);
     this.stats.yearBudget = emptyBudget();
-    this.emit({ type: 'year', surplus: net >= 0 });
+    this.emit({ type: 'year', surplus: !sandbox && net >= 0 });
     const paper = this.paper(closing);
     world.city.year = this.newYear();
     this.emit({ type: 'paper', paper });
@@ -1157,7 +1159,8 @@ export class Sim {
     const city = world.city;
     const s = this.stats;
     const b = this.reckon();
-    city.funds += b.taxIncome - spending(b);
+    // A sandbox keeps the ledger, but nothing comes in or goes out.
+    if (!city.sandbox) city.funds += b.taxIncome - spending(b);
     s.lastBudget = b;
     const yb = s.yearBudget;
     for (const k of Object.keys(b) as (keyof Budget)[]) yb[k] += b[k];
@@ -1253,7 +1256,7 @@ export class Sim {
 
   takeLoan(amount: number): boolean {
     const city = this.world.city;
-    if (city.loan + amount > LOAN_LIMIT) return false;
+    if (city.sandbox || city.loan + amount > LOAN_LIMIT) return false;
     city.loan += amount;
     city.funds += amount;
     return true;
@@ -1368,17 +1371,17 @@ export class Sim {
       if (b.kind === 'police') police++;
     }
     // A town this size needs its first stations. Random disasters follow at DISASTER_POP, fire the commonest: say what a
-    // station costs and what it is for.
-    const price = (k: Kind) => `$${num(BUILDINGS[k].cost)}, $${BUILDINGS[k].upkeep} a month`;
+    // station costs (but in a sandbox, where nothing does) and what it is for.
+    const price = (k: Kind) => (city.sandbox ? '' : ` ($${num(BUILDINGS[k].cost)}, $${BUILDINGS[k].upkeep} a month)`);
     if (s.residents > STATION_POP && fireStations === 0) {
       this.say('needfire', !city.disasters
-        ? `The city has no fire station. Should a fire start, a station (${price('fire')}) puts it out nearby.`
+        ? `The city has no fire station. Should a fire start, a station${price('fire')} puts it out nearby.`
         : s.residents >= DISASTER_POP
-          ? `The city has no fire station. Fires break out from time to time now; a station (${price('fire')}) puts them out nearby.`
-          : `The city has no fire station. Fires break out from time to time once it has ${num(DISASTER_POP)} residents; a station (${price('fire')}) puts them out nearby.`, 'info', undefined, 18);
+          ? `The city has no fire station. Fires break out from time to time now; a station${price('fire')} puts them out nearby.`
+          : `The city has no fire station. Fires break out from time to time once it has ${num(DISASTER_POP)} residents; a station${price('fire')} puts them out nearby.`, 'info', undefined, 18);
     }
     if (s.residents > STATION_POP && police === 0) {
-      this.say('needpolice', `The city has no police station. Crime grows as the town gets crowded; a station (${price('police')}) keeps it down nearby.`, 'info', undefined, 18);
+      this.say('needpolice', `The city has no police station. Crime grows as the town gets crowded; a station${price('police')} keeps it down nearby.`, 'info', undefined, 18);
     }
 
     const idx = CITY_CLASSES.findIndex((c) => c.name === s.cityClass);
@@ -1407,7 +1410,7 @@ export class Sim {
   private loanFor(k: Kind): string {
     const city = this.world.city;
     const cost = BUILDINGS[k].cost;
-    if (city.funds >= cost || city.loan + 10000 > 30000 || city.funds + 10000 < cost) return '';
+    if (city.sandbox || city.funds >= cost || city.loan + 10000 > 30000 || city.funds + 10000 < cost) return '';
     const has = Math.round(city.funds) < 0 ? `is $${num(-city.funds)} in debt` : `has $${num(city.funds)}`;
     return ` The city ${has}: a loan from the Budget would pay for one.`;
   }

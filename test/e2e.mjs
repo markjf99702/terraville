@@ -885,7 +885,7 @@ try {
     await page.waitForTimeout(100);
     assert.notEqual(await page.evaluate(() => document.activeElement?.id), 'fName', 'no keyboard comes up over the dialog');
     assert.deepEqual(await page.$$eval('#fDiff small', (s) => s.map((x) => x.textContent)), [
-      'Taxes bring in more · fewer disasters', 'The standard game', 'Taxes bring in less · more disasters',
+      'Taxes bring in more · fewer disasters', 'The standard game', 'Taxes bring in less · more disasters', 'Nothing costs money · no loans or score',
     ]);
     assert.match(await page.textContent('.switch small'), /once the city has 5,000 residents\. You can also set them off yourself\.$/);
     assert.deepEqual(problems, []);
@@ -932,14 +932,14 @@ try {
     assert.equal(await page.getByRole('textbox', { name: 'City name', exact: true }).count(), 1, 'the dice button is not part of the name');
     assert.equal(await page.getByRole('radiogroup', { name: 'Difficulty' }).count(), 1);
     const checked = () => page.$$eval('#fDiff [role="radio"]', (r) => r.map((x) => [x.getAttribute('aria-checked'), x.tabIndex]));
-    assert.deepEqual(await checked(), [['true', 0], ['false', -1], ['false', -1]]);
+    assert.deepEqual(await checked(), [['true', 0], ['false', -1], ['false', -1], ['false', -1]]);
     // Arrow keys move the choice, as in any group of radio buttons.
     await page.focus('#fDiff [aria-checked="true"]');
     await page.keyboard.press('ArrowRight');
-    assert.deepEqual(await checked(), [['false', -1], ['true', 0], ['false', -1]]);
+    assert.deepEqual(await checked(), [['false', -1], ['true', 0], ['false', -1], ['false', -1]]);
     assert.equal(await page.evaluate(() => document.activeElement.dataset.d), 'medium');
     await page.click('#fDiff [data-d="hard"]');
-    assert.deepEqual(await checked(), [['false', -1], ['false', -1], ['true', 0]]);
+    assert.deepEqual(await checked(), [['false', -1], ['false', -1], ['true', 0], ['false', -1]]);
     await page.click('.modal footer .btn.primary');
     await page.waitForFunction(() => window.__terraville.mode === 'city');
     assert.equal(await page.evaluate(() => window.__terraville.world.city.difficulty), 'hard');
@@ -949,6 +949,71 @@ try {
     await page.waitForFunction(() => window.__terraville.mode === 'editor');
     assert.equal(await page.getByRole('group', { name: 'Landscape' }).count(), 1);
     assert.equal(await page.getByRole('group', { name: 'Map size' }).count(), 1);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  await test('a sandbox city: disasters start off, funds read Unlimited, nothing has a price, and the Budget, report and History leave out loans, score and funds', async () => {
+    const ctx = await profile(DESK);
+    const { page, problems } = await open(ctx);
+    await page.click('[data-act="quick"]');
+    const dis = () => page.isChecked('#fDis');
+    await page.click('#fDiff [data-d="sandbox"]');
+    assert.equal(await dis(), false, 'random disasters start switched off');
+    await page.click('#fDiff [data-d="medium"]');
+    assert.equal(await dis(), true, 'and on again for a game with money');
+    await page.click('#fDiff [data-d="sandbox"]');
+    await page.click('.modal footer .btn.primary');
+    await page.waitForFunction(() => window.__terraville.mode === 'city');
+    assert.deepEqual(await page.evaluate(() => { const c = window.__terraville.world.city; return [c.sandbox, c.difficulty, c.funds, c.disasters]; }), [true, 'medium', 0, false]);
+    assert.equal(await page.textContent('#stFunds'), 'Unlimited');
+    assert.equal(await page.textContent('#stDelta'), '');
+    // A road dragged with the mouse over flat ground: its tip, before and after, names no price.
+    const at = await page.evaluate(() => {
+      const g = window.__terraville;
+      const w = g.world;
+      const c = g.renderer.freeCentre();
+      const x0 = Math.floor(c.x) - 6, y0 = Math.floor(c.y);
+      for (let y = y0 - 3; y <= y0 + 3; y++) for (let x = x0 - 2; x <= x0 + 14; x++) { const i = y * w.w + x; w.height[i] = 6; w.water[i] = 0; w.trees[i] = 0; }
+      w.dirty(x0 - 3, y0 - 4, x0 + 15, y0 + 4, true);
+      const a = g.renderer.tileToScreen(x0 + 0.5, y0 + 0.5);
+      const b = g.renderer.tileToScreen(x0 + 10.5, y0 + 0.5);
+      return { a, b };
+    });
+    await page.keyboard.press('r');
+    await page.mouse.move(at.a.x, at.a.y);
+    await page.mouse.down();
+    await page.mouse.move(at.b.x, at.b.y, { steps: 4 });
+    assert.equal(await page.textContent('#cursorTip'), 'Road · 11 tiles');
+    await page.mouse.up();
+    assert.equal(await page.textContent('#cursorTip'), 'Road built · 11 tiles');
+    assert.equal(await page.evaluate(() => window.__terraville.world.city.funds), 0);
+    // A tool's tip keeps the upkeep, which the ledger still counts, and leaves out the price.
+    await page.hover('[data-tool="bulldoze"]');
+    assert.doesNotMatch(await page.textContent('#tooltip'), /\$/);
+    await page.hover('[data-tool="police"]');
+    assert.match(await page.textContent('#tooltip .cost'), /^\$45\/mo upkeep$/);
+    await page.mouse.move(at.a.x, at.a.y + 200);
+    await page.keyboard.press('Escape');
+    await page.click('#topbar [data-act="budget"]');
+    assert.equal(await page.locator('#bLoan').count(), 0, 'no loans');
+    assert.match(await page.textContent('.modal .body'), /A sandbox charges nothing and collects nothing/);
+    assert.doesNotMatch(await page.textContent('#bLedger'), /Loan interest/);
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => window.__terraville.ui.openReport());
+    assert.doesNotMatch(await page.textContent('.modal .kv'), /Score/);
+    await page.keyboard.press('Escape');
+    await page.click('#topbar [data-act="charts"]');
+    assert.equal(await page.locator('#ch2').count(), 0, 'no funds chart');
+    assert.equal(await page.locator('.chart').count(), 5);
+    await page.keyboard.press('Escape');
+    // A sandbox stays a sandbox across a reload.
+    await page.reload();
+    await titleUp(page);
+    await page.click('[data-act="continue"]');
+    await page.waitForFunction(() => window.__terraville.mode === 'city');
+    assert.equal(await page.evaluate(() => window.__terraville.world.city.sandbox), true);
+    assert.equal(await page.textContent('#stFunds'), 'Unlimited');
     assert.deepEqual(problems, []);
     await ctx.close();
   });

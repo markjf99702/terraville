@@ -833,12 +833,13 @@ export class UI {
     set('signPop', `Pop ${num(s.residents)}`);
     set('signClass', cityClass(s.residents));
     set('stDate', dateLabel(city.month));
-    set('stFunds', money(city.funds));
+    // A sandbox's money never moves: no figure, and no month's change beside it.
+    set('stFunds', city.sandbox ? 'Unlimited' : money(city.funds));
     const b = s.lastBudget;
     const net = b.taxIncome - spending(b);
     const d = this.root.querySelector('#stDelta');
     if (d) {
-      d.textContent = city.month > 0 ? `${net >= 0 ? '+' : '−'}${money(Math.abs(net)).replace('−', '')}/mo` : '';
+      d.textContent = city.month > 0 && !city.sandbox ? `${net >= 0 ? '+' : '−'}${money(Math.abs(net)).replace('−', '')}/mo` : '';
       d.className = 'delta ' + (net > 0.5 ? 'up' : net < -0.5 ? 'down' : '');
     }
     this.root.querySelector('#stFundsBox')?.classList.toggle('funds-low', city.funds < 0);
@@ -1028,11 +1029,16 @@ export class UI {
     b.setAttribute('aria-describedby', 'tooltip');
     this.tipOwner = b;
     const tip = $(this.root, '#tooltip');
-    const cost = t.cost ? `<span class="cost">${t.kind === 'line' || t.id === 'bulldoze' || t.id === 'trees' || t.id === 'park' ? `$${t.cost} a tile` : money(t.cost)}${t.building && BUILDINGS[t.building].upkeep ? ` · ${money(BUILDINGS[t.building].upkeep)}/mo upkeep` : ''}</span>` : '';
+    // In a sandbox only the upkeep, which the Budget's ledger still counts.
+    const upkeep = t.building && BUILDINGS[t.building].upkeep ? `${money(BUILDINGS[t.building].upkeep)}/mo upkeep` : '';
+    const price = this.game.sandbox ? '' : t.cost ? (t.kind === 'line' || t.id === 'bulldoze' || t.id === 'trees' || t.id === 'park' ? `$${t.cost} a tile` : money(t.cost)) : '';
+    const cost = price || upkeep ? `<span class="cost">${[price, upkeep].filter(Boolean).join(' · ')}</span>` : '';
     const touch = touchScreen();
-    const zoneTip = t.building && isZone(t.building) ? `<p>${esc(BUILDINGS[t.building].blurb)} Drag to zone several 3×3 lots.</p>` : `<p>${esc((touch && t.touchTip) || t.tip)}</p>`;
+    // A sandbox leaves out a tip's price too: '$1 a tile.'
+    const said = (touch && t.touchTip) || t.tip;
+    const zoneTip = t.building && isZone(t.building) ? `<p>${esc(BUILDINGS[t.building].blurb)} Drag to zone several 3×3 lots.</p>` : `<p>${esc(this.game.sandbox ? said.replace(/ ?\$[\d,]+ [^.]*\./g, '') : said)}</p>`;
     const keys = t.kind === 'brush' && !touch ? '<p><kbd>[</kbd> and <kbd>]</kbd> change the brush size.</p>'
-      : t.kind === 'place' && touch ? '<p>Tap the map to see where it goes and what it costs, then tap it again to build.</p>' : '';
+      : t.kind === 'place' && touch ? `<p>Tap the map to see where it goes${this.game.sandbox ? '' : ' and what it costs'}, then tap it again to build.</p>` : '';
     tip.innerHTML = `<b>${esc(t.name)}${t.key && !touch ? ` <kbd>${t.key.toUpperCase()}</kbd>` : ''}</b>${cost}${zoneTip}${keys}`;
     tip.hidden = false;
     const r = b.getBoundingClientRect();
@@ -1614,8 +1620,10 @@ export class UI {
     // A touch screen has no right-click: what the card describes can be cleared from here, as right-click clears it.
     const clear = touchScreen() ? this.game.clearPlan(x, y) : null;
     const clearCost = b ? BULLDOZE_COST * b.size * b.size : BULLDOZE_COST;
+    // A sandbox charges for nothing, so names no price.
+    const free = this.game.sandbox;
     const bulldoze = clear && (clear.count || clear.reason === 'On fire')
-      ? `<div class="clear"><button class="btn small" id="inBulldoze">Bulldoze for ${money(clearCost)}</button></div>` : '';
+      ? `<div class="clear"><button class="btn small" id="inBulldoze">${free ? 'Bulldoze' : `Bulldoze for ${money(clearCost)}`}</button></div>` : '';
     // A station's reach, or a plant's grid, is a layer away.
     const layer: Overlay | undefined = !b ? undefined
       : b.kind === 'police' ? 'police' : b.kind === 'fire' ? 'fire' : b.kind === 'school' || b.kind === 'hospital' ? 'service'
@@ -1641,7 +1649,7 @@ export class UI {
     const sure = refresh ? { up: card.querySelector<HTMLElement>('#inUpgrade')?.dataset.sure, clear: card.querySelector<HTMLElement>('#inBulldoze')?.dataset.sure } : {};
     card.innerHTML = `<button class="iconbtn close" aria-label="Close">${ICONS.close}</button><h3 id="inspectTitle">${esc(d.title)}</h3>${d.does ? `<p class="does">${esc(d.does)}.</p>` : ''}<dl>${d.rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd${value(v)}>${esc(v)}</dd>`).join('')}</dl>${who}${showLayer}${d.note ? `<p class="note why">${esc(d.note)}</p>` : ''}${up ? `
       <div class="upgrade"><p class="note">Upgrade to ${article(up.name)} <b>${esc(up.name.toLowerCase())}</b>: land value rises by <span class="num">${money(UPGRADE_LV * 40)}</span>/acre across the whole city, and upkeep by <span class="num">${money(up.upkeep)}</span>/mo.</p>
-      <button class="btn small primary" id="inUpgrade">Upgrade for ${money(up.cost)}</button></div>` : burning ? `
+      <button class="btn small primary" id="inUpgrade">${free ? 'Upgrade' : `Upgrade for ${money(up.cost)}`}</button></div>` : burning ? `
       <div class="upgrade"><p class="note">It can be upgraded once the fire is out.</p></div>` : outdone ? `
       <div class="upgrade"><p class="note">Only the city's most upgraded ${esc(BUILDINGS[b.kind].name.toLowerCase())} raises land value, so this one has no upgrade.</p></div>` : ''}${bulldoze}`;
     $(card, '.close').onclick = () => this.hideInspect(true);
@@ -1673,8 +1681,8 @@ export class UI {
       ub.onclick = () => {
         // Undo or a disaster may have changed the landmark since the card was drawn: show it as it is now instead.
         if (this.game.upgradeFor(b) !== up) return this.inspect(x, y, true);
-        // A big purchase: the second tap pays.
-        if (!ub.dataset.sure) return arm();
+        // A big purchase: the second tap pays. In a sandbox there is nothing to pay, and undo takes it back.
+        if (!ub.dataset.sure && !free) return arm();
         if (!this.game.upgrade(b)) return;
         this.inspect(x, y, true);
       };
@@ -1953,7 +1961,7 @@ export class UI {
     const lead = p.broke
       ? `<p class="does">${esc(this.game.world.city.name)} has been in debt for ${p.broke.months} months, and owes <span class="num">${money(p.broke.owed)}</span>. Nothing new can be built until it is out.</p>`
       : '';
-    const body = `${lead}${p.also ? `<p class="news-p also">${esc(p.also)}</p>` : ''}${facts}<p class="news-p closing">${esc(p.closing)}</p>${p.broke ? this.brokeBody(p.broke) : ''}`;
+    const body = `${lead}${p.also ? `<p class="news-p also">${esc(p.also)}</p>` : ''}${facts}${p.closing ? `<p class="news-p closing">${esc(p.closing)}</p>` : ''}${p.broke ? this.brokeBody(p.broke) : ''}`;
     this.showNews(esc(p.headline), body, p.broke ? this.brokeButtons() : [], p.broke ? 'paper broke' : 'paper', this.masthead(String(p.year)));
   }
 
@@ -2352,7 +2360,7 @@ export class UI {
   // Founding ------------------------------------------------------------------------------
 
   openFound(fromQuick: boolean): void {
-    let diff: Difficulty['id'] = 'easy';
+    let diff: Difficulty['id'] | 'sandbox' = 'easy';
     const style = STYLE_NAMES[this.game.terrain.style];
     const body = el(`<div style="display:flex;flex-direction:column;gap:16px">
       ${fromQuick ? `<figure class="found-land"><canvas id="fLand" role="img" aria-label="Map of the land: ${esc(style.toLowerCase())}"></canvas>
@@ -2361,7 +2369,7 @@ export class UI {
         <div class="seedrow"><input class="textin" id="fName" maxlength="28" value="${esc(randomCityName())}" spellcheck="false">
         <button class="iconbtn" id="fDice" aria-label="Another name" title="Another name">${ICONS.dice}</button></div></div>
       <div class="field"><span id="fDiffCap">Difficulty</span>
-        <div class="choice" id="fDiff" role="radiogroup" aria-labelledby="fDiffCap">${DIFFICULTIES.map((d) => `<button role="radio" data-d="${d.id}" aria-checked="${d.id === diff}" tabindex="${d.id === diff ? 0 : -1}"><b>${d.name}</b><span>${money(d.funds)} to start</span><small>${difficultyNote(d)}</small></button>`).join('')}</div>
+        <div class="choice" id="fDiff" role="radiogroup" aria-labelledby="fDiffCap">${DIFFICULTIES.map((d) => `<button role="radio" data-d="${d.id}" aria-checked="${d.id === diff}" tabindex="${d.id === diff ? 0 : -1}"><b>${d.name}</b><span>${money(d.funds)} to start</span><small>${difficultyNote(d)}</small></button>`).join('')}<button role="radio" data-d="sandbox" aria-checked="false" tabindex="-1"><b>Sandbox</b><span>Unlimited funds</span><small>Nothing costs money${SEP}no loans or score</small></button></div>
       </div>
       <label class="switch"><span>Random disasters<small>Fires, floods, tornadoes and worse, once the city has ${num(DISASTER_POP)} residents. You can also set them off yourself.</small></span><input type="checkbox" id="fDis" checked></label>
     </div>`);
@@ -2376,13 +2384,18 @@ export class UI {
       ctx.drawImage(pic, 0, 0, land.width, land.height);
     }
     $(body, '#fDice').onclick = () => ($<HTMLInputElement>(body, '#fName').value = randomCityName());
+    // Random disasters start off in a sandbox, and on again for a game with money, unless the switch was set by hand.
+    const dis = $<HTMLInputElement>(body, '#fDis');
+    let disSet = false;
+    dis.onchange = () => (disSet = true);
     // A group of radio buttons: one stop for Tab, the arrow keys move the choice.
     const choose = (b: HTMLElement) => {
-      diff = b.dataset.d as Difficulty['id'];
+      diff = b.dataset.d as Difficulty['id'] | 'sandbox';
       for (const x of body.querySelectorAll<HTMLElement>('[data-d]')) {
         x.setAttribute('aria-checked', String(x === b));
         x.tabIndex = x === b ? 0 : -1;
       }
+      if (!disSet) dis.checked = diff !== 'sandbox';
     };
     $(body, '#fDiff').onclick = (e) => {
       const b = (e.target as HTMLElement).closest<HTMLElement>('[data-d]');
@@ -2400,9 +2413,9 @@ export class UI {
     };
     const found = this.btn('Found the city', 'primary', () => {
       const name = $<HTMLInputElement>(body, '#fName').value;
-      const dis = $<HTMLInputElement>(body, '#fDis').checked;
       this.closeModal();
-      this.game.foundCity(name, diff, dis);
+      if (diff === 'sandbox') this.game.foundCity(name, 'medium', dis.checked, true);
+      else this.game.foundCity(name, diff, dis.checked);
     });
     const other = fromQuick
       ? this.btn('Shape the land first', '', () => {
@@ -2666,11 +2679,11 @@ export class UI {
           <p class="note" id="bFundNote" style="margin-top:6px"></p>
         </div>
       </div>
-      <div><h3>Last month</h3><table class="ledger" id="bLedger"></table></div>
-      <div class="cols" style="align-items:end">
+      <div><h3>Last month</h3>${city.sandbox ? '<p class="note" style="margin-bottom:8px">A sandbox charges nothing and collects nothing: this is what the city would bring in and cost.</p>' : ''}<table class="ledger" id="bLedger"></table></div>
+      ${city.sandbox ? '' : `<div class="cols" style="align-items:end">
         <div><h3>Loans</h3><p class="note" id="bLoan"></p></div>
         <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap" id="bLoanBtns"></div>
-      </div>
+      </div>`}
     </div>`);
     const render = () => {
       $(body, '#bTaxV').textContent = `${city.tax}%`;
@@ -2688,7 +2701,7 @@ export class UI {
         ['Schools, hospitals, parks', -b.services, -y.services],
         ['Stadium, seaport, airport', -b.landmarks, -y.landmarks],
         ['Power plants', -b.power, -y.power],
-        ['Loan interest', -b.interest, -y.interest],
+        ...(city.sandbox ? [] : [['Loan interest', -b.interest, -y.interest] as [string, number, number]]),
       ];
       const tot = rows.reduce((a, r) => a + r[1], 0);
       const totY = rows.reduce((a, r) => a + r[2], 0);
@@ -2696,6 +2709,7 @@ export class UI {
       $(body, '#bLedger').innerHTML = `<tr><th></th><th class="num">Month</th><th class="num">Year so far</th></tr>` +
         rows.map(([k, v, vy]) => `<tr><td>${k}</td>${cell(v)}${cell(vy)}</tr>`).join('') +
         `<tr class="total"><td>Net</td>${cell(tot)}${cell(totY)}</tr>`;
+      if (city.sandbox) return;
       $(body, '#bLoan').innerHTML = city.loan > 0
         ? `The city owes <span class="num">${money(city.loan)}</span> at 7% a year, about <span class="num">${money(city.loan * 0.07 / 12)}</span> in interest each month.`
         : 'No debt. You can borrow up to $30,000 at 7% a year.';
@@ -2773,7 +2787,7 @@ export class UI {
       <div class="seg" id="cRange" style="max-width:320px">${[[120, '10 years'], [600, '50 years'], [1200, '100 years']].map(([n, l]) => `<button data-n="${n}" aria-pressed="${n === this.chartRange}">${l}</button>`).join('')}</div>
       <div class="chartgrid">
         <div class="chart" id="ch1"><h4>Residents and jobs</h4><div class="legendrow"><span><i style="background:${ZONE_COLORS.res}"></i>Residents</span><span><i style="background:${ZONE_COLORS.com}"></i>Commercial jobs</span><span><i style="background:${ZONE_COLORS.ind}"></i>Industrial jobs</span></div><canvas></canvas><div class="charttip" hidden></div></div>
-        <div class="chart" id="ch2"><h4>City funds</h4><div class="legendrow"><span>End of each month</span></div><canvas></canvas><div class="charttip" hidden></div></div>
+        ${g.world.city.sandbox ? '' : '<div class="chart" id="ch2"><h4>City funds</h4><div class="legendrow"><span>End of each month</span></div><canvas></canvas><div class="charttip" hidden></div></div>'}
         <div class="chart" id="ch3"><h4>Monthly income and spending</h4><div class="legendrow"><span><i style="background:#3987e5"></i>Tax income</span><span><i style="background:#d95926"></i>Spending</span></div><canvas></canvas><div class="charttip" hidden></div></div>
         <div class="chart" id="ch4"><h4>Crime, pollution and traffic</h4><div class="legendrow"><span><i style="background:#d55181"></i>Crime</span><span><i style="background:#c98500"></i>Pollution</span><span><i style="background:#9085e9"></i>Traffic</span><span>index, 0 to 100, as the challenges use</span></div><canvas></canvas><div class="charttip" hidden></div></div>
         <div class="chart" id="ch5"><h4>Mayor's approval</h4><div class="legendrow"><span>Percent; the faint line is 60%</span></div><canvas></canvas><div class="charttip" hidden></div></div>
@@ -2792,7 +2806,8 @@ export class UI {
         { name: 'Commercial jobs', color: ZONE_COLORS.com, values: cut(h.com) },
         { name: 'Industrial jobs', color: ZONE_COLORS.ind, values: cut(h.ind) },
       ], { startMonth: start, format: people, zero: true, whole: true });
-      lineChart($(body, '#ch2'), [{ name: 'Funds', color: '#3987e5', values: cut(h.funds) }], { startMonth: start, format: money, money: true, whole: true });
+      const funds = body.querySelector<HTMLElement>('#ch2');
+      if (funds) lineChart(funds, [{ name: 'Funds', color: '#3987e5', values: cut(h.funds) }], { startMonth: start, format: money, money: true, whole: true });
       lineChart($(body, '#ch3'), [
         { name: 'Tax income', color: '#3987e5', values: cut(h.income) },
         { name: 'Spending', color: '#d95926', values: cut(h.expense) },
@@ -2861,7 +2876,7 @@ export class UI {
             <dt>Residents</dt><dd>${num(s.residents)}</dd>
             <dt>Class</dt><dd>${cityClass(s.residents)}</dd>
             <dt>Last month</dt><dd>${s.migration >= 0 ? '+' : ''}${num(s.migration)}</dd>
-            <dt>Score</dt><dd>${s.score} / 1000${yearAgo === undefined ? '' : `<span class="kv-words">, ${yearAgo === s.score ? 'the same as' : `${s.score > yearAgo ? '+' : '−'}${Math.abs(s.score - yearAgo)} on`} a year ago</span>`}</dd>
+            ${g.world.city.sandbox ? '' : `<dt>Score</dt><dd>${s.score} / 1000${yearAgo === undefined ? '' : `<span class="kv-words">, ${yearAgo === s.score ? 'the same as' : `${s.score > yearAgo ? '+' : '−'}${Math.abs(s.score - yearAgo)} on`} a year ago</span>`}</dd>`}
           </dl>
         </div>
       </div>
