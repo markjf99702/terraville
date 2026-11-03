@@ -1,7 +1,8 @@
 // Mouse, touch and keyboard. Left drag uses the current tool; right or
 // middle drag, space-drag, or a one-finger drag with the inspect tool pans;
-// two fingers pinch to zoom.
-import { hasKeyboardFocus, watchFocus } from './focus';
+// two fingers pinch to zoom. The map reached with Tab has a cursor the arrow
+// keys move, and Enter uses the tool at it.
+import { focusFromKeyboard, hasKeyboardFocus, watchFocus } from './focus';
 import type { Game } from './game';
 
 /** A touch brush waits this long, or for the finger to move this far, before it changes the land. */
@@ -49,6 +50,11 @@ export class Input {
     canvas.addEventListener('wheel', (e) => this.wheel(e), { passive: false });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     window.addEventListener('keydown', (e) => this.keydown(e));
+    // Focus put on the map by the keyboard brings out its cursor; a click's focus leaves the arrows moving the map.
+    canvas.addEventListener('focus', () => {
+      if (focusFromKeyboard(canvas)) game.cursorOn();
+    });
+    canvas.addEventListener('blur', () => game.cursorOff());
     watchFocus();
     window.addEventListener('keyup', (e) => {
       this.keys.delete(e.key);
@@ -277,6 +283,22 @@ export class Input {
       return;
     }
     if (mod) return;
+    // The map has keyboard focus, and its cursor: the arrows move it, Enter uses the tool, Escape calls off a drag.
+    if (g.kbCursor && document.activeElement === this.canvas && !g.ui.modalOpen) {
+      if (k.startsWith('Arrow')) {
+        e.preventDefault();
+        const n = e.shiftKey ? 5 : 1;
+        g.moveCursor(k === 'ArrowLeft' ? -n : k === 'ArrowRight' ? n : 0, k === 'ArrowUp' ? -n : k === 'ArrowDown' ? n : 0);
+        return;
+      }
+      if (k === 'Enter') {
+        e.preventDefault();
+        // Held down, it would start and end a drag over and over.
+        if (!e.repeat) g.cursorEnter();
+        return;
+      }
+      if (k === 'Escape' && g.dragging) return g.cursorCancel();
+    }
     if (k === 'Escape') {
       if (g.ui.closeTop()) return;
       g.cancelTool();

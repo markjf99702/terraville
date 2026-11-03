@@ -201,7 +201,8 @@ export function money(n: number): string {
 /** Build the static shell and return the two canvases the game needs. */
 export function buildShell(root: HTMLElement): { map: HTMLCanvasElement; minimap: HTMLCanvasElement } {
   root.innerHTML = `
-    <canvas id="map" aria-label="City map"></canvas>
+    <canvas id="map" tabindex="-1" role="application" aria-roledescription="map" aria-label="City map" aria-describedby="mapKeys"></canvas>
+    <p id="mapKeys" class="sr-only">The arrow keys move a cursor a tile, or five with Shift. Enter uses the tool there, and a second Enter ends a drag. Escape cancels.</p>
     <header id="topbar"></header>
     <nav id="toolbox" class="panel" aria-label="Tools"></nav>
     <aside id="editorPanel" class="panel" hidden></aside>
@@ -274,6 +275,8 @@ export class UI {
   private toastHover = false;
   /** Puts away a tool's tooltip shown by a touch. */
   private tipTimer = 0;
+  /** Says what the keyboard's cursor is on once it rests (see speak). */
+  private speakTimer = 0;
   /** The tool button whose tooltip is up. */
   private tipOwner: HTMLElement | null = null;
   private inspectAt: { x: number; y: number } | null = null;
@@ -384,8 +387,17 @@ export class UI {
 
   // ---- mode switches ----------------------------------------------------------
 
+  /** The map takes keyboard focus in the editor and a city, under the name of what it shows; not under the title screen. */
+  private mapFocus(label: string | null): void {
+    const map = $(this.root, '#map');
+    map.tabIndex = label ? 0 : -1;
+    if (label) map.setAttribute('aria-label', label);
+    else if (document.activeElement === map) map.blur();
+  }
+
   enterTitle(): void {
     this.root.dataset.mode = 'title';
+    this.mapFocus(null);
     this.closeModal();
     this.closeDropdown();
     this.hideToast(); // a notice about the last screen has nothing to say about this one
@@ -417,7 +429,7 @@ export class UI {
           <button class="btn" data-act="open"><span>Open a saved city</span><small>Saves and city codes</small></button>
           <div id="titleDrive" class="title-drive"></div>
         </div>
-        <div class="title-foot">A city builder in the spirit of the 1989 classic and its terrain editor. Best with a mouse; touch works too.</div>
+        <div class="title-foot">A city builder in the spirit of the 1989 classic and its terrain editor. Best with a mouse; touch and the keyboard work too.</div>
         ${JD_FOOT}
       </div>`;
     t.onclick = async (e) => {
@@ -622,6 +634,7 @@ export class UI {
 
   enterEditor(): void {
     this.root.dataset.mode = 'editor';
+    this.mapFocus('Map of the land');
     this.hideToast();
     this.showChrome();
     $(this.root, '#ticker').hidden = true;
@@ -638,6 +651,7 @@ export class UI {
 
   enterCity(): void {
     this.root.dataset.mode = 'city';
+    this.mapFocus('City map');
     this.lastMessage = null;
     this.newsWaiting = null;
     this.hideToast();
@@ -1542,6 +1556,38 @@ export class UI {
       const r = $(this.root, m.kind === 'alert' ? '#announceAlert' : '#announce');
       r.textContent = m.text;
     }, 0);
+  }
+
+  /**
+   * Say something to a screen reader, for the keyboard's cursor: after `wait` ms with nothing newer to say, so a held
+   * arrow key reads out only where the cursor comes to rest. The same words twice are said twice.
+   */
+  speak(text: string, wait = 250): void {
+    window.clearTimeout(this.speakTimer);
+    if (!text) return;
+    this.speakTimer = window.setTimeout(() => {
+      const r = $(this.root, '#announce');
+      r.textContent = r.textContent === text ? `${text}\u00a0` : text;
+    }, wait);
+  }
+
+  /** The cursor tip as words to be read out, its drawn middle dots as commas; empty when no tip shows. */
+  tipWords(): string {
+    const tip = $(this.root, '#cursorTip');
+    return tip.hidden ? '' : (tip.textContent ?? '').replace(/\s*·\s*/g, ', ').trim();
+  }
+
+  /** Read the Inspect card out, for Inspect from the keyboard: its heading, what it does, each row and its notes. */
+  readInspect(): void {
+    const card = $(this.root, '#inspect');
+    if (card.hidden) return;
+    const parts: string[] = [];
+    for (const e of card.querySelectorAll<HTMLElement>('h3, p, dt')) {
+      if (e.closest('[hidden]')) continue;
+      const text = (e.tagName === 'DT' ? `${e.textContent}: ${e.nextElementSibling?.textContent ?? ''}` : e.textContent ?? '').trim();
+      if (text) parts.push(text.replace(/[.:]$/, ''));
+    }
+    this.speak(`${parts.join('. ')}.`, 0);
   }
 
   private renderTicker(): void {
@@ -3321,6 +3367,8 @@ export class UI {
     if (city) rows.push([keys('Right-click'), 'Bulldoze what is under the cursor'], [keys('Shift drag'), 'Bulldoze an area, any tool']);
     rows.push(
       [keys('Arrows'), 'Move the map'],
+      [keys('Tab'), 'To the map: the arrows then move a cursor, Shift five tiles'],
+      [keys('Enter'), 'On the map: use the tool at the cursor; again to end a drag'],
       [keys('+', '−'), 'Zoom'],
       [keys('0'), 'Whole map'],
       [keys('[', ']'), city ? 'Level land brush size' : 'Brush size'],

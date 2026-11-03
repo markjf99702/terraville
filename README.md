@@ -56,6 +56,7 @@ The Challenges list marks each one you have won in this browser, with the year y
 - Every city keeps its own save, updated every 90 seconds, at each year's end and whenever you leave the page. Snapshots and city codes (the whole map compressed into text you can paste on another device) are there too, and Save a picture makes a JPEG of the city (its built-up area or the whole map) with its sign in the corner, to share from a phone or download.
 - Optional Google Drive sync, so you can carry on with a city on another device. See below.
 - Touch support: pinch to zoom, two fingers to move. A plant, a service or a landmark takes two taps: the first shows where it goes and what it costs, and a second tap on it (or its Build button) builds it. With no right-click, the Inspect card has a Bulldoze button, confirmed with a second tap.
+- Keyboard play: Tab to the map for a cursor the arrow keys move (Shift for five tiles). Enter uses the tool there, starting and ending a drag, and with Inspect opens the tile's card and reads it to a screen reader. Escape calls a drag off.
 - A starter checklist for the first few minutes.
 
 ## Google Drive sync
@@ -78,6 +79,8 @@ In a city:
 | Right-click | Bulldoze what is under the cursor, whatever the tool |
 | `Shift` + drag | Clear an area, whatever the tool |
 | Right drag, middle drag, Space + drag, arrow keys | Move the map |
+| `Tab` to the map, then arrow keys | Move a cursor on it a tile, or five with `Shift` |
+| `Enter`, on the map | Use the tool at the cursor: a second `Enter` ends a drag, and `Esc` calls it off. With Inspect, opens the card and reads it to a screen reader |
 | Wheel, pinch, `+` `-` | Zoom |
 | `0`, or the button on the overview map | The whole map, clear of the panels |
 | `1` `2` `3` | Residential, commercial, industrial |
@@ -91,7 +94,7 @@ In a city:
 | `Ctrl+Z`, `Ctrl+Shift+Z` or `Ctrl+Y` | Undo, redo |
 | `Esc` | Cancel, close |
 
-In the terrain editor the map moves and zooms the same way, and the letters pick its own tools:
+In the terrain editor the map moves, zooms and takes the keyboard's cursor the same way, and the letters pick its own tools:
 
 | Input | Action |
 |---|---|

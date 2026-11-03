@@ -107,6 +107,13 @@ function fmtMoney(n: number): string {
   return '$' + num(n);
 }
 
+/** A tip's HTML as words to be read out: its drawn middle dots become commas. */
+function plainText(html: string): string {
+  const d = document.createElement('div');
+  d.innerHTML = html;
+  return (d.textContent ?? '').replace(/\s*·\s*/g, ', ').trim();
+}
+
 /**
  * What a price takes in besides the build itself, as one clause after it: ', with 3 bridge tiles ($150), $40 to grade
  * the slope and $6 to clear trees'. Nothing when it takes in nothing else.
@@ -1180,6 +1187,8 @@ export class Game {
     this.clearProposal();
     this.renderer.preview = null;
     this.ui?.syncTool();
+    // A tool picked while the keyboard has the map shows at its cursor straight away, as it would under a mouse.
+    if (this.kbCursor && this.mode !== 'title') this.cursorAt();
   }
 
   cancelTool(): void {
@@ -1240,6 +1249,115 @@ export class Game {
 
   get dragging(): boolean {
     return this.anchor !== null || this.brushOn || this.pendingPlace;
+  }
+
+  // ---- the keyboard's cursor ------------------------------------------------------
+
+  /** The tile the keyboard's cursor is on while the map has keyboard focus (see Input), or null. */
+  kbCursor: { x: number; y: number } | null = null;
+  /** Where the cursor was when the map last lost focus: it comes back there while that tile is in view. */
+  private kbLast: { x: number; y: number } | null = null;
+
+  /**
+   * The map took keyboard focus: the cursor shows where it last was, if that is still in view, or in the middle of the
+   * view, with a tip saying what the keys do with the tool in hand.
+   */
+  cursorOn(): void {
+    if (this.mode === 'title') return;
+    const { w, h } = this.world;
+    let c = this.kbLast;
+    if (!c || !this.world.inBounds(c.x, c.y) || !this.renderer.tileInView(c.x, c.y)) {
+      const m = this.renderer.freeCentre();
+      c = { x: Math.max(0, Math.min(w - 1, Math.floor(m.x))), y: Math.max(0, Math.min(h - 1, Math.floor(m.y))) };
+    }
+    this.kbCursor = { ...c };
+    const at = this.cursorAt();
+    const t = this.tool();
+    const does = t.id === 'query' ? 'reads the tile' : t.id === 'pan' ? 'reads its height' : t.id === 'spring' ? 'drops a spring'
+      : t.kind === 'place' ? 'builds here' : t.kind === 'brush' ? 'starts and stops it' : 'starts and ends a drag';
+    this.ui.cursorTip(at.x, at.y, `<b>${t.name}</b>${SEP}arrow keys move${SEP}Enter ${does}`);
+  }
+
+  /** The map lost keyboard focus: the cursor goes, and so does a drag begun from it, which nothing else can end. */
+  cursorOff(): void {
+    if (!this.kbCursor) return;
+    if (this.dragging) this.cancelTool();
+    this.kbLast = this.kbCursor;
+    this.kbCursor = null;
+    const r = this.renderer;
+    r.cursor = null;
+    r.hover = null;
+    if (this.tool().kind !== 'brush' && !this.proposing) r.preview = null;
+    if (!this.showingBuilt) this.ui.cursorTip(0, 0, null);
+  }
+
+  /** Move the keyboard's cursor by (dx, dy) tiles, the map following to keep it clear of the panels, and say where it is. */
+  moveCursor(dx: number, dy: number): void {
+    const c = this.kbCursor;
+    if (!c || this.mode === 'title') return;
+    c.x = Math.max(0, Math.min(this.world.w - 1, c.x + dx));
+    c.y = Math.max(0, Math.min(this.world.h - 1, c.y + dy));
+    this.renderer.revealTile(c.x, c.y);
+    this.cursorAt();
+    this.ui.speak(this.cursorWords());
+  }
+
+  /**
+   * Enter on the map: use the tool at the cursor. A drag, or a brush, starts here and ends at the next Enter; a building
+   * goes up at once; Inspect opens the card and reads it out.
+   */
+  cursorEnter(): void {
+    const c = this.kbCursor;
+    if (!c || this.mode === 'title') return;
+    const at = this.renderer.tileToScreen(c.x + 0.5, c.y + 0.5);
+    const [fx, fy] = [c.x + 0.5, c.y + 0.5];
+    const t = this.tool();
+    if (this.dragging) {
+      this.pointerUp(fx, fy, at.x, at.y);
+      // What it built, as the tip says it; a refusal is said by its toast.
+      if (this.built?.shown) this.ui.speak(plainText(this.built.html), 0);
+      return;
+    }
+    const steps = this.undoStack.length;
+    this.pointerDown(fx, fy, at.x, at.y);
+    if (t.kind === 'place' || t.id === 'spring') {
+      this.pointerUp(fx, fy, at.x, at.y);
+      if (this.built?.shown) this.ui.speak(plainText(this.built.html), 0);
+      else if (t.id === 'spring' && this.undoStack.length > steps) this.ui.speak('Spring dropped: a river runs downhill from here.', 0);
+    } else if (t.id === 'query') this.ui.readInspect();
+    else if (t.id === 'pan') this.ui.speak(this.ui.tipWords(), 0);
+    else if (this.brushOn) this.ui.speak(`${t.name}: the arrow keys move it, and Enter stops it.`, 0);
+    else if (this.anchor) this.ui.speak(`${this.ui.tipWords()}. The arrow keys stretch it, Enter finishes it and Escape cancels it.`, 0);
+  }
+
+  /** Escape on the map in the middle of a drag: it is called off, and the cursor shows what is under it again. */
+  cursorCancel(): void {
+    if (!this.kbCursor) return;
+    this.cancelTool();
+    this.cursorAt();
+    this.ui.speak('Cancelled.', 0);
+  }
+
+  /** Point at the cursor's tile as a mouse over its middle would, and mark it. Returns the tile's middle on the screen. */
+  private cursorAt(): { x: number; y: number } {
+    const c = this.kbCursor!;
+    // Kept on the map, which may have changed size under it (an undo in the editor, say).
+    c.x = Math.max(0, Math.min(this.world.w - 1, c.x));
+    c.y = Math.max(0, Math.min(this.world.h - 1, c.y));
+    this.renderer.cursor = { ...c };
+    const at = this.renderer.tileToScreen(c.x + 0.5, c.y + 0.5);
+    this.pointerMove(c.x + 0.5, c.y + 0.5, at.x, at.y);
+    return at;
+  }
+
+  /** The cursor's tile in words, for a screen reader: what is there and where, and the tip, which in a drag says it all. */
+  private cursorWords(): string {
+    const c = this.kbCursor!;
+    const tip = this.ui.tipWords();
+    if (this.dragging && tip) return tip;
+    const i = c.y * this.world.w + c.x;
+    const what = this.mode === 'city' && this.sim ? this.sim.describe(c.x, c.y).title : this.world.water[i] ? 'Water' : 'Land';
+    return `${what}, column ${c.x + 1}, row ${c.y + 1}${tip ? `. ${tip}` : ''}`;
   }
 
   /** Pointer moved over the map (tile coords, float) at screen position sx, sy. */

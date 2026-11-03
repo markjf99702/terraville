@@ -169,6 +169,8 @@ export class Renderer {
   hover: { x: number; y: number } | null = null;
   /** What the Inspect card describes: a building's footprint, or one tile. The pointer's hover never moves it. */
   selected: { x: number; y: number; size: number } | null = null;
+  /** The keyboard's cursor, while the map has keyboard focus (see Game.kbCursor). */
+  cursor: { x: number; y: number } | null = null;
   /** The homes, and the shops and factories, whose trips pass along the selected road or track, tinted: by building id. */
   trace: { homes: Set<number>; jobs: Set<number> } | null = null;
   /** Whether the simulation clock is running (freezes traffic when paused). */
@@ -240,6 +242,7 @@ export class Renderer {
     this.world = world;
     this.sim = sim;
     this.selected = null;
+    this.cursor = null;
     this.trace = null;
     this.flight = null;
     this.held = { ...NO_INSETS };
@@ -386,6 +389,33 @@ export class Renderer {
   fitWhole(): void {
     const e = this.insets;
     this.fitRect(e.l, e.t, this.cssW - e.r, this.cssH - e.b);
+  }
+
+  /**
+   * Move the camera as little as it takes to bring tile (x, y) into the room the panels leave, a tile (16 to 48 px) in
+   * from its edges, as far as the map's edges allow. For the keyboard's cursor.
+   */
+  revealTile(x: number, y: number): void {
+    const e = this.insets;
+    const z = this.cam.zoom;
+    const m = Math.max(16, Math.min(48, z));
+    const a = this.tileToScreen(x, y);
+    const b = this.tileToScreen(x + 1, y + 1);
+    const dx = a.x < e.l + m ? a.x - e.l - m : b.x > this.cssW - e.r - m ? b.x - (this.cssW - e.r - m) : 0;
+    const dy = a.y < e.t + m ? a.y - e.t - m : b.y > this.cssH - e.b - m ? b.y - (this.cssH - e.b - m) : 0;
+    if (!dx && !dy) return;
+    this.flight = null;
+    this.cam.x += dx / z;
+    this.cam.y += dy / z;
+    this.clampCamera();
+  }
+
+  /** Whether tile (x, y) is wholly in the room the panels leave. */
+  tileInView(x: number, y: number): boolean {
+    const e = this.insets;
+    const a = this.tileToScreen(x, y);
+    const b = this.tileToScreen(x + 1, y + 1);
+    return a.x >= e.l && a.y >= e.t && b.x <= this.cssW - e.r && b.y <= this.cssH - e.b;
   }
 
   /** The tile in the middle of the room the panels leave. */
@@ -737,6 +767,7 @@ export class Renderer {
     this.drawRoamers(ctx);
     this.drawPreview(ctx);
     this.drawSelected(ctx);
+    this.drawCursor(ctx);
 
     // Map edge.
     ctx.strokeStyle = 'rgba(0,0,0,0.5)';
@@ -1249,6 +1280,22 @@ export class Renderer {
     ctx.strokeStyle = '#f2c14e';
     ctx.lineWidth = 2 * px;
     ctx.strokeRect(s.x - px, s.y - px, s.size + 2 * px, s.size + 2 * px);
+  }
+
+  /**
+   * The keyboard's cursor: white over a dark edge, 2 px wide just outside its tile, so it reads on any ground and is
+   * not taken for the Inspect card's yellow.
+   */
+  private drawCursor(ctx: CanvasRenderingContext2D): void {
+    const c = this.cursor;
+    if (!c) return;
+    const px = 1 / this.cam.zoom;
+    ctx.strokeStyle = 'rgba(14,20,18,0.85)';
+    ctx.lineWidth = 4 * px;
+    ctx.strokeRect(c.x - px, c.y - px, 1 + 2 * px, 1 + 2 * px);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2 * px;
+    ctx.strokeRect(c.x - px, c.y - px, 1 + 2 * px, 1 + 2 * px);
   }
 
   // ---- overlays -------------------------------------------------------------

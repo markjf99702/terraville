@@ -726,6 +726,98 @@ try {
     await ctx.close();
   });
 
+  await test('the map reached with Tab has a cursor: the arrows move it, Enter lays road, builds, inspects and reads the card out, Escape calls off a drag', async () => {
+    const ctx = await profile(DESK);
+    const { page, problems } = await open(ctx);
+    await found(page);
+    const g = (f) => page.evaluate(f);
+    const said = () => page.textContent('#announce');
+    await tabTo(page, '#map');
+    const start = await g(() => window.__terraville.kbCursor);
+    assert.ok(start, 'the cursor shows');
+    assert.deepEqual(await g(() => window.__terraville.renderer.cursor), start);
+    assert.equal(await page.textContent('#cursorTip'), 'Inspect · arrow keys move · Enter reads the tile');
+    // Flat open ground from the cursor along, for a road and a station.
+    await g(() => {
+      const t = window.__terraville;
+      const w = t.world;
+      const c = t.kbCursor;
+      for (let y = c.y - 4; y <= c.y + 6; y++) for (let x = c.x - 2; x <= c.x + 14; x++) { const i = y * w.w + x; w.height[i] = 6; w.water[i] = 0; w.trees[i] = 0; }
+      w.dirty(c.x - 3, c.y - 5, c.x + 15, c.y + 7, true);
+    });
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('ArrowLeft');
+    await page.waitForFunction((c) => document.querySelector('#announce').textContent === `Open land, column ${c.x + 1}, row ${c.y + 1}`, start);
+    // Shift moves five tiles.
+    await page.keyboard.press('Shift+ArrowDown');
+    assert.deepEqual(await g(() => window.__terraville.kbCursor), { x: start.x, y: start.y + 5 });
+    await page.keyboard.press('Shift+ArrowUp');
+    // A road: Enter, the arrows, Enter.
+    await page.keyboard.press('r');
+    await page.keyboard.press('Enter');
+    for (let k = 0; k < 4; k++) await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('Shift+ArrowRight');
+    assert.match(await page.textContent('#cursorTip'), /^Road · 10 tiles · \$\d+/);
+    await page.keyboard.press('Enter');
+    const road = await g(() => { const t = window.__terraville; const c = t.kbCursor; let n = 0; for (let x = c.x - 9; x <= c.x; x++) if (t.world.net[c.y * t.world.w + x] & 1) n++; return n; });
+    assert.equal(road, 10);
+    await page.waitForFunction(() => /^Road built, 10 tiles, \$\d+/.test(document.querySelector('#announce').textContent));
+    // A zone begun and called off with Escape builds nothing, and keeps the tool.
+    await page.keyboard.press('1');
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('ArrowDown');
+    const zones = await g(() => window.__terraville.world.buildings.size);
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.press('Escape');
+    assert.deepEqual(await g(() => [window.__terraville.dragging, window.__terraville.toolId, window.__terraville.world.buildings.size]), [false, 'res', zones]);
+    await page.waitForFunction(() => document.querySelector('#announce').textContent === 'Cancelled.');
+    // A building goes up at the first Enter.
+    await g(() => window.__terraville.setTool('police'));
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('Enter');
+    assert.equal(await g(() => [...window.__terraville.world.buildings.values()].filter((b) => b.kind === 'police').length), 1);
+    // Inspect on the road: the card opens, and is read out.
+    await page.keyboard.press('q');
+    for (let k = 0; k < 4; k++) await page.keyboard.press('ArrowUp');
+    await page.keyboard.press('Enter');
+    assert.equal(await page.isVisible('#inspect'), true);
+    assert.equal(await page.textContent('#inspect h3'), 'Road');
+    await page.waitForFunction(() => /^Road\. Traffic: .*Elevation: 6 m\./.test(document.querySelector('#announce').textContent));
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'map', 'focus stays on the map');
+    await page.keyboard.press('Escape');
+    assert.equal(await page.isVisible('#inspect'), false);
+    // The cursor walks to the map's left edge, and the map follows it out from under the toolbox.
+    for (let k = 0; k < 30; k++) await page.keyboard.press('Shift+ArrowLeft');
+    const edge = await g(() => {
+      const t = window.__terraville;
+      return { x: t.kbCursor.x, left: t.renderer.tileToScreen(0, 0).x, tools: document.querySelector('#toolbox').getBoundingClientRect().right };
+    });
+    assert.equal(edge.x, 0);
+    assert.ok(edge.left >= edge.tools, `the edge tile is under the toolbox: ${edge.left} < ${edge.tools}`);
+    // Off the map the arrows move the map, as before, and the cursor goes.
+    await page.focus('[data-tool="road"]');
+    assert.equal(await g(() => window.__terraville.kbCursor), null);
+    const cam = await g(() => window.__terraville.renderer.cam.x);
+    await page.keyboard.down('ArrowRight');
+    await page.waitForTimeout(250);
+    await page.keyboard.up('ArrowRight');
+    assert.ok(await g(() => window.__terraville.renderer.cam.x) > cam, 'the map moved');
+    // A click on the map gives it focus without the cursor: the arrows still move the map.
+    await page.mouse.click(640, 400);
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'map');
+    assert.equal(await g(() => window.__terraville.kbCursor), null);
+    const cam2 = await g(() => window.__terraville.renderer.cam.y);
+    await page.keyboard.down('ArrowDown');
+    await page.waitForTimeout(250);
+    await page.keyboard.up('ArrowDown');
+    assert.ok(await g(() => window.__terraville.renderer.cam.y) > cam2, 'the map moved');
+    assert.ok(await said(), 'something was said');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   await test('dialogs and menus take focus, keep Tab inside, and hand it back to the keyboard', async () => {
     const ctx = await profile(DESK);
     const { page, problems } = await open(ctx);
@@ -2691,6 +2783,7 @@ try {
       ['Space', 'Pause or resume'], [', .', 'Slower, faster'], ['Q B', 'Inspect, bulldoze'], ['R T P', 'Road, rail, power line'],
       ['1 2 3', 'Residential, commercial, industrial'], ['K', 'Park'], ['G L', 'Plant trees, level land'],
       ['Right-click', 'Bulldoze what is under the cursor'], ['Shift drag', 'Bulldoze an area, any tool'], ['Arrows', 'Move the map'],
+      ['Tab', 'To the map: the arrows then move a cursor, Shift five tiles'], ['Enter', 'On the map: use the tool at the cursor; again to end a drag'],
       ['+ −', 'Zoom'], ['0', 'Whole map'], ['[ ]', 'Level land brush size'], ['Ctrl Z', 'Undo'], ['Ctrl Shift Z or Ctrl Y', 'Redo'], ['Esc', 'Cancel or close'],
     ]);
     assert.equal(await page.getAttribute('[data-tool="level"]', 'aria-keyshortcuts'), 'l');
@@ -2703,7 +2796,8 @@ try {
     const editor = await keys();
     assert.deepEqual(editor.rows, [
       ['Q', 'Look around'], ['R F S L N', 'Raise, lower, smooth, flatten, roughen'], ['W D V G C', 'Water, dry land, spring, forest, clear trees'],
-      ['Arrows', 'Move the map'], ['+ −', 'Zoom'], ['0', 'Whole map'], ['[ ]', 'Brush size'], ['Ctrl Z', 'Undo'], ['Ctrl Shift Z or Ctrl Y', 'Redo'], ['Esc', 'Cancel or close'],
+      ['Arrows', 'Move the map'], ['Tab', 'To the map: the arrows then move a cursor, Shift five tiles'],
+      ['Enter', 'On the map: use the tool at the cursor; again to end a drag'], ['+ −', 'Zoom'], ['0', 'Whole map'], ['[ ]', 'Brush size'], ['Ctrl Z', 'Undo'], ['Ctrl Shift Z or Ctrl Y', 'Redo'], ['Esc', 'Cancel or close'],
     ]);
     // There is no clock here to stop, and no bulldozer.
     const sub = async () => {
